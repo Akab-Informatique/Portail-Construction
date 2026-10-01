@@ -27,18 +27,11 @@ export async function loadAccessBundle(userId: number): Promise<AccessBundle> {
   if (groupIds.length === 0) {
     return { groups: [], memberships, groupPermissions: [], groupClients: [] };
   }
-  const groups = (await db
-    .select()
-    .from(schema.access_groups)
-    .where(inArray(schema.access_groups.id, groupIds))) as AccessGroup[];
-  const groupPermissions = (await db
-    .select()
-    .from(schema.access_group_permissions)
-    .where(inArray(schema.access_group_permissions.group_id, groupIds))) as AccessGroupPermission[];
-  const groupClients = (await db
-    .select()
-    .from(schema.access_group_clients)
-    .where(inArray(schema.access_group_clients.group_id, groupIds))) as AccessGroupClient[];
+  const [groups, groupPermissions, groupClients] = (await Promise.all([
+    db.select().from(schema.access_groups).where(inArray(schema.access_groups.id, groupIds)),
+    db.select().from(schema.access_group_permissions).where(inArray(schema.access_group_permissions.group_id, groupIds)),
+    db.select().from(schema.access_group_clients).where(inArray(schema.access_group_clients.group_id, groupIds)),
+  ])) as [AccessGroup[], AccessGroupPermission[], AccessGroupClient[]];
   return { groups, memberships, groupPermissions, groupClients };
 }
 

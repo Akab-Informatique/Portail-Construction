@@ -75,9 +75,14 @@ export function DashboardPage() {
     (async () => {
       try {
         await dbReady;
-        const allClients = (await db.select().from(schema.clients)) as Client[];
-        const allProjects = (await db.select().from(schema.projects)) as Project[];
-        const allowed = await getAccessibleClientIds(user);
+        const [clientRows, projectRows, allowed, acts] = await Promise.all([
+          db.select().from(schema.clients),
+          db.select().from(schema.projects),
+          getAccessibleClientIds(user),
+          db.select().from(schema.activities).orderBy(desc(schema.activities.created_at)).limit(8),
+        ]);
+        const allClients = clientRows as Client[];
+        const allProjects = projectRows as Project[];
         const visibleClients = allowed ? allClients.filter((c) => allowed.includes(c.id)) : allClients;
         const visibleProjects = allowed ? allProjects.filter((p) => allowed.includes(p.client_id)) : allProjects;
         const projectIds = visibleProjects.map((p) => p.id);
@@ -89,17 +94,20 @@ export function DashboardPage() {
         let rfiDue: CalRfi[] = [];
         let punchDue: CalPunch[] = [];
         if (projectIds.length) {
-          const rfiRows = await db.select().from(schema.rfis).where(inArray(schema.rfis.project_id, projectIds));
+          const [rfiRows, punchRows, eventResult, taskResult] = await Promise.all([
+            db.select().from(schema.rfis).where(inArray(schema.rfis.project_id, projectIds)),
+            db.select().from(schema.punch_items).where(inArray(schema.punch_items.project_id, projectIds)),
+            db.select().from(schema.calendar_events).where(inArray(schema.calendar_events.project_id, projectIds)),
+            db.select().from(schema.project_tasks).where(inArray(schema.project_tasks.project_id, projectIds)),
+          ]);
           rfis = rfiRows.filter((r) => r.status === "open").length;
-          const punchRows = await db.select().from(schema.punch_items).where(inArray(schema.punch_items.project_id, projectIds));
           punch = punchRows.filter((r) => r.status !== "complete").length;
-          eventRows = (await db.select().from(schema.calendar_events).where(inArray(schema.calendar_events.project_id, projectIds))) as CalEvent[];
-          taskRows = (await db.select().from(schema.project_tasks).where(inArray(schema.project_tasks.project_id, projectIds))) as CalTask[];
+          eventRows = eventResult as CalEvent[];
+          taskRows = taskResult as CalTask[];
           rfiDue = rfiRows as CalRfi[];
           punchDue = punchRows as CalPunch[];
         }
 
-        const acts = await db.select().from(schema.activities).orderBy(desc(schema.activities.created_at)).limit(8);
         if (!cancelled) {
           setClients(visibleClients);
           setProjects(visibleProjects);

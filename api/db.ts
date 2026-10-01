@@ -211,6 +211,16 @@ async function ensureApiRoles() {
        WITH CHECK (kind = 'quote' AND status IN ('accepted', 'rejected') AND ${scopes.billing_documents})`,
     ),
     ...policy("activities", "frx_client_log", `FOR INSERT TO ${ROLE_CLIENT} WITH CHECK (user_id = ${ME} AND ${scopes.activities})`),
+    ...policy(
+      "activities",
+      "frx_scope_insert",
+      `FOR INSERT TO ${ROLE_USER} WITH CHECK ((user_id IS NULL OR user_id = ${ME}) AND ${scopes.activities})`,
+    ),
+    ...policy(
+      "activities",
+      "frx_scope_update",
+      `FOR UPDATE TO ${ROLE_USER} USING (${scopes.activities}) WITH CHECK ((user_id IS NULL OR user_id = ${ME}) AND ${scopes.activities})`,
+    ),
   );
   const client = await getPool().connect();
   try {
@@ -286,9 +296,30 @@ async function loadHiddenColumns() {
  */
 type ScopedSession = { id: number; is_admin: number; user_type: string; all_clients: number; view_as?: string };
 
+// ---- Short-lived auth cache ----
+// Every API call needs the session's user and client scope. Caching them for a
+// few seconds removes two database round trips per request. Anything that can
+// change them (login/logout, password, user or access edits) clears the cache.
+const AUTH_CACHE_MS = 5000;
+const sessionCache = new Map<string, { at: number; user: Awaited<ReturnType<typeof loadSessionUserUncached>> }>();
+const scopeCache = new Map<number, { at: number; ids: string }>();
+
+export function invalidateAuthCache() {
+  sessionCache.clear();
+  scopeCache.clear();
+}
+
 /** Clients this session may see: "*" for all, otherwise a comma-separated id list ("" = none). */
 async function allowedClientIds(session: ScopedSession) {
   if (Number(session.is_admin) === 1) return "*";
+  const cached = scopeCache.get(session.id);
+  if (cached && Date.now() - cached.at < AUTH_CACHE_MS) return cached.ids;
+  const ids = await allowedClientIdsUncached(session);
+  scopeCache.set(session.id, { at: Date.now(), ids });
+  return ids;
+}
+
+async function allowedClientIdsUncached(session: ScopedSession) {
   const sql =
     session.user_type === "external"
       ? "SELECT client_id FROM client_users WHERE user_id = $1"
@@ -323,10 +354,10 @@ async function runScopedSql(session: ScopedSession, sql: string, params: unknown
       const userId = String(Math.trunc(Number(session.id)));
       if (!/^(\*|[\d,]*)$/.test(clientIds)) throw new Error("bad client scope");
       await client.query(
-        `BEGIN; SET LOCAL ROLE ${roleFor(session)}; SELECT set_config('frx.user_id', '${userId}', true), set_config('frx.client_ids', '${clientIds}', true)`,
+        `RESET ROLE; BEGIN; SET LOCAL statement_timeout = '15s'; SET LOCAL ROLE ${roleFor(session)}; SELECT set_config('frx.user_id', '${userId}', true), set_config('frx.client_ids', '${clientIds}', true)`,
       );
     } else {
-      await client.query("BEGIN");
+      await client.query("BEGIN; SET LOCAL statement_timeout = '15s'");
     }
     const result = await client.query({ text, values: params, rowMode: "array" });
     await client.query("COMMIT");
@@ -344,6 +375,8 @@ async function runScopedSql(session: ScopedSession, sql: string, params: unknown
   }
 }
 
+const DUMMY_HASH = hashPassword("frx-timing-equalizer");
+
 export async function loginUser(email: string, password: string) {
   await ensureSchema();
   await ensureDemoUsers();
@@ -355,7 +388,11 @@ export async function loginUser(email: string, password: string) {
     [email.trim()],
   );
   const row = result.rows[0] as Record<string, unknown> | undefined;
-  if (!row) return { error: "login.error.invalid" };
+  if (!row) {
+    // Same cost as a real check, so response time does not reveal valid e-mails.
+    verifyPassword(password.trim(), DUMMY_HASH);
+    return { error: "login.error.invalid" };
+  }
   const stored = String(row.password ?? "");
   if (!verifyPassword(password.trim(), stored)) return { error: "login.error.invalid" };
   if (Number(row.is_active) !== 1) return { error: "login.error.inactive" };
@@ -441,15 +478,26 @@ async function createDbSession(userId: number) {
 async function revokeDbSession(token: string | null) {
   if (!token) return;
   await getPool().query("DELETE FROM sessions WHERE token = $1", [token]);
+  invalidateAuthCache();
 }
 
 async function revokeUserSessions(userId: number) {
   await getPool().query("DELETE FROM sessions WHERE user_id = $1", [userId]);
+  invalidateAuthCache();
 }
 
 async function loadSessionUser(req: { headers?: Record<string, unknown> }) {
   const token = tokenFromCookieHeader(cookieHeaderOf(req));
   if (!token) return null;
+  const cached = sessionCache.get(token);
+  if (cached && Date.now() - cached.at < AUTH_CACHE_MS) return cached.user ? { ...cached.user } : null;
+  const user = await loadSessionUserUncached(token);
+  if (sessionCache.size > 5000) sessionCache.clear();
+  sessionCache.set(token, { at: Date.now(), user });
+  return user ? { ...user } : null;
+}
+
+async function loadSessionUserUncached(token: string) {
   const result = await getPool().query(
     `SELECT u.id, u.name, u.email, u.user_type, u.title, u.phone, u.is_active, u.is_admin,
             u.avatar_initials, u.locale, u.theme, u.all_clients, u.must_change_password, u.tutorial_done, u.created_at, s.expires_at,
@@ -475,9 +523,17 @@ function effectiveAdmin(session: { is_admin: number; view_as?: string }) {
   return Number(session.is_admin) === 1 && (session.view_as ?? "admin") === "admin";
 }
 
+/** Upper bounds for browser-issued SQL (Drizzle's largest app queries are a few KB). */
+export const MAX_SQL_CHARS = 20_000;
+export const MAX_SQL_PARAMS = 2_000;
+
 function isAllowedSql(sql: string) {
   const trimmed = sql.trim();
   if (!trimmed) return false;
+  if (trimmed.length > MAX_SQL_CHARS) return false;
+  // The app only touches its own tables. System catalogs/views (pg_settings can
+  // change session settings), information_schema and large objects are off-limits.
+  if (/\b(pg_\w+|information_schema|lo_\w+|current_user|session_user|current_role|txid_\w+)\b/i.test(trimmed)) return false;
   if (/;/.test(trimmed.replace(/;+\s*$/, ""))) return false;
   if (/\b(drop|alter|truncate|create|grant|revoke|comment|copy|vacuum|lock|call|do)\b/i.test(trimmed)) return false;
   // Unicode-escaped identifiers/strings could smuggle names past the checks below.
@@ -710,6 +766,17 @@ async function recordPunch(session: ScopedSession, body: Record<string, unknown>
   return { punch: inserted.rows[0] };
 }
 
+const AUTH_ACTIONS = new Set([
+  "login",
+  "logout",
+  "create_user",
+  "update_user",
+  "change_password",
+  "complete_tutorial",
+  "set_tutorial",
+  "view_as",
+]);
+
 export async function handleDbRequest(req: { method?: string; body?: any; headers?: Record<string, unknown>; query?: Record<string, unknown>; url?: string }, res: any) {
   const body = parsedBody(req);
   req.body = body;
@@ -722,6 +789,13 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
     }
   })();
   const action = String(body.action ?? req.query?.action ?? urlAction ?? "");
+  // Clear cached sessions/scopes after anything that can change who a user is
+  // or what they may see.
+  const changesAuth =
+    AUTH_ACTIONS.has(action) ||
+    (typeof body.sql === "string" &&
+      /^\s*(insert|update|delete)\b/i.test(body.sql) &&
+      /\b(users|sessions|client_users|user_clients)\b/i.test(body.sql));
   try {
     if (action === "ping" || req.method === "GET") {
       if (!hasRemoteDb()) {
@@ -1022,6 +1096,21 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
         if (staffOnly && (session.user_type === "external" || session.view_as === "client") && !effectiveAdmin(session)) {
           return res.status(200).json({ value: null });
         }
+        if (key === "sharepoint" && stored && session.user_type === "external") {
+          try {
+            const sp = JSON.parse(stored) as Record<string, unknown>;
+            const on = Boolean(sp.tenant_id && sp.client_id && sp.site_url);
+            return res.status(200).json({
+              value: JSON.stringify(
+                on
+                  ? { tenant_id: "configured", client_id: "configured", site_url: "configured", drive_id: sp.drive_id ?? "", library_name: sp.library_name ?? "" }
+                  : {},
+              ),
+            });
+          } catch {
+            return res.status(200).json({ value: null });
+          }
+        }
         return res.status(200).json({ value: redactSettingValue(stored) });
       }
       if (!effectiveAdmin(session)) {
@@ -1054,6 +1143,10 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       res.status(400).json({ error: "sql is required" });
       return;
     }
+    if (sql.length > MAX_SQL_CHARS || params.length > MAX_SQL_PARAMS) {
+      res.status(413).json({ error: "Query too large" });
+      return;
+    }
     if (!isAllowedSql(sql)) {
       res.status(400).json({ error: "Query not allowed" });
       return;
@@ -1084,6 +1177,8 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
   } catch (err) {
     console.error("db api error", err);
     res.status(500).json({ error: "Query failed" });
+  } finally {
+    if (changesAuth) invalidateAuthCache();
   }
 }
 

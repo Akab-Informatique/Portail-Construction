@@ -123,11 +123,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setPermissions(await loadDefaultRolePermissions(userId, "external"));
       return;
     }
-    const rows = (await db
-      .select()
-      .from(schema.user_permissions)
-      .where(eq(schema.user_permissions.user_id, userId))) as Permission[];
-    const bundle = await loadAccessBundle(userId);
+    const [rows, bundle] = await Promise.all([
+      db.select().from(schema.user_permissions).where(eq(schema.user_permissions.user_id, userId)) as Promise<Permission[]>,
+      loadAccessBundle(userId),
+    ]);
     setPermissions([...rows, ...mergeGroupPermissions(userId, bundle)]);
   }, []);
 

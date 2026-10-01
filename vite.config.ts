@@ -39,6 +39,22 @@ function stripPreviewInspector(): Plugin {
 export default defineConfig(({ mode }) => ({
   optimizeDeps: { exclude: ["@electric-sql/pglite"] },
   worker: { format: "es" },
+  build: {
+    rollupOptions: {
+      output: {
+        // Libraries change far less often than app code: keep them in their
+        // own long-cached files so a deploy only re-downloads the app chunk.
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler|react-router|react-router-dom)[\\/]/.test(id)) return "vendor-react";
+          if (id.includes("drizzle-orm")) return "vendor-db";
+          if (/@radix-ui|radix-ui|@floating-ui|react-remove-scroll|aria-hidden|tailwind-merge|clsx|class-variance-authority/.test(id)) return "vendor-ui";
+          if (/[\\/](motion|motion-dom|motion-utils|framer-motion)[\\/]/.test(id)) return "vendor-motion";
+          return undefined;
+        },
+      },
+    },
+  },
   plugins: [react(), tailwindcss(), mailDevServer(), sharepointDevServer(), dbDevServer(), stripPreviewInspector()],
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },

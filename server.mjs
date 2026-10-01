@@ -53,7 +53,10 @@ async function compressedFile(file, encoding) {
   return buf;
 }
 
-function adaptRes(res) {
+/** JSON responses above this size are compressed (lists of projects, punches…). */
+const COMPRESS_JSON_ABOVE = 1024;
+
+function adaptRes(res, req) {
   return {
     statusCode: 200,
     status(code) {
@@ -66,13 +69,54 @@ function adaptRes(res) {
     json(body) {
       res.statusCode = this.statusCode;
       if (!res.getHeader("Content-Type")) res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify(body));
+      const text = JSON.stringify(body);
+      const encoding = req && text.length > COMPRESS_JSON_ABOVE ? pickEncoding(req) : null;
+      if (encoding) {
+        res.setHeader("Vary", "Accept-Encoding");
+        res.setHeader("Content-Encoding", encoding);
+        // Fast settings: these responses are generated per request.
+        res.end(
+          encoding === "br"
+            ? brotliCompressSync(text, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 4 } })
+            : gzipSync(text, { level: 5 }),
+        );
+        return;
+      }
+      res.end(text);
     },
     end(body) {
       res.statusCode = this.statusCode;
       res.end(body);
     },
   };
+}
+
+// ---- API rate limit (fixed 60 s window, in memory) ----
+// A page view fires ~5–20 API calls, so these leave lots of room for real use
+// while stopping floods. Signed-in traffic is counted per session so a whole
+// office behind one address is not limited together.
+const RATE_WINDOW_MS = 60_000;
+const RATE_LIMIT_SESSION = 1200;
+const RATE_LIMIT_ANON = 300;
+const rateBuckets = new Map();
+
+function sessionKeyOf(req) {
+  const match = String(req.headers.cookie || "").match(/(?:^|;\s*)frx_session=([a-f0-9]{32,})/);
+  return match ? `s:${match[1].slice(0, 24)}` : null;
+}
+
+function rateLimited(key, limit) {
+  const now = Date.now();
+  let bucket = rateBuckets.get(key);
+  if (!bucket || now - bucket.start > RATE_WINDOW_MS) {
+    bucket = { start: now, count: 0 };
+    rateBuckets.set(key, bucket);
+    if (rateBuckets.size > 50_000) {
+      for (const [k, v] of rateBuckets) if (now - v.start > RATE_WINDOW_MS) rateBuckets.delete(k);
+    }
+  }
+  bucket.count += 1;
+  return bucket.count > limit;
 }
 
 // Uploads are capped at 4 MB of file data (base64 ~5.4 MB) plus JSON overhead.
@@ -105,7 +149,19 @@ function queryOf(url) {
 }
 
 async function serveStatic(req, res, url) {
-  let rel = decodeURIComponent(url.pathname);
+  let rel;
+  try {
+    rel = decodeURIComponent(url.pathname);
+  } catch {
+    res.statusCode = 400;
+    res.end("Bad request");
+    return;
+  }
+  if (rel.includes("\0")) {
+    res.statusCode = 400;
+    res.end("Bad request");
+    return;
+  }
   if (rel === "/") rel = "/index.html";
   const file = normalize(join(dist, rel));
   if (file !== dist && !file.startsWith(dist + sep)) {
@@ -117,6 +173,14 @@ async function serveStatic(req, res, url) {
     const info = await stat(file);
     if (info.isDirectory()) throw new Error("dir");
     res.setHeader("Content-Type", MIME[extname(file)] || "application/octet-stream");
+    // Cheap validator so revalidations (index.html, brand images) get a 304.
+    const etag = `W/"${info.size.toString(36)}-${Math.floor(info.mtimeMs).toString(36)}"`;
+    res.setHeader("ETag", etag);
+    if (req.headers["if-none-match"] === etag) {
+      res.statusCode = 304;
+      res.end();
+      return;
+    }
     // Vite emits content-hashed file names under /assets.
     if (rel.startsWith("/assets/")) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
     // index.html names the current build's assets; always revalidate it.
@@ -145,6 +209,7 @@ const server = createServer(async (req, res) => {
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(self)");
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+  res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
   // Only scripts from this origin may run, and the page may only talk to this origin.
   res.setHeader(
     "Content-Security-Policy",
@@ -184,32 +249,50 @@ const server = createServer(async (req, res) => {
       }
     }
     // Behind the reverse proxy the client address arrives in X-Real-IP / X-Forwarded-For.
-    const forwarded = String(req.headers["x-real-ip"] || req.headers["x-forwarded-for"] || "").split(",")[0].trim();
-    const headers = { cookie: req.headers.cookie || "", "x-client-ip": forwarded || req.socket.remoteAddress || "" };
+    // Set TRUST_PROXY=0 if the app port is reachable directly (headers would be spoofable).
+    const forwarded =
+      process.env.TRUST_PROXY === "0"
+        ? ""
+        : String(req.headers["x-real-ip"] || req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+    const clientIp = forwarded || req.socket.remoteAddress || "";
+    if (url.pathname.startsWith("/api/")) {
+      const sessionKey = sessionKeyOf(req);
+      const limited = sessionKey
+        ? rateLimited(sessionKey, RATE_LIMIT_SESSION)
+        : rateLimited(`ip:${clientIp}`, RATE_LIMIT_ANON);
+      if (limited) {
+        res.statusCode = 429;
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader("Retry-After", "60");
+        res.end(JSON.stringify({ error: "Too many requests" }));
+        return;
+      }
+    }
+    const headers = { cookie: req.headers.cookie || "", "x-client-ip": clientIp };
     if (url.pathname === "/api/sharepoint") {
       const body = req.method === "POST" ? await readJsonBody(req) : {};
-      await sharepointHandler({ method: req.method, query: queryOf(url), body, headers }, adaptRes(res));
+      await sharepointHandler({ method: req.method, query: queryOf(url), body, headers }, adaptRes(res, req));
       return;
     }
     if (url.pathname === "/api/mail/send") {
       const body = req.method === "POST" ? await readJsonBody(req) : {};
-      await mailHandler({ method: req.method, body, headers }, adaptRes(res));
+      await mailHandler({ method: req.method, body, headers }, adaptRes(res, req));
       return;
     }
     if (url.pathname === "/api/db/ping" || (url.pathname === "/api/db" && req.method === "GET")) {
-      await dbHandler({ method: "POST", body: { action: "ping" }, headers }, adaptRes(res));
+      await dbHandler({ method: "POST", body: { action: "ping" }, headers }, adaptRes(res, req));
       return;
     }
     if (url.pathname === "/api/db") {
       const body = req.method === "POST" ? await readJsonBody(req) : {};
-      await dbHandler({ method: req.method, body, headers }, adaptRes(res));
+      await dbHandler({ method: req.method, body, headers }, adaptRes(res, req));
       return;
     }
     if (url.pathname === "/api/change-password") {
       const body = req.method === "POST" ? await readJsonBody(req) : {};
       await dbHandler(
         { method: "POST", body: { ...body, action: "change_password" }, headers, query: { action: "change_password" } },
-        adaptRes(res),
+        adaptRes(res, req),
       );
       return;
     }
@@ -217,7 +300,7 @@ const server = createServer(async (req, res) => {
       const body = req.method === "POST" ? await readJsonBody(req) : {};
       await dbHandler(
         { method: "POST", body: { ...body, action: "complete_tutorial" }, headers, query: { action: "complete_tutorial" } },
-        adaptRes(res),
+        adaptRes(res, req),
       );
       return;
     }
@@ -225,8 +308,14 @@ const server = createServer(async (req, res) => {
       const body = req.method === "POST" ? await readJsonBody(req) : {};
       await dbHandler(
         { method: "POST", body: { ...body, action: "set_tutorial" }, headers, query: { action: "set_tutorial" } },
-        adaptRes(res),
+        adaptRes(res, req),
       );
+      return;
+    }
+    if (url.pathname.startsWith("/api/") || url.pathname === "/api") {
+      res.statusCode = 404;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ error: "Not found" }));
       return;
     }
     if (url.pathname === "/healthz") {

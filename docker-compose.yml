@@ -22,7 +22,9 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "${PORT:-8080}:3000"
+      # Set BIND_ADDR=127.0.0.1 when the reverse proxy runs on this same host,
+      # so the app is only reachable through the proxy (HTTPS).
+      - "${BIND_ADDR:-0.0.0.0}:${PORT:-8080}:3000"
     env_file:
       - .env
     environment:

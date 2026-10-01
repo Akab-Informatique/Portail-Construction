@@ -208,3 +208,19 @@ database user lacks the CREATEROLE privilege and only the weaker fallback checks
 `npm run dev:local` runs the app on this machine with an in-browser database
 (sign in with the seeded `admin@frxconstruction.ca` / `admin123`).
 `npm run dev` keeps the page-builder preview settings.
+
+## Network hardening (recommended)
+
+The app should only be reachable through the HTTPS reverse proxy.
+
+- If the proxy runs **on the same server**, set `BIND_ADDR=127.0.0.1` in `.env` and
+  run `sudo docker compose up -d`. Port 8080 is then closed to the outside.
+- If the proxy is on **another machine**, keep `BIND_ADDR=0.0.0.0` but allow port 8080
+  only from the proxy's address in the server firewall.
+- `TRUST_PROXY=1` (default) uses the proxy's X-Real-IP header for login throttling and
+  rate limits. Set `TRUST_PROXY=0` if port 8080 is reachable directly, since that header
+  could then be forged.
+
+Built-in protections: per-account and per-address login throttling, an API rate limit
+(1,200 requests/min per signed-in session, 300/min per address when signed out), a 15 s
+limit on every database query, and a 12 MB request size cap.

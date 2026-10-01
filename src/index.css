@@ -272,6 +272,11 @@
   }
 }
 
+@keyframes frx-border-beam {
+  from { offset-distance: 0%; }
+  to { offset-distance: 100%; }
+}
+
 @keyframes frx-sweep {
   0% { transform: translateX(-120%); }
   60%, 100% { transform: translateX(320%); }
