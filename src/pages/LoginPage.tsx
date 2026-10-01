@@ -82,173 +82,170 @@ export function LoginPage() {
   }
 
   return (
-    <div className="relative grid min-h-screen overflow-hidden bg-black text-white lg:grid-cols-[1.2fr_1fr]">
+    <div className="relative flex min-h-screen flex-col overflow-hidden bg-black text-white">
+      <Grid />
       <Glow />
+      <div className="frx-beam relative z-10 h-1 w-full" aria-hidden />
 
-      {/* Brand panel: the job site */}
-      <section className="relative hidden flex-col overflow-hidden border-r border-white/[0.06] lg:flex">
-        <Grid />
-        <div className="relative flex h-screen flex-col px-12 pb-8 pt-12 xl:px-16 xl:pt-16">
-          <div className="flex items-center gap-3">
-            <img src="/brand/logo-icon.png" alt="" className="size-11 object-contain" />
-            <div className="leading-none">
-              <p className="font-display text-xl font-bold tracking-[0.2em]">FRX</p>
-              <p className="mt-1 font-display text-[11px] font-semibold tracking-[0.36em] text-[#fbaa19]">
-                {t("brand.construction")}
-              </p>
-            </div>
-          </div>
+      {/* The job site frames the card: one building each side, cranes on the outer edges */}
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between">
+        <BuildingElevation
+          showLevels={false}
+          className="hidden h-[min(46vh,470px)] w-auto -scale-x-100 opacity-70 md:block"
+        />
+        <BuildingElevation className="h-[min(34vh,340px)] w-auto opacity-40 md:h-[min(46vh,470px)] md:opacity-70" />
+      </div>
 
-          <div className="mt-[6vh] max-w-xl">
-            <p className="frx-label mb-6 flex items-center gap-3 text-[#fbaa19]">
-              <span className="h-px w-10 bg-[#fbaa19]" aria-hidden />
-              {t("brand.slogan")}
+      <header className="relative z-10 flex items-center justify-between px-6 py-5 sm:px-10 [@media(max-height:800px)]:py-3">
+        <div className="flex items-center gap-3">
+          <img src="/brand/logo-icon.png" alt="" className="size-9 object-contain sm:size-10" />
+          <div className="leading-none">
+            <p className="font-display text-lg font-bold tracking-[0.2em]">FRX</p>
+            <p className="mt-1 font-display text-[10px] font-semibold tracking-[0.36em] text-[#fbaa19]">
+              {t("brand.construction")}
             </p>
-            <h1 className="font-display text-[clamp(52px,6.2vw,96px)] font-bold leading-[0.9] tracking-tight">
-              <span className="block">{t("login.hero.line1")}</span>
-              <span className="block text-[#fbaa19] [text-shadow:0_0_40px_rgba(251,170,25,0.35)]">
-                {t("login.hero.line2")}
-              </span>
-              <span className="block">{t("login.hero.line3")}</span>
-            </h1>
-            <p className="mt-7 max-w-md text-[15px] leading-relaxed text-[#a3a3a0]">{t("login.hero.body")}</p>
-          </div>
-
-          <div className="relative -mr-12 mt-auto flex justify-end pt-6 xl:-mr-16">
-            <BuildingElevation className="block h-[min(40vh,460px)] w-auto max-w-full" />
           </div>
         </div>
-      </section>
+        <div className="flex overflow-hidden rounded-sm border border-[#2e2e2c] bg-black/60" role="group" aria-label="Language">
+          {(["en", "fr"] as const).map((code) => (
+            <button
+              key={code}
+              type="button"
+              onClick={() => setLocale(code)}
+              aria-pressed={locale === code}
+              className={cn(
+                "frx-label min-w-11 px-3 py-2 transition-colors",
+                locale === code ? "bg-[#fbaa19] text-black" : "text-[#8a8a86] hover:text-white",
+              )}
+            >
+              {code}
+            </button>
+          ))}
+        </div>
+      </header>
 
-      {/* Sign-in panel */}
-      <section className="relative flex flex-col">
-        <div className="frx-beam h-1 w-full lg:hidden" aria-hidden />
-        <div className="relative flex items-center justify-between px-6 py-5 sm:px-10">
-          <div className="flex items-center gap-2.5 lg:invisible">
-            <img src="/brand/logo-icon.png" alt="" className="size-8 object-contain" />
-            <span className="font-display text-base font-bold tracking-[0.2em]">FRX</span>
-          </div>
-          <div className="flex overflow-hidden rounded-sm border border-[#2e2e2c] bg-black/60" role="group" aria-label="Language">
-            {(["en", "fr"] as const).map((code) => (
-              <button
-                key={code}
-                type="button"
-                onClick={() => setLocale(code)}
-                aria-pressed={locale === code}
-                className={cn(
-                  "frx-label min-w-11 px-3 py-2 transition-colors",
-                  locale === code ? "bg-[#fbaa19] text-black" : "text-[#8a8a86] hover:text-white",
-                )}
-              >
-                {code}
-              </button>
-            ))}
-          </div>
+      <main className="relative z-10 flex flex-1 flex-col items-center justify-center px-5 pb-[min(22vh,230px)] pt-2 [@media(max-height:800px)]:pb-[9vh]">
+        <div className="mb-7 text-center [@media(max-height:800px)]:mb-4">
+          <p className="frx-label mb-3 flex items-center justify-center gap-3 text-[#fbaa19]">
+            <span className="h-px w-8 bg-[#fbaa19]" aria-hidden />
+            {t("brand.slogan")}
+            <span className="h-px w-8 bg-[#fbaa19]" aria-hidden />
+          </p>
+          <h1 className="font-display text-[clamp(28px,min(4.6vw,6.6vh),58px)] font-bold leading-none tracking-tight">
+            {t("login.hero.line1")}{" "}
+            <span className="text-[#fbaa19] [text-shadow:0_0_40px_rgba(251,170,25,0.4)]">{t("login.hero.line2")}</span>{" "}
+            {t("login.hero.line3")}
+          </h1>
         </div>
 
-        <div className="relative flex flex-1 items-center justify-center px-5 pb-16 sm:px-10">
-          <div className="relative w-full max-w-[420px] overflow-hidden rounded-md border border-white/[0.09] bg-[#0b0b0b]/85 p-8 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.8)] backdrop-blur-sm sm:p-10">
-            <BorderBeam size={160} duration={9} borderWidth={2} colorFrom="#fbaa19" colorTo="#fff4d4" />
-            <BorderBeam size={100} duration={9} delay={4.5} borderWidth={2} colorFrom="#fff4d4" colorTo="#fbaa19" />
+        <div className="relative w-full max-w-[440px]">
+          {/* Warm halo so the card reads as the lit centre of the site */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -inset-10 rounded-[40px] bg-[radial-gradient(closest-side,rgba(251,170,25,0.18),transparent)] blur-xl"
+          />
+          <div className="relative overflow-hidden rounded-md border border-white/[0.1] bg-[#0b0b0b]/90 p-8 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.9)] backdrop-blur-md sm:p-10 [@media(max-height:800px)]:p-7">
+            <BorderBeam size={170} duration={9} borderWidth={2} colorFrom="#fbaa19" colorTo="#fff4d4" />
+            <BorderBeam size={110} duration={9} delay={4.5} borderWidth={2} colorFrom="#fff4d4" colorTo="#fbaa19" />
+              <form onSubmit={onSubmit} className="relative">
+                <p className="frx-label flex items-center gap-2 text-[#8a8a86]">
+                  <Lock className="size-3 text-[#fbaa19]" />
+                  {t("login.secure")}
+                </p>
+                <h2 className="mt-4 font-display text-[42px] font-bold leading-none [@media(max-height:800px)]:mt-3 [@media(max-height:800px)]:text-[36px]">
+                  {needsSetup ? t("login.setup.submit") : t("login.title")}
+                </h2>
+                <span className="mt-4 block h-[3px] w-12 bg-[#fbaa19]" aria-hidden />
+                <p className="mt-4 text-sm text-[#a3a3a0]">{needsSetup ? t("login.setup.hint") : t("login.subtitle")}</p>
 
-            <form onSubmit={onSubmit} className="relative">
-              <p className="frx-label flex items-center gap-2 text-[#8a8a86]">
-                <Lock className="size-3 text-[#fbaa19]" />
-                {t("login.secure")}
-              </p>
-              <h2 className="mt-4 font-display text-[42px] font-bold leading-none">
-                {needsSetup ? t("login.setup.submit") : t("login.title")}
-              </h2>
-              <span className="mt-4 block h-[3px] w-12 bg-[#fbaa19]" aria-hidden />
-              <p className="mt-4 text-sm text-[#a3a3a0]">{needsSetup ? t("login.setup.hint") : t("login.subtitle")}</p>
+                <div className="mt-8 space-y-5 [@media(max-height:800px)]:mt-6 [@media(max-height:800px)]:space-y-4">
+                  {needsSetup ? (
+                    <div className="space-y-2">
+                      <Label htmlFor="name" className="frx-label text-[#a3a3a0]">
+                        {t("login.setup.name")}
+                      </Label>
+                      <Input
+                        id="name"
+                        autoComplete="name"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        required
+                        className={fieldClass}
+                      />
+                    </div>
+                  ) : null}
 
-              <div className="mt-8 space-y-5">
-                {needsSetup ? (
                   <div className="space-y-2">
-                    <Label htmlFor="name" className="frx-label text-[#a3a3a0]">
-                      {t("login.setup.name")}
+                    <Label htmlFor="email" className="frx-label text-[#a3a3a0]">
+                      {t("login.email")}
                     </Label>
                     <Input
-                      id="name"
-                      autoComplete="name"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
+                      id="email"
+                      type="email"
+                      autoComplete="username"
+                      placeholder={locale === "fr" ? "nom@entreprise.ca" : "name@company.ca"}
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
                       required
+                      autoFocus
                       className={fieldClass}
                     />
                   </div>
-                ) : null}
 
-                <div className="space-y-2">
-                  <Label htmlFor="email" className="frx-label text-[#a3a3a0]">
-                    {t("login.email")}
-                  </Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    autoComplete="username"
-                    placeholder={locale === "fr" ? "nom@entreprise.ca" : "name@company.ca"}
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    autoFocus
-                    className={fieldClass}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="password" className="frx-label text-[#a3a3a0]">
-                    {t("login.password")}
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      id="password"
-                      type={showPassword ? "text" : "password"}
-                      autoComplete={needsSetup ? "new-password" : "current-password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      minLength={needsSetup ? 8 : undefined}
-                      className={cn(fieldClass, "pr-12")}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((v) => !v)}
-                      aria-label={showPassword ? t("login.hidePassword") : t("login.showPassword")}
-                      className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-[#8a8a86] hover:text-[#fbaa19]"
-                    >
-                      {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                    </button>
+                  <div className="space-y-2">
+                    <Label htmlFor="password" className="frx-label text-[#a3a3a0]">
+                      {t("login.password")}
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        type={showPassword ? "text" : "password"}
+                        autoComplete={needsSetup ? "new-password" : "current-password"}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        minLength={needsSetup ? 8 : undefined}
+                        className={cn(fieldClass, "pr-12")}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((v) => !v)}
+                        aria-label={showPassword ? t("login.hidePassword") : t("login.showPassword")}
+                        className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-[#8a8a86] hover:text-[#fbaa19]"
+                      >
+                        {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {error && (
-                <p
-                  className="mt-5 border-l-2 border-[#fbaa19] bg-[#fbaa19]/10 px-3 py-2.5 text-sm text-[#fbd28a]"
-                  role="alert"
-                >
-                  {error}
-                </p>
-              )}
-
-              <button
-                type="submit"
-                disabled={submitting || !ready}
-                className="group mt-8 flex h-12 w-full items-center justify-between rounded-sm bg-[#fbaa19] px-5 font-display text-[16px] font-bold uppercase tracking-[0.18em] text-black shadow-[inset_0_-3px_0_rgba(0,0,0,0.2),0_0_30px_-6px_rgba(251,170,25,0.55)] transition-colors hover:bg-[#ffb935] active:translate-y-px disabled:opacity-60"
-              >
-                <span>{needsSetup ? t("login.setup.submit") : t("login.enter")}</span>
-                {submitting ? (
-                  <Loader2 className="size-5 animate-spin" />
-                ) : (
-                  <ArrowRight className="size-5 transition-transform group-hover:translate-x-1" />
+                {error && (
+                  <p
+                    className="mt-5 border-l-2 border-[#fbaa19] bg-[#fbaa19]/10 px-3 py-2.5 text-sm text-[#fbd28a]"
+                    role="alert"
+                  >
+                    {error}
+                  </p>
                 )}
-              </button>
-            </form>
+
+                <button
+                  type="submit"
+                  disabled={submitting || !ready}
+                  className="group mt-8 [@media(max-height:800px)]:mt-6 flex h-12 w-full items-center justify-between rounded-sm bg-[#fbaa19] px-5 font-display text-[16px] font-bold uppercase tracking-[0.18em] text-black shadow-[inset_0_-3px_0_rgba(0,0,0,0.2),0_0_30px_-6px_rgba(251,170,25,0.55)] transition-colors hover:bg-[#ffb935] active:translate-y-px disabled:opacity-60"
+                >
+                  <span>{needsSetup ? t("login.setup.submit") : t("login.enter")}</span>
+                  {submitting ? (
+                    <Loader2 className="size-5 animate-spin" />
+                  ) : (
+                    <ArrowRight className="size-5 transition-transform group-hover:translate-x-1" />
+                  )}
+                </button>
+              </form>
           </div>
+          <p className="frx-label relative mt-5 text-center text-[#6b6b68]">© {new Date().getFullYear()} FRX Construction</p>
         </div>
-        <p className="frx-label relative pb-6 text-center text-[#4a4a47]">© {new Date().getFullYear()} FRX Construction</p>
-      </section>
+      </main>
+
     </div>
   );
 }

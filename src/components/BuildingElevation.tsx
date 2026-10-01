@@ -73,7 +73,7 @@ function Floors({ block }: { block: Block }) {
   );
 }
 
-export function BuildingElevation({ className }: { className?: string }) {
+export function BuildingElevation({ className, showLevels = true }: { className?: string; showLevels?: boolean }) {
   const towerTop = GROUND - TOWER.floors * FLOOR;
   const frameX = 370;
   const frameW = 110;
@@ -82,7 +82,7 @@ export function BuildingElevation({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 600 460" className={className} aria-hidden fill="none">
       {/* Level markers, like the datum lines on a section drawing */}
-      <g fontFamily="JetBrains Mono, monospace" fontSize="9" fill="rgba(255,255,255,0.35)">
+      <g display={showLevels ? undefined : "none"} fontFamily="JetBrains Mono, monospace" fontSize="9" fill="rgba(255,255,255,0.35)">
         {[0, 2, 4, 6, 8, 10].map((lvl) => {
           const y = GROUND - lvl * FLOOR;
           return (
