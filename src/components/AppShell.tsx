@@ -41,6 +41,8 @@ import {
 } from "./ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "./ui/select";
 import { CommandPalette, useCommandPaletteHotkey } from "./CommandPalette";
+import { ClockBadge, SignOutGuard } from "./ClockBadge";
+import { useClock } from "@/lib/clock";
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 import { useI18n } from "@/lib/i18n";
@@ -372,7 +374,14 @@ function SidebarBody({
   const location = useLocation();
   const { projectMode } = useWorkspace();
   const sections = useNavModel();
+  const clock = useClock();
+  const [guardOpen, setGuardOpen] = useState(false);
   const isAdmin = Boolean(realUser?.is_admin) && user?.view_as !== "client";
+  function signOut() {
+    setGuardOpen(false);
+    logout();
+    navigate("/login");
+  }
   const onSetup = location.pathname.startsWith("/settings") || location.pathname.startsWith("/config");
 
   return (
@@ -505,10 +514,7 @@ function SidebarBody({
             <button
               type="button"
               className="flex size-8 shrink-0 items-center justify-center rounded-sm text-white/50 hover:bg-white/[0.06] hover:text-primary"
-              onClick={() => {
-                logout();
-                navigate("/login");
-              }}
+              onClick={() => (clock.open ? setGuardOpen(true) : signOut())}
               aria-label={t("nav.signOut")}
               title={t("nav.signOut")}
             >
@@ -517,6 +523,14 @@ function SidebarBody({
           </div>
         </div>
       </div>
+      <SignOutGuard
+        open={guardOpen}
+        onOpenChange={setGuardOpen}
+        onConfirm={() => {
+          onNavigate?.();
+          signOut();
+        }}
+      />
     </SidebarContext.Provider>
   );
 }
@@ -649,6 +663,7 @@ export function AppShell() {
           </nav>
 
           <div className="ml-auto flex items-center gap-1.5">
+            <ClockBadge />
             <button
               type="button"
               onClick={() => setSearchOpen(true)}

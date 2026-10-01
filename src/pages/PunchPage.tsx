@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Clock3, MapPin, Timer, Users } from "lucide-react";
+import { CheckCircle2, Clock3, Loader2, LogIn, LogOut, ShieldCheck, Timer, Users } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { useWorkspace } from "@/lib/workspace";
@@ -7,19 +7,23 @@ import { logActivity } from "@/lib/activity";
 import { formatDate, formatDateTime } from "@/lib/format";
 import {
   addDaysISO,
-  createPunch,
+  formatClock,
   formatDuration,
-  getCurrentPosition,
-  haversineMeters,
   loadAllPunches,
   loadUserPunches,
   minutesBetween,
   openPunchForUser,
   pairPunches,
   projectFence,
+  submitPunch,
   weekStartISO,
+  type PunchFailure,
   type TimeEntry,
 } from "@/lib/timeclock";
+import { useNow } from "@/lib/clock";
+import { cn } from "@/lib/utils";
+import { PunchRuleBanner } from "@/components/PunchRule";
+import { PunchFailureDialog } from "@/components/PunchFailureDialog";
 import type { Client, Project, TimePunch, User } from "@/lib/types";
 import { db, dbReady, schema } from "../db";
 import { PageHeader } from "@/components/PageHeader";
@@ -39,13 +43,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
 export function PunchPage() {
   const { user } = useAuth();
@@ -58,7 +55,8 @@ export function PunchPage() {
   const [people, setPeople] = useState<User[]>([]);
   const [memberRows, setMemberRows] = useState<{ project_id: number; user_id: number }[]>([]);
   const [open, setOpen] = useState<TimePunch | null>(null);
-  const [tab, setTab] = useState(isAdmin ? "overview" : "clock");
+  // Checking in is the everyday task, so it is the default even for admins.
+  const [tab, setTab] = useState("clock");
 
   async function load() {
     if (!user) {
@@ -113,7 +111,7 @@ export function PunchPage() {
   if (!isAdmin) {
     return (
       <div>
-        <PageHeader eyebrow={t("nav.tools")} title={t("punch.title")} description={t("punch.desc")} />
+        <PageHeader eyebrow={t("nav.section.field")} title={t("punch.title")} description={t("punch.desc")} />
         {clock}
       </div>
     );
@@ -121,7 +119,7 @@ export function PunchPage() {
 
   return (
     <div>
-      <PageHeader eyebrow={t("nav.tools")} title={t("punch.title")} description={t("punch.adminDesc")} />
+      <PageHeader eyebrow={t("nav.section.field")} title={t("punch.title")} description={t("punch.adminDesc")} />
       <Tabs value={tab} onValueChange={setTab} className="gap-5">
         <TabsList>
           <TabsTrigger value="overview">
@@ -163,199 +161,219 @@ function ClockView({
 }) {
   const { user } = useAuth();
   const { t, locale } = useI18n();
-  const [projectId, setProjectId] = useState(open ? String(open.project_id) : projects[0] ? String(projects[0].id) : "");
+  // Default to the open shift, else the job punched on last, else the first job.
+  const lastProjectId = punches.find((p) => projects.some((job) => job.id === p.project_id))?.project_id;
+  const [projectId, setProjectId] = useState(
+    open ? String(open.project_id) : lastProjectId ? String(lastProjectId) : projects[0] ? String(projects[0].id) : "",
+  );
   const [note, setNote] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [blockOpen, setBlockOpen] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
-
-  function blockPunch(message: string) {
-    setError(message);
-    setBlockOpen(true);
-  }
+  const [busy, setBusy] = useState<"in" | "out" | null>(null);
+  const [failure, setFailure] = useState<PunchFailure | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const now = useNow(Boolean(open));
 
   useEffect(() => {
     if (open) setProjectId(String(open.project_id));
   }, [open?.id]);
 
   useEffect(() => {
-    if (!open) return;
-    const id = window.setInterval(() => setNow(Date.now()), 30000);
-    return () => window.clearInterval(id);
-  }, [open]);
+    if (!success) return;
+    const id = window.setTimeout(() => setSuccess(null), 6000);
+    return () => window.clearTimeout(id);
+  }, [success]);
 
   const selected = projects.find((p) => String(p.id) === projectId) ?? null;
+  const openProject = open ? projects.find((p) => p.id === open.project_id) ?? selected : null;
+  const ruleProject = openProject ?? selected;
   const entries = useMemo(() => pairPunches(punches).slice(0, 8), [punches]);
-  const liveMinutes = open ? minutesBetween(open.punched_at, new Date(now).toISOString()) : 0;
+  const liveMs = open ? now - new Date(open.punched_at).getTime() : 0;
+  const liveMinutes = Math.max(0, Math.floor(liveMs / 60000));
 
   async function punch(kind: "in" | "out") {
-    if (!user || !selected) return;
-    setBusy(true);
-    setError(null);
+    const project = kind === "out" ? openProject : selected;
+    if (!user || !project || busy) return;
+    setBusy(kind);
+    setFailure(null);
+    setSuccess(null);
     try {
-      if (selected.require_geofence && !projectFence(selected)) {
-        blockPunch(t("punch.geo.missingPin"));
-        setBusy(false);
+      const result = await submitPunch({ userId: user.id, project, kind, note: note.trim() || null });
+      if (!result.ok) {
+        setFailure(result.failure);
+        // The real state differs from what this screen showed: resync it.
+        if (result.failure.code === "punch.error.alreadyIn" || result.failure.code === "punch.error.notIn") {
+          await onChanged();
+        }
         return;
       }
-      const fence = projectFence(selected);
-      let lat: number | null = null;
-      let lng: number | null = null;
-      let accuracy: number | null = null;
-      let distance: number | null = null;
-      const status = "ok";
-      if (fence) {
-        const pos = await getCurrentPosition();
-        lat = pos.coords.latitude;
-        lng = pos.coords.longitude;
-        accuracy = pos.coords.accuracy ?? null;
-        distance = haversineMeters({ lat, lng }, { lat: fence.lat, lng: fence.lng });
-        if (distance > fence.radius) {
-          blockPunch(t("punch.outsideFence", { meters: String(distance), radius: String(fence.radius) }));
-          setBusy(false);
-          return;
-        }
-      }
-      await createPunch({
-        userId: user.id,
-        projectId: selected.id,
-        kind,
-        punchedAt: new Date().toISOString(),
-        lat,
-        lng,
-        accuracy,
-        distance,
-        status,
-        note: note.trim() || null,
+      const time = new Date(result.punch.punched_at).toLocaleTimeString(locale === "fr" ? "fr-CA" : "en-CA", {
+        hour: "2-digit",
+        minute: "2-digit",
       });
-      await logActivity({
-        action: kind === "in" ? "punched in" : "punched out",
-        details: `${selected.project_number} ${selected.name}`,
-        projectId: selected.id,
-        clientId: selected.client_id,
-        userId: user.id,
-      });
+      setSuccess(
+        kind === "in"
+          ? t("punch.success.in", { time })
+          : t("punch.success.out", {
+              time,
+              duration: formatDuration(open ? minutesBetween(open.punched_at, result.punch.punched_at) : 0),
+            }),
+      );
       setNote("");
+      void logActivity({
+        action: kind === "in" ? "punched in" : "punched out",
+        details: `${project.project_number} ${project.name}`,
+        projectId: project.id,
+        clientId: project.client_id,
+        userId: user.id,
+      }).catch(() => undefined);
       await onChanged();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "";
-      if (message.includes("geolocation") || message === "geolocation-unavailable") {
-        blockPunch(t("punch.needLocation"));
-      } else {
-        setError(t("punch.failed"));
-      }
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
+  const failureProject = failure?.open ? projects.find((p) => p.id === failure.open!.project_id) : ruleProject;
+
   return (
-    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-      <Card className="gap-5 p-5">
-        <div>
-          <p className="text-sm font-medium">{open ? t("punch.clockedIn") : t("punch.ready")}</p>
-          <p className="text-xs text-muted-foreground">
-            {open ? t("punch.startedAt", { time: formatDateTime(open.punched_at, locale) }) : t("punch.chooseProject")}
-          </p>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label>{t("punch.project")}</Label>
-          <Select value={projectId} onValueChange={setProjectId} disabled={Boolean(open)}>
-            <SelectTrigger>
-              <SelectValue placeholder={t("punch.selectProject")} />
-            </SelectTrigger>
-            <SelectContent>
-              {projects.map((p) => (
-                <SelectItem key={p.id} value={String(p.id)}>
-                  {p.project_number} — {p.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {selected ? <FenceHint project={selected} /> : null}
-        </div>
-
-        <div className="space-y-1.5">
-          <Label>{t("punch.note")}</Label>
-          <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("punch.notePlaceholder")} rows={3} />
-        </div>
-
-        <Dialog
-          open={blockOpen}
-          onOpenChange={(next) => {
-            setBlockOpen(next);
-            if (!next) setError(null);
-          }}
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <Card className="gap-0 overflow-hidden p-0">
+        {/* Status */}
+        <div
+          className={cn(
+            "relative px-6 py-6 sm:px-8",
+            open ? "bg-black text-white" : "bg-muted/50",
+          )}
         >
-          <DialogContent className="z-[80] sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-destructive">
-                <MapPin className="size-5" />
-                {t("punch.blockedTitle")}
-              </DialogTitle>
-            </DialogHeader>
-            <p className="text-base leading-relaxed">{error}</p>
-            <DialogFooter>
-              <Button onClick={() => setBlockOpen(false)}>{t("punch.blockedOk")}</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+          {open ? <div className="frx-beam absolute inset-x-0 top-0 h-1" aria-hidden /> : null}
+          <p className="frx-label flex items-center gap-2">
+            <span className="relative flex size-2.5">
+              {open ? <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400/70" /> : null}
+              <span className={cn("relative size-2.5 rounded-full", open ? "bg-emerald-400" : "bg-muted-foreground/50")} />
+            </span>
+            <span className={open ? "text-emerald-300" : "text-muted-foreground"}>
+              {open ? t("punch.state.on") : t("punch.state.off")}
+            </span>
+          </p>
+          <p className="mt-3 font-mono text-[44px] font-medium leading-none tabular-nums sm:text-[56px]">
+            {open ? formatClock(liveMs) : "0:00:00"}
+          </p>
+          {open && openProject ? (
+            <div className="mt-3 space-y-1">
+              <p className="text-[15px] font-semibold">
+                {openProject.project_number} · {openProject.name}
+              </p>
+              <p className="text-[13px] text-white/60">
+                {t("punch.since", { time: formatDateTime(open.punched_at, locale) })} · {clientName(openProject, clients)}
+              </p>
+              <p className="pt-2 text-[12px] text-white/50">{t("punch.keepsRunning")}</p>
+            </div>
+          ) : (
+            <p className="mt-3 text-[13px] text-muted-foreground">{t("punch.chooseProject")}</p>
+          )}
+        </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="space-y-5 px-6 py-6 sm:px-8">
+          <div className="space-y-1.5">
+            <Label>{t("punch.project")}</Label>
+            <Select value={projectId} onValueChange={setProjectId} disabled={Boolean(open)}>
+              <SelectTrigger className="h-11 w-full">
+                <SelectValue placeholder={t("punch.selectProject")} />
+              </SelectTrigger>
+              <SelectContent>
+                {projects.map((p) => (
+                  <SelectItem key={p.id} value={String(p.id)}>
+                    {p.project_number} — {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {open ? <p className="text-xs text-muted-foreground">{t("punch.lockedProject")}</p> : null}
+          </div>
+
+          {ruleProject ? <PunchRuleBanner project={ruleProject} /> : null}
+
+          <div className="space-y-1.5">
+            <Label>{t("punch.note")}</Label>
+            <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("punch.notePlaceholder")} rows={2} />
+          </div>
+
+          {success ? (
+            <p
+              className="flex items-center gap-2 rounded-sm border border-emerald-600/30 bg-emerald-500/10 px-3 py-2.5 text-sm font-medium text-emerald-800 dark:text-emerald-300"
+              role="status"
+            >
+              <CheckCircle2 className="size-4 shrink-0" />
+              {success}
+            </p>
+          ) : null}
+
           {open ? (
-            <Button disabled={busy} onClick={() => void punch("out")}>
-              <Clock3 className="size-4" />
-              {busy ? t("punch.saving") : t("punch.out")}
+            <Button
+              size="lg"
+              disabled={Boolean(busy)}
+              onClick={() => void punch("out")}
+              className="h-14 w-full bg-foreground font-display text-lg font-bold uppercase tracking-[0.16em] text-background shadow-none hover:bg-foreground/85"
+            >
+              {busy ? <Loader2 className="size-5 animate-spin" /> : <LogOut className="size-5" />}
+              {busy ? (ruleProject && projectFence(ruleProject) ? t("punch.checking") : t("punch.saving")) : t("punch.out")}
             </Button>
           ) : (
-            <Button disabled={busy || !selected} onClick={() => void punch("in")}>
-              <Clock3 className="size-4" />
-              {busy ? t("punch.saving") : t("punch.in")}
+            <Button
+              size="lg"
+              disabled={Boolean(busy) || !selected}
+              onClick={() => void punch("in")}
+              className="h-14 w-full font-display text-lg font-bold uppercase tracking-[0.16em]"
+            >
+              {busy ? <Loader2 className="size-5 animate-spin" /> : <LogIn className="size-5" />}
+              {busy ? (ruleProject && projectFence(ruleProject) ? t("punch.checking") : t("punch.saving")) : t("punch.in")}
             </Button>
           )}
+          <p className="flex items-start gap-2 text-[12px] text-muted-foreground">
+            <ShieldCheck className="mt-px size-3.5 shrink-0" />
+            {t("punch.locationOnlyOnTap")}
+          </p>
         </div>
       </Card>
 
-      <div className="grid gap-4">
-        <Card className="gap-1 p-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t("punch.live")}</p>
-          <p className="font-display text-3xl font-semibold tabular-nums tracking-tight">
-            {open ? formatDuration(liveMinutes) : "0h 00m"}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {selected ? `${selected.project_number} · ${clientName(selected, clients)}` : t("punch.noOpen")}
-          </p>
-        </Card>
-        <Card className="gap-3 p-4">
-          <p className="text-sm font-medium">{t("punch.recent")}</p>
-          {entries.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t("punch.noEntries")}</p>
-          ) : (
-            <ul className="space-y-3">
-              {entries.map((entry) => {
-                const project = projects.find((p) => p.id === entry.punchIn.project_id);
-                return (
-                  <li key={entry.punchIn.id} className="flex items-start justify-between gap-3 text-sm">
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{project?.name ?? t("billing.noProject")}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatDateTime(entry.punchIn.punched_at, locale)}
-                        {entry.punchOut ? ` → ${formatDateTime(entry.punchOut.punched_at, locale)}` : ""}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="tabular-nums">{entry.open ? formatDuration(liveMinutes) : formatDuration(entry.minutes)}</p>
-                      <StatusBadge value={entry.open ? "in_progress" : "complete"} />
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </Card>
-      </div>
+      <Card className="gap-3 p-5">
+        <p className="frx-label text-muted-foreground">{t("punch.recent")}</p>
+        {entries.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t("punch.noEntries")}</p>
+        ) : (
+          <ul className="divide-y">
+            {entries.map((entry) => {
+              const project = projects.find((p) => p.id === entry.punchIn.project_id);
+              return (
+                <li key={entry.punchIn.id} className="flex items-start justify-between gap-3 py-3 text-sm first:pt-0">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{project?.name ?? t("billing.noProject")}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatDateTime(entry.punchIn.punched_at, locale)}
+                      {entry.punchOut ? ` → ${formatDateTime(entry.punchOut.punched_at, locale)}` : ""}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="font-mono tabular-nums">
+                      {entry.open ? formatDuration(liveMinutes) : formatDuration(entry.minutes)}
+                    </p>
+                    <StatusBadge value={entry.open ? "in_progress" : "complete"} />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Card>
+
+      <PunchFailureDialog
+        failure={failure}
+        projectName={failureProject ? `${failureProject.project_number} ${failureProject.name}` : undefined}
+        onClose={() => setFailure(null)}
+        onRetry={() => {
+          const kind = open ? "out" : "in";
+          setFailure(null);
+          void punch(kind);
+        }}
+      />
     </div>
   );
 }
@@ -435,7 +453,7 @@ function PunchOverview({
   const peopleCount = new Set(filtered.map((p) => p.user_id)).size;
   const projectCount = new Set(filtered.map((p) => p.project_id)).size;
   const avg = closed.length ? Math.round(closed.reduce((sum, e) => sum + e.minutes, 0) / closed.length) : 0;
-  const flagged = filtered.filter((p) => p.status === "flagged" || (p.distance_m != null && p.distance_m > 0 && p.status !== "ok")).length;
+  const flagged = filtered.filter((p) => p.status !== "ok").length;
 
   const byProject = summarize(closed, (e) => e.punchIn.project_id);
   const byPerson = summarize(closed, (e) => e.punchIn.user_id);
@@ -646,23 +664,6 @@ function StatCard({ label, value, hint }: { label: string; value: string; hint: 
       <p className="font-display text-2xl font-semibold tabular-nums tracking-tight">{value}</p>
       <p className="text-xs text-muted-foreground">{hint}</p>
     </Card>
-  );
-}
-
-function FenceHint({ project }: { project: Project }) {
-  const { t } = useI18n();
-  const fence = projectFence(project);
-  if (!project.require_geofence) {
-    return <p className="text-xs text-muted-foreground">{t("punch.anywhere")}</p>;
-  }
-  if (!fence) {
-    return <p className="text-xs text-destructive">{t("punch.geo.missingPin")}</p>;
-  }
-  return (
-    <p className="flex items-center gap-1 text-xs text-muted-foreground">
-      <MapPin className="size-3.5" />
-      {t("punch.fenceHint", { meters: String(fence.radius) })}
-    </p>
   );
 }
 

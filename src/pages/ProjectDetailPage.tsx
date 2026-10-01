@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Switch } from "@/components/ui/switch";
-import { getCurrentPosition, pairPunches } from "@/lib/timeclock";
+import { pairPunches } from "@/lib/timeclock";
+import { PunchRuleChip } from "@/components/PunchRule";
+import { PUNCH_RULE_ANCHOR, PunchRuleEditor } from "@/components/project/PunchRuleEditor";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { eq } from "drizzle-orm";
 import { ArrowLeft, FolderKanban, Pencil, Plus, Users } from "lucide-react";
@@ -204,6 +205,20 @@ export function ProjectDetailPage() {
         description={project.description || `${project.city ?? ""} · ${project.project_type ?? ""}`}
         actions={
           <>
+            <PunchRuleChip
+              project={project}
+              onClick={
+                user?.is_admin
+                  ? () => {
+                      if (section !== "dashboard") navigate(projectSectionPath(id, "dashboard"));
+                      window.setTimeout(
+                        () => document.getElementById(PUNCH_RULE_ANCHOR)?.scrollIntoView({ behavior: "smooth", block: "start" }),
+                        section === "dashboard" ? 0 : 350,
+                      );
+                    }
+                  : undefined
+              }
+            />
             <StatusBadge value={project.status} />
             <StatusBadge value={project.phase} />
             {user?.is_admin || user?.user_type === "internal" ? (
@@ -697,102 +712,8 @@ function Dashboard({
           </CardContent>
         </Card>
       </div>
-      {canEditGeo ? <PunchGeoCard project={project} onSave={onSaveGeo} /> : null}
+      {canEditGeo ? <PunchRuleEditor project={project} onSave={onSaveGeo} /> : null}
     </div>
-  );
-}
-
-function PunchGeoCard({
-  project,
-  onSave,
-}: {
-  project: Project;
-  onSave: (next: {
-    geo_lat: number | null;
-    geo_lng: number | null;
-    geo_radius_m: number | null;
-    require_geofence: number;
-  }) => Promise<void>;
-}) {
-  const { t } = useI18n();
-  const [requireFence, setRequireFence] = useState(project.require_geofence === 1);
-  const [lat, setLat] = useState(project.geo_lat != null ? String(project.geo_lat) : "");
-  const [lng, setLng] = useState(project.geo_lng != null ? String(project.geo_lng) : "");
-  const [radius, setRadius] = useState(String(project.geo_radius_m ?? 200));
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    setRequireFence(project.require_geofence === 1);
-    setLat(project.geo_lat != null ? String(project.geo_lat) : "");
-    setLng(project.geo_lng != null ? String(project.geo_lng) : "");
-    setRadius(String(project.geo_radius_m ?? 200));
-  }, [project.id, project.require_geofence, project.geo_lat, project.geo_lng, project.geo_radius_m]);
-
-  async function save() {
-    setSaving(true);
-    setSaved(false);
-    await onSave({
-      require_geofence: requireFence ? 1 : 0,
-      geo_lat: lat ? Number(lat) : null,
-      geo_lng: lng ? Number(lng) : null,
-      geo_radius_m: radius ? Number(radius) : 200,
-    });
-    setSaving(false);
-    setSaved(true);
-  }
-
-  return (
-    <Card className="gap-4 p-5">
-      <div>
-        <p className="text-sm font-medium">{t("punch.geo.title")}</p>
-        <p className="text-xs text-muted-foreground">{t("punch.geo.desc")}</p>
-      </div>
-      <div className="flex items-center justify-between rounded-md border px-3 py-2.5">
-        <div>
-          <p className="text-sm font-medium">{t("punch.geo.require")}</p>
-          <p className="text-xs text-muted-foreground">{t("punch.anywhere")}</p>
-        </div>
-        <Switch checked={requireFence} onCheckedChange={setRequireFence} />
-      </div>
-      {requireFence ? (
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="space-y-1.5">
-            <Label>{t("punch.geo.lat")}</Label>
-            <Input value={lat} onChange={(e) => setLat(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label>{t("punch.geo.lng")}</Label>
-            <Input value={lng} onChange={(e) => setLng(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label>{t("punch.geo.radius")}</Label>
-            <Input value={radius} onChange={(e) => setRadius(e.target.value)} />
-          </div>
-        </div>
-      ) : null}
-      <div className="flex flex-wrap items-center gap-2">
-        {requireFence ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              void getCurrentPosition().then((pos) => {
-                setLat(String(pos.coords.latitude));
-                setLng(String(pos.coords.longitude));
-              });
-            }}
-          >
-            {t("punch.geo.useHere")}
-          </Button>
-        ) : null}
-        <Button type="button" size="sm" disabled={saving} onClick={() => void save()}>
-          {saving ? t("clients.saving") : t("punch.geo.save")}
-        </Button>
-        {saved ? <p className="text-sm text-muted-foreground">{t("punch.geo.saved")}</p> : null}
-      </div>
-    </Card>
   );
 }
 

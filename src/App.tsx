@@ -3,6 +3,7 @@ import { AppShell } from "@/components/AppShell";
 import { PageSkeleton } from "@/components/Skeleton";
 import { useAuth } from "@/lib/auth";
 import { WorkspaceProvider } from "@/lib/workspace";
+import { ClockProvider } from "@/lib/clock";
 import { LoginPage } from "@/pages/LoginPage";
 import { lazyPage } from "@/lib/lazy-page";
 
@@ -50,7 +51,9 @@ export default function App() {
         <Route
           element={
             <WorkspaceProvider>
-              <AppShell />
+              <ClockProvider>
+                <AppShell />
+              </ClockProvider>
             </WorkspaceProvider>
           }
         >

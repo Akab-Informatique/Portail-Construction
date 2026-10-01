@@ -135,6 +135,8 @@ function rowScopes(): Record<string, string> {
   scopes.users = `(${ALL_CLIENTS} OR user_type = 'internal' OR id = ${ME}
     OR EXISTS (SELECT 1 FROM client_users cu WHERE cu.user_id = users.id AND frx_client_ok(cu.client_id)))`;
   for (const t of OWN_ROWS) scopes[t] = `(${ALL_CLIENTS} OR user_id = ${ME})`;
+  // Punches are created only by the server's punch action; staff read their own.
+  scopes.time_punches = `(user_id = ${ME})`;
   return scopes;
 }
 
@@ -174,6 +176,7 @@ async function ensureApiRoles() {
     `GRANT UPDATE (${USER_SELF_COLUMNS.join(", ")}) ON users TO ${ROLE_USER}, ${ROLE_CLIENT}`,
     `GRANT INSERT ON activities TO ${ROLE_CLIENT}`,
     `GRANT UPDATE (status, signed_by, signed_at, signature) ON billing_documents TO ${ROLE_CLIENT}`,
+    `REVOKE INSERT, UPDATE, DELETE ON time_punches FROM ${ROLE_USER}`,
     `CREATE OR REPLACE FUNCTION frx_client_ok(cid integer) RETURNS boolean LANGUAGE sql STABLE AS $$
        SELECT CASE
          WHEN s = '*' THEN true
@@ -620,6 +623,93 @@ function parsedBody(req: { body?: any }) {
   return {};
 }
 
+
+// ---- Time punches (server-authoritative: time, state and site rule) ----
+function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const toRad = (n: number) => (n * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return Math.round(2 * 6371000 * Math.asin(Math.min(1, Math.sqrt(h))));
+}
+
+function finiteOrNull(value: unknown) {
+  const n = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : NaN;
+  return Number.isFinite(n) ? n : null;
+}
+
+const PUNCH_COLUMNS =
+  "id, user_id, project_id, kind, punched_at, lat, lng, accuracy, distance_m, status, note, created_at";
+
+async function recordPunch(session: ScopedSession, body: Record<string, unknown>) {
+  const kind = body.kind === "out" ? "out" : body.kind === "in" ? "in" : null;
+  if (!kind) return { error: "punch.error.failed" };
+  const last = (
+    await getPool().query(
+      `SELECT ${PUNCH_COLUMNS} FROM time_punches WHERE user_id = $1 ORDER BY punched_at DESC, id DESC LIMIT 1`,
+      [session.id],
+    )
+  ).rows[0] as Record<string, unknown> | undefined;
+  const openPunch = last?.kind === "in" ? last : null;
+  if (kind === "in" && openPunch) return { error: "punch.error.alreadyIn", open: openPunch };
+  if (kind === "out" && !openPunch) return { error: "punch.error.notIn" };
+
+  // Checking out always closes the shift that is open, whatever the screen sent.
+  const projectId = kind === "out" ? Number(openPunch!.project_id) : Number(body.project_id);
+  if (!Number.isInteger(projectId) || projectId <= 0) return { error: "punch.error.noProject" };
+  const project = (
+    await getPool().query(
+      "SELECT id, client_id, require_geofence, geo_lat, geo_lng, geo_radius_m FROM projects WHERE id = $1",
+      [projectId],
+    )
+  ).rows[0] as Record<string, unknown> | undefined;
+  if (!project) return { error: "punch.error.noProject" };
+  const allowed = await allowedClientIds(session);
+  if (allowed !== "*" && !allowed.split(",").includes(String(project.client_id)) && kind === "in") {
+    return { error: "punch.error.noProject" };
+  }
+
+  const lat = finiteOrNull(body.lat);
+  const lng = finiteOrNull(body.lng);
+  const accuracy = finiteOrNull(body.accuracy);
+  let distance: number | null = null;
+  let status = "ok";
+  if (Number(project.require_geofence) === 1) {
+    const siteLat = finiteOrNull(project.geo_lat);
+    const siteLng = finiteOrNull(project.geo_lng);
+    const radius = Number(project.geo_radius_m) > 0 ? Number(project.geo_radius_m) : 200;
+    if (siteLat !== null && siteLng !== null && lat !== null && lng !== null) {
+      distance = haversineMeters({ lat, lng }, { lat: siteLat, lng: siteLng });
+    }
+    if (kind === "in") {
+      // The site rule gates checking in only.
+      if (siteLat === null || siteLng === null) return { error: "punch.error.noPin" };
+      if (lat === null || lng === null) return { error: "punch.error.needLocation" };
+      if (distance !== null && distance > radius) {
+        return { error: "punch.error.outside", distance, radius, accuracy: accuracy === null ? null : Math.round(accuracy) };
+      }
+    } else {
+      // Checking out is never blocked, so a shift cannot keep running after the
+      // worker leaves; it is flagged for review instead.
+      status = distance === null ? "no_location" : distance > radius ? "offsite" : "ok";
+    }
+  } else if (lat !== null && lng !== null) {
+    const siteLat = finiteOrNull(project.geo_lat);
+    const siteLng = finiteOrNull(project.geo_lng);
+    if (siteLat !== null && siteLng !== null) distance = haversineMeters({ lat, lng }, { lat: siteLat, lng: siteLng });
+  }
+
+  const note = typeof body.note === "string" && body.note.trim() ? body.note.trim().slice(0, 500) : null;
+  const inserted = await getPool().query(
+    `INSERT INTO time_punches (user_id, project_id, kind, punched_at, lat, lng, accuracy, distance_m, status, note)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     RETURNING ${PUNCH_COLUMNS}`,
+    [session.id, projectId, kind, new Date().toISOString(), lat, lng, accuracy, distance, status, note],
+  );
+  return { punch: inserted.rows[0] };
+}
+
 export async function handleDbRequest(req: { method?: string; body?: any; headers?: Record<string, unknown>; query?: Record<string, unknown>; url?: string }, res: any) {
   const body = parsedBody(req);
   req.body = body;
@@ -888,6 +978,24 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
         await getPool().query("UPDATE sessions SET view_as = $2 WHERE token = $1", [token, viewAs]);
       }
       return res.status(200).json({ ok: true, view_as: viewAs });
+    }
+    if (action === "punch") {
+      if (!hasRemoteDb()) {
+        return res.status(200).json({ local: true });
+      }
+      const session = await loadSessionUser(req);
+      if (!session) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      if (Number(session.must_change_password) === 1) {
+        res.status(403).json({ error: "password_change_required" });
+        return;
+      }
+      if (session.user_type !== "internal") {
+        return res.status(403).json({ error: "punch.error.notStaff" });
+      }
+      return res.status(200).json(await recordPunch(session, req.body ?? {}));
     }
     if (action === "get_setting" || action === "set_setting") {
       if (!hasRemoteDb()) {
