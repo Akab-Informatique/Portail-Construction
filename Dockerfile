@@ -16,5 +16,6 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/api ./api
 COPY --from=build /app/src/db ./src/db
 COPY --from=build /app/server.mjs ./server.mjs
+USER node
 EXPOSE 3000
 CMD ["node", "--import", "tsx", "server.mjs"]

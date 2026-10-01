@@ -54,6 +54,7 @@ export const fr: Record<MessageKey, string> = {
   "login.demo.client": "Client",
   "login.error.invalid": "Courriel ou mot de passe invalide.",
   "login.error.inactive": "Ce compte est inactif. Contactez un administrateur.",
+  "login.error.throttled": "Trop de tentatives échouées. Attendez 15 minutes et réessayez.",
   "login.setup.title": "Créer l’administrateur",
   "login.setup.hint": "Aucun utilisateur pour l’instant. Créez le premier compte administrateur.",
   "login.setup.name": "Nom complet",

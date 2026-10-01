@@ -99,6 +99,15 @@ export async function listChildren(token: string, driveId: string, itemId?: stri
   return data.value ?? [];
 }
 
+/** Parent item id, or undefined at the drive root. */
+export async function getItemParent(token: string, driveId: string, itemId: string) {
+  const item = await graph<{ parentReference?: { id?: string } }>(
+    token,
+    `/drives/${driveId}/items/${itemId}?$select=id,parentReference`,
+  );
+  return item.parentReference?.id || undefined;
+}
+
 export async function createFolder(token: string, driveId: string, name: string, parentId?: string) {
   const path = parentId ? `/drives/${driveId}/items/${parentId}/children` : `/drives/${driveId}/root/children`;
   return graph<DriveItem>(token, path, {

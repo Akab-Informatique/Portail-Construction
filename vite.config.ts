@@ -1,15 +1,33 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import fs from "fs";
 import path from "path";
 import { mailDevServer } from "./vite-plugins/mail-dev-server";
 import { sharepointDevServer } from "./vite-plugins/sharepoint-dev-server";
 import { dbDevServer } from "./vite-plugins/db-dev-server";
 
+/**
+ * devs-inspect.js is the page builder's preview inspector (DOM/screenshot
+ * bridge to a parent frame). Keep it out of production builds.
+ */
+function stripPreviewInspector(): Plugin {
+  return {
+    name: "strip-preview-inspector",
+    apply: "build",
+    transformIndexHtml(html) {
+      return html.replace(/\s*<script src="\/devs-inspect\.js"><\/script>/, "");
+    },
+    closeBundle() {
+      fs.rmSync(path.resolve(__dirname, "dist/devs-inspect.js"), { force: true });
+    },
+  };
+}
+
 export default defineConfig({
   optimizeDeps: { exclude: ["@electric-sql/pglite"] },
   worker: { format: "es" },
-  plugins: [react(), tailwindcss(), mailDevServer(), sharepointDevServer(), dbDevServer()],
+  plugins: [react(), tailwindcss(), mailDevServer(), sharepointDevServer(), dbDevServer(), stripPreviewInspector()],
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },
   },

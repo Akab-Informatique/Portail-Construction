@@ -52,6 +52,7 @@ export const en = {
   "login.demo.client": "Client owner",
   "login.error.invalid": "Invalid email or password.",
   "login.error.inactive": "This account is inactive. Contact an administrator.",
+  "login.error.throttled": "Too many failed attempts. Wait 15 minutes and try again.",
   "login.setup.title": "Create administrator",
   "login.setup.hint": "This server has no users yet. Create the first admin account.",
   "login.setup.name": "Full name",

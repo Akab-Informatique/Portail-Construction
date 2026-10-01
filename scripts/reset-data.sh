@@ -56,7 +56,7 @@ TRUNCATE TABLE
   users
 RESTART IDENTITY CASCADE;
 
-INSERT INTO users (name, email, password, user_type, title, phone, is_active, is_admin, avatar_initials, locale, theme, all_clients)
+INSERT INTO users (name, email, password, user_type, title, phone, is_active, is_admin, avatar_initials, locale, theme, all_clients, must_change_password, tutorial_done)
 VALUES (
   'Administrator',
   'admin@frxconstruction.ca',
@@ -69,7 +69,9 @@ VALUES (
   'AD',
   'en',
   'light',
-  1
+  1,
+  1,
+  0
 );
 COMMIT;
 SQL

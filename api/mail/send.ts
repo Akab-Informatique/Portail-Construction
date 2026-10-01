@@ -1,6 +1,9 @@
 import nodemailer from "nodemailer";
-import { requireApiUser, runSql } from "../db.ts";
+import { isInternalStaff, readStoredSetting, requireApiUser } from "../db.ts";
 import { mergeSmtp, type Smtp } from "../_lib/smtp.ts";
+
+const EMAIL = /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]+$/;
+const MAX_RECIPIENTS = 20;
 
 export default async function handler(
   req: { method?: string; body?: Record<string, unknown>; headers?: Record<string, unknown> },
@@ -14,29 +17,34 @@ export default async function handler(
   }
   const user = await requireApiUser(req);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
+  // Clients must not be able to send arbitrary mail through the company SMTP account.
+  if (!isInternalStaff(user)) return res.status(403).json({ error: "Forbidden" });
 
   let stored: Smtp | undefined;
   try {
-    const { rows } = await runSql("SELECT value FROM app_settings WHERE key = $1 LIMIT 1", ["smtp"]);
-    const raw = rows[0]?.[0];
-    if (typeof raw === "string" && raw) stored = JSON.parse(raw) as Smtp;
+    const raw = await readStoredSetting("smtp");
+    if (raw) stored = JSON.parse(raw) as Smtp;
   } catch {
     stored = undefined;
   }
-  const smtp = mergeSmtp((req.body?.smtp ?? {}) as Smtp, stored);
+  // Server/host settings come only from env or saved settings, never from the request.
+  const smtp = mergeSmtp(stored);
   const toRaw = req.body?.to;
-  const to = Array.isArray(toRaw)
-    ? toRaw.map((item) => String(item).trim()).filter(Boolean).join(", ")
-    : String(toRaw ?? "").trim();
-  const subject = String(req.body?.subject ?? "Invoice");
+  const recipients = (Array.isArray(toRaw) ? toRaw.map(String) : String(toRaw ?? "").split(","))
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const subject = String(req.body?.subject ?? "Invoice").replace(/[\r\n]+/g, " ").slice(0, 300);
   const text = String(req.body?.text ?? "");
-  const filename = String(req.body?.filename ?? "invoice.pdf");
+  const filename = String(req.body?.filename ?? "invoice.pdf").replace(/[\r\n"\\/]+/g, "_").slice(0, 200);
   const pdfBase64 = String(req.body?.pdfBase64 ?? "");
 
   if (!smtp.host || !smtp.from_email) {
     return res.status(400).json({ error: "SMTP is not configured." });
   }
-  if (!to) return res.status(400).json({ error: "Recipient email is required." });
+  if (!recipients.length) return res.status(400).json({ error: "Recipient email is required." });
+  if (recipients.length > MAX_RECIPIENTS || !recipients.every((r) => EMAIL.test(r))) {
+    return res.status(400).json({ error: "Invalid recipient email." });
+  }
 
   const port = Number(smtp.port) || 587;
   try {
@@ -47,8 +55,8 @@ export default async function handler(
       auth: smtp.username ? { user: smtp.username, pass: smtp.password || "" } : undefined,
     });
     await transporter.sendMail({
-      from: smtp.from_name ? `"${smtp.from_name}" <${smtp.from_email}>` : smtp.from_email,
-      to,
+      from: smtp.from_name ? { name: smtp.from_name, address: smtp.from_email } : smtp.from_email,
+      to: recipients.join(", "),
       subject,
       text,
       attachments: pdfBase64
@@ -56,7 +64,8 @@ export default async function handler(
         : [],
     });
     return res.status(200).json({ ok: true });
-  } catch {
+  } catch (err) {
+    console.error("mail send failed", err);
     return res.status(500).json({ error: "Send failed" });
   }
 }

@@ -2,7 +2,7 @@
 
 This is a **clean first install**. Production uses **Postgres in Docker** on the same server. The browser is only the UI.
 
-Repo: https://github.com/solutidev/Portail-Construction
+Repo: https://github.com/Akab-Informatique/Portail-Construction
 
 ## 0. Server prerequisites
 
@@ -65,7 +65,7 @@ sudo rm -rf /opt/frx-portal
 ## 2. Clone
 
 ```bash
-sudo git clone --branch main https://github.com/solutidev/Portail-Construction.git /opt/frx-portal
+sudo git clone --branch main https://github.com/Akab-Informatique/Portail-Construction.git /opt/frx-portal
 cd /opt/frx-portal
 ```
 

@@ -20,15 +20,16 @@ export function smtpFromEnv(): Smtp {
   };
 }
 
-export function mergeSmtp(body: Smtp | undefined, stored: Smtp | undefined): Smtp {
+/** Env wins over saved settings. Request bodies are never trusted for SMTP config. */
+export function mergeSmtp(stored: Smtp | undefined): Smtp {
   const env = smtpFromEnv();
   return {
-    host: env.host || stored?.host || body?.host || "",
-    port: env.port || stored?.port || body?.port || "587",
+    host: env.host || stored?.host || "",
+    port: process.env.SMTP_PORT || stored?.port || "587",
     username: env.username || stored?.username || "",
     password: env.password || stored?.password || "",
-    from_name: env.from_name || stored?.from_name || body?.from_name || "",
-    from_email: env.from_email || stored?.from_email || body?.from_email || "",
+    from_name: process.env.SMTP_FROM_NAME || stored?.from_name || env.from_name || "",
+    from_email: env.from_email || stored?.from_email || "",
     secure: env.secure || Boolean(stored?.secure),
   };
 }

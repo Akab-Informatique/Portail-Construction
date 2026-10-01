@@ -15,6 +15,28 @@ const { Pool } = pg;
 let pool: pg.Pool | null = null;
 let migrated = false;
 let demoReady = false;
+/** null = not attempted yet, true = restricted roles active, false = setup failed (regex guards only). */
+let rolesReady: boolean | null = null;
+
+const ROLE_ADMIN = "frx_api_admin";
+const ROLE_USER = "frx_api_user";
+/** Tables browser SQL may never touch; the server reads them itself. */
+const PRIVATE_TABLES = ["sessions", "app_settings"];
+/** Tables only effective admins may write. */
+const ADMIN_TABLES = [
+  "users",
+  "user_permissions",
+  "access_groups",
+  "access_group_permissions",
+  "access_group_clients",
+  "user_access_groups",
+  "user_clients",
+  "client_users",
+];
+/** Columns a non-admin may change on their own users row. */
+const USER_SELF_COLUMNS = ["name", "title", "phone", "avatar_initials", "locale", "theme", "tutorial_done"];
+const SECRET_KEYS = ["password", "client_secret"];
+const REDACTED = "********";
 
 function statementsOf(sql: string) {
   return sql
@@ -62,6 +84,69 @@ export async function ensureSchema() {
   } finally {
     client.release();
   }
+  await ensureApiRoles();
+}
+
+/**
+ * Browser-issued SQL runs under one of two NOLOGIN roles so Postgres itself
+ * enforces what each user can reach: no sessions or app_settings, no
+ * users.password, admin-only writes on access tables, and non-admins may only
+ * update a few profile columns on their own users row (row-level security).
+ */
+async function ensureApiRoles() {
+  if (rolesReady !== null) return;
+  const list = (names: string[]) => names.map((n) => `'${n}'`).join(", ");
+  const publicCols = PUBLIC_USER_COLUMNS.join(", ");
+  const statements = [
+    `DO $$ BEGIN
+       IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${ROLE_ADMIN}') THEN CREATE ROLE ${ROLE_ADMIN} NOLOGIN; END IF;
+       IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${ROLE_USER}') THEN CREATE ROLE ${ROLE_USER} NOLOGIN; END IF;
+     END $$`,
+    `GRANT ${ROLE_ADMIN}, ${ROLE_USER} TO CURRENT_USER`,
+    `REVOKE ALL ON ALL TABLES IN SCHEMA public FROM ${ROLE_ADMIN}, ${ROLE_USER}`,
+    `GRANT USAGE ON SCHEMA public TO ${ROLE_ADMIN}, ${ROLE_USER}`,
+    `GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${ROLE_ADMIN}, ${ROLE_USER}`,
+    `DO $$ DECLARE t text; BEGIN
+       FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+                AND tablename NOT IN (${list([...PRIVATE_TABLES, ...ADMIN_TABLES])}) LOOP
+         EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO ${ROLE_ADMIN}, ${ROLE_USER}', t);
+       END LOOP;
+       FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+                AND tablename IN (${list(ADMIN_TABLES.filter((n) => n !== "users"))}) LOOP
+         EXECUTE format('GRANT SELECT ON %I TO ${ROLE_USER}', t);
+         EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO ${ROLE_ADMIN}', t);
+       END LOOP;
+     END $$`,
+    `GRANT SELECT (${publicCols}) ON users TO ${ROLE_ADMIN}, ${ROLE_USER}`,
+    `GRANT INSERT, UPDATE, DELETE ON users TO ${ROLE_ADMIN}`,
+    `GRANT UPDATE (${USER_SELF_COLUMNS.join(", ")}) ON users TO ${ROLE_USER}`,
+    `ALTER TABLE users ENABLE ROW LEVEL SECURITY`,
+    `DROP POLICY IF EXISTS frx_admin_all ON users`,
+    `CREATE POLICY frx_admin_all ON users TO ${ROLE_ADMIN} USING (true) WITH CHECK (true)`,
+    `DROP POLICY IF EXISTS frx_user_read ON users`,
+    `CREATE POLICY frx_user_read ON users FOR SELECT TO ${ROLE_USER} USING (true)`,
+    `DROP POLICY IF EXISTS frx_user_self ON users`,
+    `CREATE POLICY frx_user_self ON users FOR UPDATE TO ${ROLE_USER}
+       USING (id = NULLIF(current_setting('frx.user_id', true), '')::int)
+       WITH CHECK (id = NULLIF(current_setting('frx.user_id', true), '')::int)`,
+  ];
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    for (const statement of statements) await client.query(statement);
+    await client.query("COMMIT");
+    rolesReady = true;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    rolesReady = false;
+    console.error(
+      "Could not set up restricted database roles; falling back to query guards only. " +
+        "The DATABASE_URL user needs CREATEROLE (the Docker default superuser has it).",
+      err,
+    );
+  } finally {
+    client.release();
+  }
 }
 
 async function ensureDemoUsers() {
@@ -70,8 +155,8 @@ async function ensureDemoUsers() {
   const count = await getPool().query("SELECT count(*)::int AS n FROM users");
   if ((count.rows[0]?.n ?? 0) === 0) {
     await getPool().query(
-      `INSERT INTO users (name, email, password, user_type, title, phone, is_active, is_admin, avatar_initials, locale, theme, all_clients)
-       VALUES ($1, $2, $3, 'internal', 'Administrator', NULL, 1, 1, 'AD', 'en', 'light', 1)`,
+      `INSERT INTO users (name, email, password, user_type, title, phone, is_active, is_admin, avatar_initials, locale, theme, all_clients, must_change_password, tutorial_done)
+       VALUES ($1, $2, $3, 'internal', 'Administrator', NULL, 1, 1, 'AD', 'en', 'light', 1, 1, 0)`,
       ["Administrator", "admin@frxconstruction.ca", hashPassword("admin123")],
     );
   }
@@ -91,6 +176,66 @@ export async function runSql(sql: string, params: unknown[] = []) {
     rowMode: "array",
   });
   return { rows: (result.rows as unknown[][]).map((row) => row.map(serializeCell)) };
+}
+
+/** Same column order as schema.users, with the hash blanked. */
+const USERS_RETURNING =
+  "id, name, email, '' AS password, user_type, title, phone, is_active, is_admin, avatar_initials, locale, theme, all_clients, must_change_password, tutorial_done, created_at";
+
+/** Columns that must never leave the server, looked up by table/column OID. */
+let hiddenColumns: Set<string> | null = null;
+async function loadHiddenColumns() {
+  if (hiddenColumns) return hiddenColumns;
+  const result = await getPool().query(
+    `SELECT c.oid::int AS table_id, a.attnum::int AS column_id, c.relname AS table_name
+     FROM pg_class c JOIN pg_attribute a ON a.attrelid = c.oid
+     JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = 'public' AND a.attnum > 0
+       AND ((c.relname = 'users' AND a.attname = 'password') OR c.relname IN ('sessions', 'app_settings'))`,
+  );
+  hiddenColumns = new Set(result.rows.map((r) => `${r.table_id}:${r.column_id}`));
+  return hiddenColumns;
+}
+
+/**
+ * Runs SQL sent by the browser. With restricted roles available, the query
+ * executes inside a transaction under the caller's role so Postgres enforces
+ * table/column/row privileges. Output is filtered as defense in depth.
+ */
+async function runScopedSql(
+  session: { id: number; is_admin: number; view_as?: string },
+  sql: string,
+  params: unknown[],
+) {
+  await ensureSchema();
+  await ensureDemoUsers();
+  let text = sql;
+  if (/^\s*insert\b/i.test(text) && !/\breturning\b/i.test(text)) {
+    const intoUsers = /^\s*insert\s+into\s+"?users"?\s*\(/i.test(text);
+    text = `${text.replace(/;+\s*$/, "")} RETURNING ${intoUsers ? USERS_RETURNING : "*"}`;
+  }
+  const hidden = await loadHiddenColumns();
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    if (rolesReady) {
+      await client.query(`SET LOCAL ROLE ${effectiveAdmin(session) ? ROLE_ADMIN : ROLE_USER}`);
+      await client.query("SELECT set_config('frx.user_id', $1, true)", [String(session.id)]);
+    }
+    const result = await client.query({ text, values: params, rowMode: "array" });
+    await client.query("COMMIT");
+    const blank = (result.fields ?? []).map((f) => hidden.has(`${f.tableID}:${f.columnID}`));
+    return {
+      rows: (result.rows as unknown[][]).map((row) =>
+        row.map((cell, i) => (blank[i] ? "" : serializeCell(cell))),
+      ),
+    };
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export async function loginUser(email: string, password: string) {
@@ -178,6 +323,7 @@ function publicUser(row: unknown) {
 async function createDbSession(userId: number) {
   const token = newSessionToken();
   const expires = new Date(Date.now() + sessionMaxAgeSeconds() * 1000).toISOString();
+  await getPool().query("DELETE FROM sessions WHERE expires_at < $1", [new Date().toISOString()]);
   await getPool().query("INSERT INTO sessions (token, user_id, expires_at) VALUES ($1, $2, $3)", [
     token,
     userId,
@@ -228,6 +374,17 @@ function isAllowedSql(sql: string) {
   if (!trimmed) return false;
   if (/;/.test(trimmed.replace(/;+\s*$/, ""))) return false;
   if (/\b(drop|alter|truncate|create|grant|revoke|comment|copy|vacuum|lock|call|do)\b/i.test(trimmed)) return false;
+  // Unicode-escaped identifiers/strings could smuggle names past the checks below.
+  if (/\bu&\s*["']/i.test(trimmed)) return false;
+  // Server-only tables and functions that change session state or touch the server.
+  if (new RegExp(`\\b(${PRIVATE_TABLES.join("|")})\\b`, "i").test(trimmed)) return false;
+  if (
+    /\b(set_config|current_setting|pg_read_file|pg_read_binary_file|pg_ls_dir|pg_stat_file|lo_import|lo_export|dblink\w*|pg_sleep\w*|pg_terminate_backend|pg_cancel_backend|pg_reload_conf|query_to_xml\w*|table_to_xml\w*|database_to_xml\w*)\b/i.test(
+      trimmed,
+    )
+  ) {
+    return false;
+  }
   if (/^\s*select\b/i.test(trimmed)) return true;
   if (/^\s*insert\s+into\b/i.test(trimmed)) return true;
   if (/^\s*update\b/i.test(trimmed)) return true;
@@ -235,11 +392,106 @@ function isAllowedSql(sql: string) {
   return false;
 }
 
+// Whole identifier only, so "must_change_password" is left alone.
+const PASSWORD_COLUMN = /(?<![\w$"])(?:(?:"users"|users)\.)?(?:"password"|password(?![\w$"]))(?!\s*=)/gi;
+
+/**
+ * Drizzle selects every column, including users.password. Swap it for an empty
+ * literal so the query still returns the expected shape without needing (or
+ * leaking) the hash. Only touches the select list / RETURNING clause.
+ */
 function rewriteSql(sql: string) {
-  if (/^\s*select\b/i.test(sql) && /\busers\b/i.test(sql)) {
-    return sql.replace(/(?:["']?users["']?\.)?["']?password["']?(?!\s*=)/gi, "'' AS password");
+  if (!/\busers\b/i.test(sql)) return sql;
+  if (/^\s*select\b/i.test(sql)) return sql.replace(PASSWORD_COLUMN, "'' AS password");
+  const returning = sql.search(/\breturning\b/i);
+  if (returning >= 0) {
+    return sql.slice(0, returning) + sql.slice(returning).replace(PASSWORD_COLUMN, "'' AS password");
   }
   return sql;
+}
+
+/** Fallback guard when DB roles are unavailable: a non-admin may only update their own users row. */
+function updatesOnlyOwnRow(sql: string, params: unknown[], userId: number) {
+  const m = sql.match(/\bwhere\s+(?:"?users"?\.)?"?id"?\s*=\s*\$(\d+)\s*$/i);
+  if (!m) return false;
+  return Number(params[Number(m[1]) - 1]) === userId;
+}
+
+// ---- Login throttling (in-memory, per process) ----
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_FAILURES = 10;
+const loginFailures = new Map<string, { count: number; first: number }>();
+
+function loginBlocked(key: string) {
+  const entry = loginFailures.get(key);
+  if (!entry) return false;
+  if (Date.now() - entry.first > LOGIN_WINDOW_MS) {
+    loginFailures.delete(key);
+    return false;
+  }
+  return entry.count >= LOGIN_MAX_FAILURES;
+}
+
+function recordLoginFailure(key: string) {
+  const entry = loginFailures.get(key);
+  if (!entry || Date.now() - entry.first > LOGIN_WINDOW_MS) {
+    loginFailures.set(key, { count: 1, first: Date.now() });
+  } else {
+    entry.count += 1;
+  }
+  if (loginFailures.size > 10_000) {
+    const cutoff = Date.now() - LOGIN_WINDOW_MS;
+    for (const [k, v] of loginFailures) if (v.first < cutoff) loginFailures.delete(k);
+  }
+}
+
+// ---- app_settings (server-side so secrets never reach the browser) ----
+function redactSettingValue(raw: string | null) {
+  if (!raw) return raw;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return raw;
+    const next = { ...(parsed as Record<string, unknown>) };
+    for (const key of SECRET_KEYS) {
+      if (typeof next[key] === "string" && next[key]) next[key] = REDACTED;
+    }
+    return JSON.stringify(next);
+  } catch {
+    return raw;
+  }
+}
+
+function keepStoredSecrets(prevRaw: string | null, nextRaw: string) {
+  if (!prevRaw) return nextRaw;
+  try {
+    const prev = JSON.parse(prevRaw) as Record<string, unknown>;
+    const next = JSON.parse(nextRaw) as Record<string, unknown>;
+    if (!next || typeof next !== "object" || Array.isArray(next)) return nextRaw;
+    for (const key of SECRET_KEYS) {
+      if (next[key] === REDACTED || next[key] === "" || next[key] === undefined) {
+        if (prev && typeof prev === "object" && key in prev) next[key] = prev[key];
+      }
+    }
+    return JSON.stringify(next);
+  } catch {
+    return nextRaw;
+  }
+}
+
+/** Reads a raw (unredacted) setting. Server-side use only. */
+export async function readStoredSetting(key: string) {
+  await ensureSchema();
+  const result = await getPool().query("SELECT value FROM app_settings WHERE key = $1 ORDER BY id ASC LIMIT 1", [key]);
+  const value = result.rows[0]?.value;
+  return typeof value === "string" ? value : null;
+}
+
+export function isEffectiveAdmin(session: { is_admin: number; view_as?: string }) {
+  return effectiveAdmin(session);
+}
+
+export function isInternalStaff(session: { user_type: string; view_as?: string }) {
+  return session.user_type === "internal" && session.view_as !== "client";
 }
 
 export async function requireApiUser(req: { headers?: Record<string, unknown> }) {
@@ -279,8 +531,7 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       }
       await ensureSchema();
       await ensureDemoUsers();
-      const count = await getPool().query("SELECT count(*)::int AS n FROM users");
-      return res.status(200).json({ ok: true, users: count.rows[0]?.n ?? 0 });
+      return res.status(200).json({ ok: true });
     }
     if (req.method !== "POST") {
       res.status(405).json({ error: "Method not allowed" });
@@ -290,10 +541,18 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       if (!hasRemoteDb()) {
         return res.status(200).json({ error: "login.local" });
       }
-      const result = await loginUser(String(req.body?.email ?? ""), String(req.body?.password ?? ""));
+      const email = String(req.body?.email ?? "");
+      const throttleKey = email.trim().toLowerCase();
+      if (loginBlocked(throttleKey)) {
+        return res.status(429).json({ error: "login.error.throttled" });
+      }
+      const result = await loginUser(email, String(req.body?.password ?? ""));
       if ("user" in result && result.user) {
+        loginFailures.delete(throttleKey);
         const token = await createDbSession(Number(result.user.id));
         res.setHeader?.("Set-Cookie", sessionCookie(token));
+      } else {
+        recordLoginFailure(throttleKey);
       }
       return res.status(200).json(result);
     }
@@ -429,6 +688,7 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
           [id, name, email, title, phone, isAdmin, isActive, avatar, mustChange],
         );
       }
+      if (password || isActive === 0) await revokeUserSessions(id);
       const updated = await getPool().query(
         `SELECT id, name, email, user_type, title, phone, is_active, is_admin, avatar_initials, locale, theme, all_clients, must_change_password, tutorial_done, created_at FROM users WHERE id=$1`,
         [id],
@@ -460,6 +720,8 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
         session.id,
         hashPassword(next),
       ]);
+      const currentToken = tokenFromCookieHeader(cookieHeaderOf(req));
+      await getPool().query("DELETE FROM sessions WHERE user_id = $1 AND token <> $2", [session.id, currentToken ?? ""]);
       return res.status(200).json({ ok: true });
     }
     if (action === "complete_tutorial" || action === "set_tutorial") {
@@ -499,6 +761,36 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       }
       return res.status(200).json({ ok: true, view_as: viewAs });
     }
+    if (action === "get_setting" || action === "set_setting") {
+      if (!hasRemoteDb()) {
+        return res.status(200).json({ local: true });
+      }
+      const session = await loadSessionUser(req);
+      if (!session) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      const key = String(req.body?.key ?? "").trim();
+      if (!key) {
+        res.status(400).json({ error: "key is required" });
+        return;
+      }
+      const stored = await readStoredSetting(key);
+      if (action === "get_setting") {
+        return res.status(200).json({ value: redactSettingValue(stored) });
+      }
+      if (!effectiveAdmin(session)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      const value = keepStoredSecrets(stored, String(req.body?.value ?? ""));
+      if (stored === null) {
+        await getPool().query("INSERT INTO app_settings (key, value) VALUES ($1, $2)", [key, value]);
+      } else {
+        await getPool().query("UPDATE app_settings SET value = $2 WHERE key = $1", [key, value]);
+      }
+      return res.status(200).json({ ok: true });
+    }
     if (!hasRemoteDb()) {
       return res.status(200).json({ rows: [], local: true });
     }
@@ -518,32 +810,27 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       return;
     }
     const mutating = /^\s*(insert|update|delete)\b/i.test(sql);
-    const sensitive =
-      /\b(users|user_permissions|access_groups|access_group_permissions|user_access_groups|app_settings|sessions)\b/i.test(
-        sql,
-      );
+    const sensitive = new RegExp(`\\b(${ADMIN_TABLES.join("|")})\\b`, "i").test(sql);
     const admin = effectiveAdmin(session);
     if (mutating && sensitive && !admin) {
+      // Mirrors the database policy for when roles are unavailable.
+      const setClause = sql.match(/^\s*update\s+"?users"?\s+set\s+([\s\S]+?)\s+where\b/i)?.[1] ?? "";
+      const setColumns = [...setClause.matchAll(/"?(\w+)"?\s*=/g)].map((m) => m[1].toLowerCase());
       const selfProfile =
-        /^\s*update\s+"?users"?\s+set\b/i.test(sql) &&
-        /\bid\s*=\s*\$/i.test(sql) &&
-        !/\bis_admin\b/i.test(sql) &&
-        !/\ball_clients\b/i.test(sql) &&
-        !/\bpassword\b/i.test(sql);
+        setColumns.length > 0 &&
+        setColumns.every((col) => USER_SELF_COLUMNS.includes(col)) &&
+        updatesOnlyOwnRow(sql, params, session.id);
       if (!selfProfile) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
     }
-    const reduced = session.user_type === "external" || session.view_as === "client" || session.view_as === "staff";
-    if (reduced && mutating && /\b(app_settings|sessions)\b/i.test(sql)) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
+    if (mutating && /^\s*update\s+"?users"?/i.test(sql) && /(?<![\w$])"?(password|is_active)"?\s*=/i.test(sql)) {
+      const target = sql.match(/\bwhere\s+(?:"?users"?\.)?"?id"?\s*=\s*\$(\d+)\s*$/i);
+      const targetId = target ? Number(params[Number(target[1]) - 1]) : NaN;
+      if (Number.isInteger(targetId) && targetId !== session.id) await revokeUserSessions(targetId);
     }
-    if (mutating && /\bpassword\b/i.test(sql) && /^\s*update\s+"?users"?/i.test(sql)) {
-      await revokeUserSessions(session.id);
-    }
-    const { rows } = await runSql(rewriteSql(sql), await hashPasswordParams(sql, params));
+    const { rows } = await runScopedSql(session, rewriteSql(sql), await hashPasswordParams(sql, params));
     res.status(200).json({ rows });
   } catch (err) {
     console.error("db api error", err);

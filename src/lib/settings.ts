@@ -51,7 +51,27 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplates = {
   },
 };
 
+/**
+ * Production keeps app_settings server-side (secrets are redacted on read and
+ * preserved on write). Returns undefined when the server says to use the local DB.
+ */
+async function settingsApi(body: Record<string, unknown>): Promise<{ value?: string | null } | undefined> {
+  if (!import.meta.env.PROD) return undefined;
+  const res = await fetch("/api/db", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as { value?: string | null; local?: boolean; error?: string };
+  if (data.local) return undefined;
+  if (!res.ok) throw new Error(data.error || `Settings error (${res.status})`);
+  return data;
+}
+
 export async function getSetting(key: string) {
+  const remote = await settingsApi({ action: "get_setting", key });
+  if (remote) return remote.value ?? null;
   await dbReady;
   const rows = await db.select().from(schema.app_settings).where(eq(schema.app_settings.key, key));
   return rows[0]?.value ?? null;
@@ -72,6 +92,7 @@ function keepSecrets(prevRaw: string | null | undefined, nextRaw: string) {
 }
 
 export async function setSetting(key: string, value: string) {
+  if (await settingsApi({ action: "set_setting", key, value })) return;
   await dbReady;
   const existing = await db.select().from(schema.app_settings).where(eq(schema.app_settings.key, key));
   const stored = keepSecrets(existing[0]?.value, value);
