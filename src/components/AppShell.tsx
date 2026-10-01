@@ -247,7 +247,9 @@ function ClientSwitcher() {
           </span>
         </span>
       </SelectTrigger>
-      <SelectContent>
+      {/* "popper" anchors the list under the custom trigger; the default
+          item-aligned mode needs a <SelectValue> and opened off-screen. */}
+      <SelectContent position="popper" sideOffset={6} className="w-(--radix-select-trigger-width)">
         {clients.map((c) => (
           <SelectItem key={c.id} value={String(c.id)}>
             {c.company_name}
