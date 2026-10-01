@@ -211,16 +211,45 @@ database user lacks the CREATEROLE privilege and only the weaker fallback checks
 
 ## Network hardening (recommended)
 
-The app should only be reachable through the HTTPS reverse proxy.
+The app must only be reachable through the HTTPS reverse proxy.
 
-- If the proxy runs **on the same server**, set `BIND_ADDR=127.0.0.1` in `.env` and
-  run `sudo docker compose up -d`. Port 8080 is then closed to the outside.
-- If the proxy is on **another machine**, keep `BIND_ADDR=0.0.0.0` but allow port 8080
-  only from the proxy's address in the server firewall.
-- `TRUST_PROXY=1` (default) uses the proxy's X-Real-IP header for login throttling and
-  rate limits. Set `TRUST_PROXY=0` if port 8080 is reachable directly, since that header
-  could then be forged.
+### Proxy on another machine (FRX setup)
 
-Built-in protections: per-account and per-address login throttling, an API rate limit
-(1,200 requests/min per signed-in session, 300/min per address when signed out), a 15 s
-limit on every database query, and a 12 MB request size cap.
+1. **Allow only the proxy in the app** — in `/opt/frx-portal/.env`:
+
+   ```
+   PROXY_IPS=<public IP of the proxy>
+   ```
+
+   then `sudo docker compose up -d`. Any other connection gets 403, and the logs show
+   `Refused direct connection from <ip>` once per address. If the site stops working,
+   that line shows which address the proxy really connects from — put that one in
+   `PROXY_IPS`.
+
+2. **Allow only the proxy in the firewall** (Ubuntu):
+
+   ```bash
+   sudo ufw allow from <proxy-ip> to any port 8080 proto tcp
+   sudo ufw deny 8080/tcp
+   sudo ufw enable
+   ```
+
+   Docker publishes ports past ufw on some systems; step 1 still protects the app.
+
+3. **Encrypt the proxy → app hop.** Between two sites this traffic crosses the internet.
+   If the proxy forwards to `http://<server>:8080`, passwords and session cookies travel
+   in clear text on that hop. Use one of:
+   - a private tunnel between the two machines (WireGuard or Tailscale), with the proxy
+     forwarding to the tunnel address — simplest and recommended;
+   - or HTTPS between proxy and app (certificate on the app server, proxy forwarding to
+     `https://`).
+
+### Proxy on the same machine
+
+Set `BIND_ADDR=127.0.0.1` so port 8080 is closed to the outside.
+
+### Built-in protections
+
+Per-account and per-address login throttling, an API rate limit (1,200 requests/min per
+signed-in session, 300/min per address when signed out), a 15 s limit on every database
+query, and a 12 MB request size cap.

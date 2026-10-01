@@ -91,6 +91,38 @@ function adaptRes(res, req) {
   };
 }
 
+// ---- Reverse proxy allowlist ----
+// PROXY_IPS = comma-separated addresses of the HTTPS reverse proxy. When set,
+// only the proxy (and this machine) may connect, and only the proxy's
+// X-Real-IP / X-Forwarded-For headers are trusted. This keeps people from
+// skipping HTTPS by hitting the app port directly, or forging their address.
+const PROXY_IPS = new Set(
+  String(process.env.PROXY_IPS || "")
+    .split(",")
+    .map((ip) => normalizeIp(ip.trim()))
+    .filter(Boolean),
+);
+const LOOPBACK = new Set(["127.0.0.1", "::1"]);
+const blockedPeersLogged = new Set();
+
+function normalizeIp(ip) {
+  return String(ip || "").replace(/^::ffff:/, "");
+}
+
+function peerAllowed(peer) {
+  if (PROXY_IPS.size === 0) return true;
+  return PROXY_IPS.has(peer) || LOOPBACK.has(peer);
+}
+
+function trustForwardedFrom(peer) {
+  if (PROXY_IPS.size > 0) return PROXY_IPS.has(peer);
+  return process.env.TRUST_PROXY !== "0";
+}
+
+if (PROXY_IPS.size > 0) {
+  console.log(`Accepting connections only from proxy ${[...PROXY_IPS].join(", ")} and localhost`);
+}
+
 // ---- API rate limit (fixed 60 s window, in memory) ----
 // A page view fires ~5–20 API calls, so these leave lots of room for real use
 // while stopping floods. Signed-in traffic is counted per session so a whole
@@ -203,6 +235,17 @@ async function serveStatic(req, res, url) {
 }
 
 const server = createServer(async (req, res) => {
+  const peer = normalizeIp(req.socket.remoteAddress);
+  if (!peerAllowed(peer)) {
+    // Log each refused address once so a wrong PROXY_IPS value is easy to spot.
+    if (!blockedPeersLogged.has(peer) && blockedPeersLogged.size < 1000) {
+      blockedPeersLogged.add(peer);
+      console.warn(`Refused direct connection from ${peer} (not in PROXY_IPS)`);
+    }
+    res.statusCode = 403;
+    res.end("Forbidden");
+    return;
+  }
   const url = new URL(req.url || "/", "http://localhost");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
@@ -249,12 +292,11 @@ const server = createServer(async (req, res) => {
       }
     }
     // Behind the reverse proxy the client address arrives in X-Real-IP / X-Forwarded-For.
-    // Set TRUST_PROXY=0 if the app port is reachable directly (headers would be spoofable).
-    const forwarded =
-      process.env.TRUST_PROXY === "0"
-        ? ""
-        : String(req.headers["x-real-ip"] || req.headers["x-forwarded-for"] || "").split(",")[0].trim();
-    const clientIp = forwarded || req.socket.remoteAddress || "";
+    // Trusted only from PROXY_IPS when set (otherwise unless TRUST_PROXY=0).
+    const forwarded = trustForwardedFrom(peer)
+      ? String(req.headers["x-real-ip"] || req.headers["x-forwarded-for"] || "").split(",")[0].trim()
+      : "";
+    const clientIp = forwarded || peer;
     if (url.pathname.startsWith("/api/")) {
       const sessionKey = sessionKeyOf(req);
       const limited = sessionKey
