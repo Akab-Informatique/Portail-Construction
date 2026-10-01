@@ -55,26 +55,34 @@ export function UserAccessPage() {
   const [isAdmin, setIsAdmin] = useState(false);
 
   async function load() {
-    await dbReady;
-    const rows = await db.select().from(schema.users).where(eq(schema.users.id, id));
-    if (!rows[0]) {
-      setTarget(null);
+    // Always leave the loading state, even if a query fails, so the page
+    // never sits on a blank skeleton.
+    try {
+      await dbReady;
+      const rows = await db.select().from(schema.users).where(eq(schema.users.id, id));
+      if (!rows[0]) {
+        setTarget(null);
+        setLoading(false);
+        return;
+      }
+      const perms = (await db
+        .select()
+        .from(schema.user_permissions)
+        .where(eq(schema.user_permissions.user_id, id))) as Permission[];
+      const jobs = (await db.select().from(schema.projects)) as Project[];
+      const cos = (await db.select().from(schema.clients)) as Client[];
+      setTarget(rows[0] as User);
+      setPermissions(perms);
+      setProjects(jobs);
+      setClients(cos);
+      setActive(rows[0].is_active === 1);
+      setIsAdmin(rows[0].is_admin === 1);
       setLoading(false);
-      return;
+    } catch (err) {
+      console.error("UserAccessPage load failed", err);
+    } finally {
+      setLoading(false);
     }
-    const perms = (await db
-      .select()
-      .from(schema.user_permissions)
-      .where(eq(schema.user_permissions.user_id, id))) as Permission[];
-    const jobs = (await db.select().from(schema.projects)) as Project[];
-    const cos = (await db.select().from(schema.clients)) as Client[];
-    setTarget(rows[0] as User);
-    setPermissions(perms);
-    setProjects(jobs);
-    setClients(cos);
-    setActive(rows[0].is_active === 1);
-    setIsAdmin(rows[0].is_admin === 1);
-    setLoading(false);
   }
 
   useEffect(() => {

@@ -56,21 +56,29 @@ export function ClientsPage() {
   const [saving, setSaving] = useState(false);
 
   async function load() {
-    await dbReady;
-    const allClients = (await db.select().from(schema.clients)) as Client[];
-    const allProjects = (await db.select().from(schema.projects)) as Project[];
-    let visible = allClients;
-    if (user && !user.is_admin && user.user_type === "external") {
-      const links = await db
-        .select()
-        .from(schema.client_users)
-        .where(eq(schema.client_users.user_id, user.id));
-      const ids = new Set(links.map((l) => l.client_id));
-      visible = allClients.filter((c) => ids.has(c.id));
+    // Always leave the loading state, even if a query fails, so the page
+    // never sits on a blank skeleton.
+    try {
+      await dbReady;
+      const allClients = (await db.select().from(schema.clients)) as Client[];
+      const allProjects = (await db.select().from(schema.projects)) as Project[];
+      let visible = allClients;
+      if (user && !user.is_admin && user.user_type === "external") {
+        const links = await db
+          .select()
+          .from(schema.client_users)
+          .where(eq(schema.client_users.user_id, user.id));
+        const ids = new Set(links.map((l) => l.client_id));
+        visible = allClients.filter((c) => ids.has(c.id));
+      }
+      setClients(visible);
+      setProjects(allProjects);
+      setLoading(false);
+    } catch (err) {
+      console.error("ClientsPage load failed", err);
+    } finally {
+      setLoading(false);
     }
-    setClients(visible);
-    setProjects(allProjects);
-    setLoading(false);
   }
 
   useEffect(() => {

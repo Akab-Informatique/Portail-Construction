@@ -12,7 +12,17 @@ import { db, dbReady, schema } from "../db";
 import { hashPassword, verifyPassword } from "./password";
 import { SESSION_KEY, TUTORIAL_KEY, VIEW_AS_KEY } from "./constants";
 import { createFirstAdmin, hasAnyUsers, seedIfEmpty } from "./seed";
-import { loadAccessBundle, loadDefaultRolePermissions, mergeGroupPermissions } from "./access";
+import { ensureDefaultGroups, loadAccessBundle, loadDefaultRolePermissions, mergeGroupPermissions } from "./access";
+
+/** Default access groups are admin-managed; only an admin session may create them. */
+async function ensureGroupsAsAdmin(isAdmin: boolean) {
+  if (!isAdmin || !import.meta.env.PROD) return;
+  try {
+    await ensureDefaultGroups();
+  } catch (err) {
+    console.error("default groups setup failed", err);
+  }
+}
 import type { Locale, Permission, SessionUser, ThemePref, ViewAsMode } from "./types";
 import { can } from "./permissions";
 import type { Action, ModuleId } from "./types";
@@ -125,8 +135,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
-        await seedIfEmpty();
-        if (!(await hasAnyUsers())) setNeedsSetup(true);
+        // In production the server seeds the first admin; the browser-side seed
+        // only applies to the local in-browser dev database. A seed failure must
+        // never block restoring the session.
+        if (!import.meta.env.PROD) {
+          try {
+            await seedIfEmpty();
+            if (!(await hasAnyUsers())) setNeedsSetup(true);
+          } catch (err) {
+            console.error("local seed failed", err);
+          }
+        }
         const res = await fetch("/api/db", {
           method: "POST",
           credentials: "include",
@@ -139,6 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setRealUser(session);
           applyPrefs(session);
           const mode = session.is_admin ? readViewAs() : "admin";
+          await ensureGroupsAsAdmin(Boolean(session.is_admin));
           await loadPermissions(session.id, mode, Boolean(session.is_admin));
         } else {
           localStorage.removeItem(SESSION_KEY);
@@ -180,6 +200,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           applyPrefs(session);
           localStorage.removeItem(SESSION_KEY);
           try {
+            await ensureGroupsAsAdmin(Boolean(session.is_admin));
             await loadPermissions(session.id, "admin", Boolean(session.is_admin));
           } catch (err) {
             console.error("permissions after login failed", err);
@@ -285,6 +306,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (current: string, next: string) => {
       if (!realUser) return "login.error.invalid";
       if (next.trim().length < 8) return "profile.passwordShort";
+      // The server withholds all data until a forced change is done, so reload
+      // afterwards to start the app fresh with full access.
+      const forced = Number(realUser.must_change_password) === 1;
+      const finish = async () => {
+        if (forced && import.meta.env.PROD) {
+          window.location.reload();
+          return;
+        }
+        await loadPermissions(realUser.id, viewAs, Boolean(realUser.is_admin)).catch(() => undefined);
+      };
       const res = await fetch("/api/change-password", {
         method: "POST",
         credentials: "include",
@@ -313,6 +344,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               .where(eq(schema.users.id, realUser.id));
           }
           setRealUser({ ...realUser, must_change_password: 0 });
+          await finish();
           return null;
         }
         return "profile.passwordWrong";
@@ -332,11 +364,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
         setRealUser({ ...realUser, must_change_password: 0 });
+        await finish();
         return null;
       }
       return "profile.passwordWrong";
     },
-    [realUser],
+    [realUser, viewAs, loadPermissions],
   );
 
   const completeTutorial = useCallback(async () => {

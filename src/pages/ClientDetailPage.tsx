@@ -94,32 +94,40 @@ export function ClientDetailPage() {
   const [folderDrive, setFolderDrive] = useState("");
 
   async function load() {
-    await dbReady;
-    const rows = await db.select().from(schema.clients).where(eq(schema.clients.id, id));
-    if (!rows[0]) {
-      setClient(null);
+    // Always leave the loading state, even if a query fails, so the page
+    // never sits on a blank skeleton.
+    try {
+      await dbReady;
+      const rows = await db.select().from(schema.clients).where(eq(schema.clients.id, id));
+      if (!rows[0]) {
+        setClient(null);
+        setLoading(false);
+        return;
+      }
+      const jobs = (await db
+        .select()
+        .from(schema.projects)
+        .where(eq(schema.projects.client_id, id))) as Project[];
+      const links = await db
+        .select()
+        .from(schema.client_users)
+        .where(eq(schema.client_users.client_id, id));
+      const users = (await db.select().from(schema.users)) as User[];
+      const attached = links
+        .map((l) => {
+          const u = users.find((x) => x.id === l.user_id);
+          return u ? { ...u, is_primary: l.is_primary } : null;
+        })
+        .filter(Boolean) as (User & { is_primary: number })[];
+      setClient(rows[0] as Client);
+      setProjects(jobs);
+      setPeople(attached);
       setLoading(false);
-      return;
+    } catch (err) {
+      console.error("ClientDetailPage load failed", err);
+    } finally {
+      setLoading(false);
     }
-    const jobs = (await db
-      .select()
-      .from(schema.projects)
-      .where(eq(schema.projects.client_id, id))) as Project[];
-    const links = await db
-      .select()
-      .from(schema.client_users)
-      .where(eq(schema.client_users.client_id, id));
-    const users = (await db.select().from(schema.users)) as User[];
-    const attached = links
-      .map((l) => {
-        const u = users.find((x) => x.id === l.user_id);
-        return u ? { ...u, is_primary: l.is_primary } : null;
-      })
-      .filter(Boolean) as (User & { is_primary: number })[];
-    setClient(rows[0] as Client);
-    setProjects(jobs);
-    setPeople(attached);
-    setLoading(false);
   }
 
   useEffect(() => {

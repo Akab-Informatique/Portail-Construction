@@ -186,3 +186,25 @@ curl -s http://127.0.0.1:8080/healthz
 ```
 
 Password auth failed to Postgres usually means `.env` was changed after the volume was created. Either put the **original** password back, or wipe and reinstall from step 1.
+
+## After deploying the security update (Oct 2026)
+
+The app now enforces access in Postgres itself (restricted roles + row-level security),
+so clients only ever receive their own company's data. On first start after the update
+the app creates the roles automatically; the `DATABASE_URL` user must be allowed to
+create roles (the default Docker `POSTGRES_USER` is).
+
+Sign everyone out once so any session copied before the fix stops working:
+
+```bash
+sudo docker compose -f /opt/frx-portal/docker-compose.yml exec db psql -U frx -d frx -c "DELETE FROM sessions;"
+```
+
+Check the logs for `Could not set up restricted database roles` — if it appears, the
+database user lacks the CREATEROLE privilege and only the weaker fallback checks apply.
+
+## Local development
+
+`npm run dev:local` runs the app on this machine with an in-browser database
+(sign in with the seeded `admin@frxconstruction.ca` / `admin123`).
+`npm run dev` keeps the page-builder preview settings.

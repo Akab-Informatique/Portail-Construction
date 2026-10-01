@@ -20,6 +20,7 @@ let rolesReady: boolean | null = null;
 
 const ROLE_ADMIN = "frx_api_admin";
 const ROLE_USER = "frx_api_user";
+const ROLE_CLIENT = "frx_api_client";
 /** Tables browser SQL may never touch; the server reads them itself. */
 const PRIVATE_TABLES = ["sessions", "app_settings"];
 /** Tables only effective admins may write. */
@@ -88,48 +89,126 @@ export async function ensureSchema() {
 }
 
 /**
- * Browser-issued SQL runs under one of two NOLOGIN roles so Postgres itself
- * enforces what each user can reach: no sessions or app_settings, no
- * users.password, admin-only writes on access tables, and non-admins may only
- * update a few profile columns on their own users row (row-level security).
+ * Browser-issued SQL runs under a NOLOGIN role so Postgres itself enforces
+ * access, whatever SQL the browser sends:
+ *  - frx_api_admin: everything except sessions, app_settings and users.password.
+ *  - frx_api_user (staff, admins previewing): business tables, read-only access
+ *    tables, own profile columns only.
+ *  - frx_api_client (external users): read-only, except signing/rejecting their
+ *    own quotes and writing activity entries.
+ * Row-level security limits staff/clients to the clients they may see; the
+ * server sets frx.client_ids ('*' = all) and frx.user_id per transaction.
  */
+const CLIENT_SCOPED: Record<string, string> = {
+  clients: "frx_client_ok(id)",
+  projects: "frx_client_ok(client_id)",
+  billing_documents: "frx_client_ok(client_id)",
+  client_users: "frx_client_ok(client_id)",
+  sharepoint_shares: "frx_client_ok(client_id)",
+};
+const PROJECT_SCOPED = [
+  "project_members",
+  "project_tasks",
+  "budget_items",
+  "calendar_events",
+  "documents",
+  "rfis",
+  "change_orders",
+  "daily_logs",
+  "punch_items",
+  "safety_incidents",
+  "project_reports",
+  "sharepoint_folders",
+  "time_punches",
+];
+const ME = "NULLIF(current_setting('frx.user_id', true), '')::int";
+const ALL_CLIENTS = "(current_setting('frx.client_ids', true) = '*')";
+/** Per-user rows: staff/clients only see their own permission/group/client links. */
+const OWN_ROWS = ["user_permissions", "user_access_groups", "user_clients"];
+
+function rowScopes(): Record<string, string> {
+  const scopes: Record<string, string> = { ...CLIENT_SCOPED };
+  for (const t of PROJECT_SCOPED) scopes[t] = "frx_project_ok(project_id)";
+  scopes.activities = `(${ALL_CLIENTS} OR ((client_id IS NOT NULL OR project_id IS NOT NULL)
+    AND (client_id IS NULL OR frx_client_ok(client_id))
+    AND (project_id IS NULL OR frx_project_ok(project_id))))`;
+  scopes.users = `(${ALL_CLIENTS} OR user_type = 'internal' OR id = ${ME}
+    OR EXISTS (SELECT 1 FROM client_users cu WHERE cu.user_id = users.id AND frx_client_ok(cu.client_id)))`;
+  for (const t of OWN_ROWS) scopes[t] = `(${ALL_CLIENTS} OR user_id = ${ME})`;
+  return scopes;
+}
+
+function policy(table: string, name: string, rest: string) {
+  return [`DROP POLICY IF EXISTS ${name} ON ${table}`, `CREATE POLICY ${name} ON ${table} ${rest}`];
+}
+
 async function ensureApiRoles() {
   if (rolesReady !== null) return;
   const list = (names: string[]) => names.map((n) => `'${n}'`).join(", ");
   const publicCols = PUBLIC_USER_COLUMNS.join(", ");
+  const roles = [ROLE_ADMIN, ROLE_USER, ROLE_CLIENT];
+  const all = roles.join(", ");
+  const scopes = rowScopes();
   const statements = [
     `DO $$ BEGIN
-       IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${ROLE_ADMIN}') THEN CREATE ROLE ${ROLE_ADMIN} NOLOGIN; END IF;
-       IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${ROLE_USER}') THEN CREATE ROLE ${ROLE_USER} NOLOGIN; END IF;
+       ${roles.map((r) => `IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${r}') THEN CREATE ROLE ${r} NOLOGIN; END IF;`).join(" ")}
      END $$`,
-    `GRANT ${ROLE_ADMIN}, ${ROLE_USER} TO CURRENT_USER`,
-    `REVOKE ALL ON ALL TABLES IN SCHEMA public FROM ${ROLE_ADMIN}, ${ROLE_USER}`,
-    `GRANT USAGE ON SCHEMA public TO ${ROLE_ADMIN}, ${ROLE_USER}`,
-    `GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${ROLE_ADMIN}, ${ROLE_USER}`,
+    `GRANT ${all} TO CURRENT_USER`,
+    `REVOKE ALL ON ALL TABLES IN SCHEMA public FROM ${all}`,
+    `GRANT USAGE ON SCHEMA public TO ${all}`,
+    `GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${all}`,
     `DO $$ DECLARE t text; BEGIN
        FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
                 AND tablename NOT IN (${list([...PRIVATE_TABLES, ...ADMIN_TABLES])}) LOOP
          EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO ${ROLE_ADMIN}, ${ROLE_USER}', t);
+         EXECUTE format('GRANT SELECT ON %I TO ${ROLE_CLIENT}', t);
        END LOOP;
        FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
                 AND tablename IN (${list(ADMIN_TABLES.filter((n) => n !== "users"))}) LOOP
-         EXECUTE format('GRANT SELECT ON %I TO ${ROLE_USER}', t);
+         EXECUTE format('GRANT SELECT ON %I TO ${ROLE_USER}, ${ROLE_CLIENT}', t);
          EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO ${ROLE_ADMIN}', t);
        END LOOP;
      END $$`,
-    `GRANT SELECT (${publicCols}) ON users TO ${ROLE_ADMIN}, ${ROLE_USER}`,
+    `GRANT SELECT (${publicCols}) ON users TO ${all}`,
     `GRANT INSERT, UPDATE, DELETE ON users TO ${ROLE_ADMIN}`,
-    `GRANT UPDATE (${USER_SELF_COLUMNS.join(", ")}) ON users TO ${ROLE_USER}`,
-    `ALTER TABLE users ENABLE ROW LEVEL SECURITY`,
-    `DROP POLICY IF EXISTS frx_admin_all ON users`,
-    `CREATE POLICY frx_admin_all ON users TO ${ROLE_ADMIN} USING (true) WITH CHECK (true)`,
-    `DROP POLICY IF EXISTS frx_user_read ON users`,
-    `CREATE POLICY frx_user_read ON users FOR SELECT TO ${ROLE_USER} USING (true)`,
-    `DROP POLICY IF EXISTS frx_user_self ON users`,
-    `CREATE POLICY frx_user_self ON users FOR UPDATE TO ${ROLE_USER}
-       USING (id = NULLIF(current_setting('frx.user_id', true), '')::int)
-       WITH CHECK (id = NULLIF(current_setting('frx.user_id', true), '')::int)`,
+    `GRANT UPDATE (${USER_SELF_COLUMNS.join(", ")}) ON users TO ${ROLE_USER}, ${ROLE_CLIENT}`,
+    `GRANT INSERT ON activities TO ${ROLE_CLIENT}`,
+    `GRANT UPDATE (status, signed_by, signed_at, signature) ON billing_documents TO ${ROLE_CLIENT}`,
+    `CREATE OR REPLACE FUNCTION frx_client_ok(cid integer) RETURNS boolean LANGUAGE sql STABLE AS $$
+       SELECT CASE
+         WHEN s = '*' THEN true
+         WHEN s IS NULL OR s = '' THEN false
+         ELSE cid = ANY (string_to_array(s, ',')::int[])
+       END
+       FROM (SELECT current_setting('frx.client_ids', true) AS s) setting
+     $$`,
+    `CREATE OR REPLACE FUNCTION frx_project_ok(pid integer) RETURNS boolean LANGUAGE sql STABLE AS $$
+       SELECT current_setting('frx.client_ids', true) = '*'
+           OR EXISTS (SELECT 1 FROM projects p WHERE p.id = pid AND frx_client_ok(p.client_id))
+     $$`,
   ];
+  for (const [table, scope] of Object.entries(scopes)) {
+    statements.push(`ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY`);
+    statements.push(...policy(table, "frx_admin_all", `TO ${ROLE_ADMIN} USING (true) WITH CHECK (true)`));
+    statements.push(...policy(table, "frx_scope_read", `FOR SELECT TO ${ROLE_USER}, ${ROLE_CLIENT} USING (${scope})`));
+    if (table === "users") continue;
+    for (const cmd of ["INSERT", "UPDATE", "DELETE"]) {
+      const clause = cmd === "INSERT" ? `WITH CHECK (${scope})` : cmd === "DELETE" ? `USING (${scope})` : `USING (${scope}) WITH CHECK (${scope})`;
+      statements.push(...policy(table, `frx_scope_${cmd.toLowerCase()}`, `FOR ${cmd} TO ${ROLE_USER} ${clause}`));
+    }
+  }
+  // Drop the policy names used before client scoping existed.
+  statements.push("DROP POLICY IF EXISTS frx_user_read ON users", "DROP POLICY IF EXISTS frx_user_self ON users");
+  statements.push(
+    ...policy("users", "frx_self_update", `FOR UPDATE TO ${ROLE_USER}, ${ROLE_CLIENT} USING (id = ${ME}) WITH CHECK (id = ${ME})`),
+    ...policy(
+      "billing_documents",
+      "frx_client_decide",
+      `FOR UPDATE TO ${ROLE_CLIENT} USING (kind = 'quote' AND ${scopes.billing_documents})
+       WITH CHECK (kind = 'quote' AND status IN ('accepted', 'rejected') AND ${scopes.billing_documents})`,
+    ),
+    ...policy("activities", "frx_client_log", `FOR INSERT TO ${ROLE_CLIENT} WITH CHECK (user_id = ${ME} AND ${scopes.activities})`),
+  );
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
@@ -202,11 +281,29 @@ async function loadHiddenColumns() {
  * executes inside a transaction under the caller's role so Postgres enforces
  * table/column/row privileges. Output is filtered as defense in depth.
  */
-async function runScopedSql(
-  session: { id: number; is_admin: number; view_as?: string },
-  sql: string,
-  params: unknown[],
-) {
+type ScopedSession = { id: number; is_admin: number; user_type: string; all_clients: number; view_as?: string };
+
+/** Clients this session may see: "*" for all, otherwise a comma-separated id list ("" = none). */
+async function allowedClientIds(session: ScopedSession) {
+  if (Number(session.is_admin) === 1) return "*";
+  const sql =
+    session.user_type === "external"
+      ? "SELECT client_id FROM client_users WHERE user_id = $1"
+      : Number(session.all_clients) !== 0
+        ? null
+        : "SELECT client_id FROM user_clients WHERE user_id = $1";
+  if (!sql) return "*";
+  const result = await getPool().query(sql, [session.id]);
+  return result.rows.map((r) => Number(r.client_id)).filter((n) => Number.isInteger(n)).join(",");
+}
+
+function roleFor(session: ScopedSession) {
+  if (effectiveAdmin(session)) return ROLE_ADMIN;
+  if (session.user_type === "external" && Number(session.is_admin) !== 1) return ROLE_CLIENT;
+  return ROLE_USER;
+}
+
+async function runScopedSql(session: ScopedSession, sql: string, params: unknown[]) {
   await ensureSchema();
   await ensureDemoUsers();
   let text = sql;
@@ -215,12 +312,18 @@ async function runScopedSql(
     text = `${text.replace(/;+\s*$/, "")} RETURNING ${intoUsers ? USERS_RETURNING : "*"}`;
   }
   const hidden = await loadHiddenColumns();
+  const clientIds = rolesReady ? await allowedClientIds(session) : "*";
   const client = await getPool().connect();
   try {
-    await client.query("BEGIN");
     if (rolesReady) {
-      await client.query(`SET LOCAL ROLE ${effectiveAdmin(session) ? ROLE_ADMIN : ROLE_USER}`);
-      await client.query("SELECT set_config('frx.user_id', $1, true)", [String(session.id)]);
+      // One round trip. Values are server-computed integers / digit lists, safe to inline.
+      const userId = String(Math.trunc(Number(session.id)));
+      if (!/^(\*|[\d,]*)$/.test(clientIds)) throw new Error("bad client scope");
+      await client.query(
+        `BEGIN; SET LOCAL ROLE ${roleFor(session)}; SELECT set_config('frx.user_id', '${userId}', true), set_config('frx.client_ids', '${clientIds}', true)`,
+      );
+    } else {
+      await client.query("BEGIN");
     }
     const result = await client.query({ text, values: params, rowMode: "array" });
     await client.query("COMMIT");
@@ -420,16 +523,18 @@ function updatesOnlyOwnRow(sql: string, params: unknown[], userId: number) {
 // ---- Login throttling (in-memory, per process) ----
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_FAILURES = 10;
+/** Per address, across all accounts (password spraying). */
+const LOGIN_MAX_FAILURES_PER_IP = 50;
 const loginFailures = new Map<string, { count: number; first: number }>();
 
-function loginBlocked(key: string) {
+function loginBlocked(key: string, max = LOGIN_MAX_FAILURES) {
   const entry = loginFailures.get(key);
   if (!entry) return false;
   if (Date.now() - entry.first > LOGIN_WINDOW_MS) {
     loginFailures.delete(key);
     return false;
   }
-  return entry.count >= LOGIN_MAX_FAILURES;
+  return entry.count >= max;
 }
 
 function recordLoginFailure(key: string) {
@@ -494,9 +599,12 @@ export function isInternalStaff(session: { user_type: string; view_as?: string }
   return session.user_type === "internal" && session.view_as !== "client";
 }
 
+/** Session for the other API routes; a user who must change their password gets nothing else. */
 export async function requireApiUser(req: { headers?: Record<string, unknown> }) {
   await ensureSchema();
-  return loadSessionUser(req);
+  const session = await loadSessionUser(req);
+  if (!session || Number(session.must_change_password) === 1) return null;
+  return session;
 }
 
 function parsedBody(req: { body?: any }) {
@@ -543,7 +651,9 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       }
       const email = String(req.body?.email ?? "");
       const throttleKey = email.trim().toLowerCase();
-      if (loginBlocked(throttleKey)) {
+      const clientIp = String(req.headers?.["x-client-ip"] ?? "");
+      const ipKey = clientIp ? `ip:${clientIp}` : "";
+      if (loginBlocked(throttleKey) || (ipKey && loginBlocked(ipKey, LOGIN_MAX_FAILURES_PER_IP))) {
         return res.status(429).json({ error: "login.error.throttled" });
       }
       const result = await loginUser(email, String(req.body?.password ?? ""));
@@ -553,15 +663,17 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
         res.setHeader?.("Set-Cookie", sessionCookie(token));
       } else {
         recordLoginFailure(throttleKey);
+        if (ipKey) recordLoginFailure(ipKey);
       }
       return res.status(200).json(result);
     }
     if (action === "logout") {
-      await revokeDbSession(tokenFromCookieHeader(cookieHeaderOf(req)));
+      if (hasRemoteDb()) await revokeDbSession(tokenFromCookieHeader(cookieHeaderOf(req)));
       res.setHeader?.("Set-Cookie", clearSessionCookie());
       return res.status(200).json({ ok: true });
     }
     if (action === "session") {
+      if (!hasRemoteDb()) return res.status(200).json({ user: null, local: true });
       await ensureSchema();
       const user = await loadSessionUser(req);
       return res.status(200).json({ user });
@@ -573,6 +685,10 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       const session = await loadSessionUser(req);
       if (!session) {
         res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      if (Number(session.must_change_password) === 1) {
+        res.status(403).json({ error: "password_change_required" });
         return;
       }
       if (Number(session.is_admin) !== 1) {
@@ -596,6 +712,10 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       const session = await loadSessionUser(req);
       if (!session) {
         res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      if (Number(session.must_change_password) === 1) {
+        res.status(403).json({ error: "password_change_required" });
         return;
       }
       if (Number(session.is_admin) !== 1) {
@@ -656,6 +776,10 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       const session = await loadSessionUser(req);
       if (!session) {
         res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      if (Number(session.must_change_password) === 1) {
+        res.status(403).json({ error: "password_change_required" });
         return;
       }
       if (Number(session.is_admin) !== 1) {
@@ -749,6 +873,10 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
         res.status(401).json({ error: "Unauthorized" });
         return;
       }
+      if (Number(session.must_change_password) === 1) {
+        res.status(403).json({ error: "password_change_required" });
+        return;
+      }
       if (Number(session.is_admin) !== 1) {
         res.status(403).json({ error: "Forbidden" });
         return;
@@ -770,6 +898,10 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
         res.status(401).json({ error: "Unauthorized" });
         return;
       }
+      if (Number(session.must_change_password) === 1) {
+        res.status(403).json({ error: "password_change_required" });
+        return;
+      }
       const key = String(req.body?.key ?? "").trim();
       if (!key) {
         res.status(400).json({ error: "key is required" });
@@ -777,6 +909,11 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       }
       const stored = await readStoredSetting(key);
       if (action === "get_setting") {
+        // Clients never need the mail or accounting integration settings.
+        const staffOnly = key === "smtp" || key === "quickbooks";
+        if (staffOnly && (session.user_type === "external" || session.view_as === "client") && !effectiveAdmin(session)) {
+          return res.status(200).json({ value: null });
+        }
         return res.status(200).json({ value: redactSettingValue(stored) });
       }
       if (!effectiveAdmin(session)) {
@@ -797,6 +934,10 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
     const session = await loadSessionUser(req);
     if (!session) {
       res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    if (Number(session.must_change_password) === 1) {
+      res.status(403).json({ error: "password_change_required" });
       return;
     }
     const sql = String(req.body?.sql ?? "");

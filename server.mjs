@@ -3,6 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { brotliCompressSync, gzipSync, constants as zlibConstants } from "node:zlib";
 import sharepointHandler from "./api/sharepoint.ts";
 import mailHandler from "./api/mail/send.ts";
 import dbHandler from "./api/db.ts";
@@ -26,6 +27,31 @@ const MIME = {
   ".txt": "text/plain; charset=utf-8",
   ".wasm": "application/wasm",
 };
+
+const COMPRESSIBLE = new Set([".html", ".js", ".css", ".json", ".svg", ".txt", ".wasm", ".map"]);
+/** Compressed copies of static files, keyed by path + encoding. Files are immutable per build. */
+const compressedCache = new Map();
+
+function pickEncoding(req) {
+  const accept = String(req.headers["accept-encoding"] || "");
+  if (/\bbr\b/.test(accept)) return "br";
+  if (/\bgzip\b/.test(accept)) return "gzip";
+  return null;
+}
+
+async function compressedFile(file, encoding) {
+  const key = `${encoding}:${file}`;
+  let buf = compressedCache.get(key);
+  if (!buf) {
+    const raw = await readFile(file);
+    buf =
+      encoding === "br"
+        ? brotliCompressSync(raw, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 9 } })
+        : gzipSync(raw, { level: 9 });
+    compressedCache.set(key, buf);
+  }
+  return buf;
+}
 
 function adaptRes(res) {
   return {
@@ -93,10 +119,20 @@ async function serveStatic(req, res, url) {
     res.setHeader("Content-Type", MIME[extname(file)] || "application/octet-stream");
     // Vite emits content-hashed file names under /assets.
     if (rel.startsWith("/assets/")) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    // index.html names the current build's assets; always revalidate it.
+    else if (extname(file) === ".html") res.setHeader("Cache-Control", "no-cache");
+    const encoding = COMPRESSIBLE.has(extname(file)) && info.size > 1024 ? pickEncoding(req) : null;
+    res.setHeader("Vary", "Accept-Encoding");
+    if (encoding) {
+      res.setHeader("Content-Encoding", encoding);
+      res.end(await compressedFile(file, encoding));
+      return;
+    }
     createReadStream(file).pipe(res);
   } catch {
     const index = await readFile(join(dist, "index.html"));
     res.setHeader("Content-Type", "text/html; charset=utf-8");
+    // Always revalidate so a new deploy's asset names are picked up immediately.
     res.setHeader("Cache-Control", "no-cache");
     res.end(index);
   }
@@ -108,6 +144,28 @@ const server = createServer(async (req, res) => {
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(self)");
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+  // Only scripts from this origin may run, and the page may only talk to this origin.
+  res.setHeader(
+    "Content-Security-Policy",
+    [
+      "default-src 'self'",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' data: https://fonts.gstatic.com",
+      "img-src 'self' data: blob: https:",
+      "connect-src 'self'",
+      "frame-src 'self' blob:",
+      "worker-src 'self' blob:",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "frame-ancestors 'none'",
+    ].join("; "),
+  );
+  if (process.env.COOKIE_INSECURE !== "1" && process.env.COOKIE_INSECURE !== "true") {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000");
+  }
   if (url.pathname.startsWith("/api/")) res.setHeader("Cache-Control", "no-store");
   try {
     if (req.method === "OPTIONS" && url.pathname.startsWith("/api/")) {
@@ -115,7 +173,19 @@ const server = createServer(async (req, res) => {
       res.end();
       return;
     }
-    const headers = { cookie: req.headers.cookie || "" };
+    // Cross-site forms can't send application/json, so requiring it blocks CSRF-style posts.
+    if (req.method === "POST" && url.pathname.startsWith("/api/")) {
+      const type = String(req.headers["content-type"] || "");
+      if (!type.toLowerCase().startsWith("application/json")) {
+        res.statusCode = 415;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ error: "Expected application/json" }));
+        return;
+      }
+    }
+    // Behind the reverse proxy the client address arrives in X-Real-IP / X-Forwarded-For.
+    const forwarded = String(req.headers["x-real-ip"] || req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+    const headers = { cookie: req.headers.cookie || "", "x-client-ip": forwarded || req.socket.remoteAddress || "" };
     if (url.pathname === "/api/sharepoint") {
       const body = req.method === "POST" ? await readJsonBody(req) : {};
       await sharepointHandler({ method: req.method, query: queryOf(url), body, headers }, adaptRes(res));

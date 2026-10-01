@@ -48,26 +48,34 @@ export function ClientBillingPage() {
   const canDecide = Boolean(user?.user_type === "external");
 
   async function load() {
-    await dbReady;
-    const rows = await db.select().from(schema.clients).where(eq(schema.clients.id, id));
-    if (!rows[0]) {
-      setClient(null);
+    // Always leave the loading state, even if a query fails, so the page
+    // never sits on a blank skeleton.
+    try {
+      await dbReady;
+      const rows = await db.select().from(schema.clients).where(eq(schema.clients.id, id));
+      if (!rows[0]) {
+        setClient(null);
+        setLoading(false);
+        return;
+      }
+      const jobs = (await db
+        .select()
+        .from(schema.projects)
+        .where(eq(schema.projects.client_id, id))) as Project[];
+      const bills = (await db
+        .select()
+        .from(schema.billing_documents)
+        .where(eq(schema.billing_documents.client_id, id))) as BillingDocument[];
+      setClient(rows[0] as Client);
+      setProjects(jobs);
+      setDocs(bills.sort((a, b) => String(b.issued_on ?? "").localeCompare(String(a.issued_on ?? ""))));
+      setCompany(await getCompanyProfile());
       setLoading(false);
-      return;
+    } catch (err) {
+      console.error("ClientBillingPage load failed", err);
+    } finally {
+      setLoading(false);
     }
-    const jobs = (await db
-      .select()
-      .from(schema.projects)
-      .where(eq(schema.projects.client_id, id))) as Project[];
-    const bills = (await db
-      .select()
-      .from(schema.billing_documents)
-      .where(eq(schema.billing_documents.client_id, id))) as BillingDocument[];
-    setClient(rows[0] as Client);
-    setProjects(jobs);
-    setDocs(bills.sort((a, b) => String(b.issued_on ?? "").localeCompare(String(a.issued_on ?? ""))));
-    setCompany(await getCompanyProfile());
-    setLoading(false);
   }
 
   useEffect(() => {
@@ -135,7 +143,7 @@ export function ClientBillingPage() {
     });
   }
 
-  if (loading || !company) return <PageSkeleton />;
+  if (loading) return <PageSkeleton />;
   if (!canView) {
     return (
       <EmptyState
@@ -145,7 +153,7 @@ export function ClientBillingPage() {
       />
     );
   }
-  if (!workspaceClient) {
+  if (!workspaceClient || !company) {
     return (
       <EmptyState
         icon={<Receipt className="size-5" />}

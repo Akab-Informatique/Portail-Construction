@@ -52,10 +52,18 @@ export function TeamPage() {
   const [saving, setSaving] = useState(false);
 
   async function load() {
-    await dbReady;
-    const rows = (await db.select().from(schema.users)) as User[];
-    setPeople(rows);
-    setLoading(false);
+    // Always leave the loading state, even if a query fails, so the page
+    // never sits on a blank skeleton.
+    try {
+      await dbReady;
+      const rows = (await db.select().from(schema.users)) as User[];
+      setPeople(rows);
+      setLoading(false);
+    } catch (err) {
+      console.error("TeamPage load failed", err);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {

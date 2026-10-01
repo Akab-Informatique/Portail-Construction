@@ -19,12 +19,24 @@ function stripPreviewInspector(): Plugin {
       return html.replace(/\s*<script src="\/devs-inspect\.js"><\/script>/, "");
     },
     closeBundle() {
-      fs.rmSync(path.resolve(__dirname, "dist/devs-inspect.js"), { force: true });
+      const dist = path.resolve(__dirname, "dist");
+      fs.rmSync(path.join(dist, "devs-inspect.js"), { force: true });
+      // The dev-only in-browser database is not used in production; drop its
+      // WASM/data files when no production chunk references them.
+      const assets = path.join(dist, "assets");
+      if (!fs.existsSync(assets)) return;
+      const files = fs.readdirSync(assets);
+      const js = files.filter((f) => f.endsWith(".js")).map((f) => fs.readFileSync(path.join(assets, f), "utf8"));
+      for (const f of files) {
+        if (/^postgres-.*\.(wasm|data)$/.test(f) && !js.some((code) => code.includes(f))) {
+          fs.rmSync(path.join(assets, f));
+        }
+      }
     },
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   optimizeDeps: { exclude: ["@electric-sql/pglite"] },
   worker: { format: "es" },
   plugins: [react(), tailwindcss(), mailDevServer(), sharepointDevServer(), dbDevServer(), stripPreviewInspector()],
@@ -46,6 +58,7 @@ export default defineConfig({
     // not expose — the socket drops, the client logs "server connection lost.
     // Polling for restart...", and forces a full page reload on reconnect, so
     // the preview appears to refresh even though nothing changed.
-    hmr: { clientPort: 443, protocol: "wss" },
+    // `npm run dev:local` (mode "workstation") uses Vite's normal HMR on this machine.
+    hmr: mode === "workstation" ? undefined : { clientPort: 443, protocol: "wss" },
   },
-});
+}));

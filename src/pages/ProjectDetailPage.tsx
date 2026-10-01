@@ -98,44 +98,52 @@ export function ProjectDetailPage() {
   const editFolders = useSharePointFolders(editOpen, id);
 
   async function load() {
-    await dbReady;
-    const rows = await db.select().from(schema.projects).where(eq(schema.projects.id, id));
-    if (!rows[0]) {
-      setProject(null);
+    // Always leave the loading state, even if a query fails, so the page
+    // never sits on a blank skeleton.
+    try {
+      await dbReady;
+      const rows = await db.select().from(schema.projects).where(eq(schema.projects.id, id));
+      if (!rows[0]) {
+        setProject(null);
+        setLoading(false);
+        return;
+      }
+      const clients = await db.select().from(schema.clients).where(eq(schema.clients.id, rows[0].client_id));
+      const users = (await db.select().from(schema.users)) as User[];
+      const mems = await db.select().from(schema.project_members).where(eq(schema.project_members.project_id, id));
+      setProject(rows[0] as Project);
+      setClientName(clients[0]?.company_name ?? "");
+      setClientRow((clients[0] as Client) ?? null);
+      setCompany(await getCompanyProfile());
+      setPeople(users);
+      setMembers(mems.map((m) => ({ user_id: m.user_id, role: m.role })));
+      setTasks(await db.select().from(schema.project_tasks).where(eq(schema.project_tasks.project_id, id)));
+      setBudget(await db.select().from(schema.budget_items).where(eq(schema.budget_items.project_id, id)));
+      setEvents(await db.select().from(schema.calendar_events).where(eq(schema.calendar_events.project_id, id)));
+      setRfis(await db.select().from(schema.rfis).where(eq(schema.rfis.project_id, id)));
+      setCos(await db.select().from(schema.change_orders).where(eq(schema.change_orders.project_id, id)));
+      setLogs(await db.select().from(schema.daily_logs).where(eq(schema.daily_logs.project_id, id)));
+      setPunch(await db.select().from(schema.punch_items).where(eq(schema.punch_items.project_id, id)));
+      setIncidents(await db.select().from(schema.safety_incidents).where(eq(schema.safety_incidents.project_id, id)));
+      const punches = (await db.select().from(schema.time_punches).where(eq(schema.time_punches.project_id, id))) as TimePunch[];
+      const labourMap = new Map<number, { name: string; minutes: number; job: string }>();
+      for (const entry of pairPunches(punches)) {
+        const person = users.find((u) => u.id === entry.punchIn.user_id);
+        const prev = labourMap.get(entry.punchIn.user_id);
+        labourMap.set(entry.punchIn.user_id, {
+          name: person?.name ?? `#${entry.punchIn.user_id}`,
+          minutes: (prev?.minutes ?? 0) + entry.minutes,
+          job: rows[0].name as string,
+        });
+      }
+      setLabour([...labourMap.values()].sort((a, b) => b.minutes - a.minutes));
+      setSavedReports(await db.select().from(schema.project_reports).where(eq(schema.project_reports.project_id, id)));
       setLoading(false);
-      return;
+    } catch (err) {
+      console.error("ProjectDetailPage load failed", err);
+    } finally {
+      setLoading(false);
     }
-    const clients = await db.select().from(schema.clients).where(eq(schema.clients.id, rows[0].client_id));
-    const users = (await db.select().from(schema.users)) as User[];
-    const mems = await db.select().from(schema.project_members).where(eq(schema.project_members.project_id, id));
-    setProject(rows[0] as Project);
-    setClientName(clients[0]?.company_name ?? "");
-    setClientRow((clients[0] as Client) ?? null);
-    setCompany(await getCompanyProfile());
-    setPeople(users);
-    setMembers(mems.map((m) => ({ user_id: m.user_id, role: m.role })));
-    setTasks(await db.select().from(schema.project_tasks).where(eq(schema.project_tasks.project_id, id)));
-    setBudget(await db.select().from(schema.budget_items).where(eq(schema.budget_items.project_id, id)));
-    setEvents(await db.select().from(schema.calendar_events).where(eq(schema.calendar_events.project_id, id)));
-    setRfis(await db.select().from(schema.rfis).where(eq(schema.rfis.project_id, id)));
-    setCos(await db.select().from(schema.change_orders).where(eq(schema.change_orders.project_id, id)));
-    setLogs(await db.select().from(schema.daily_logs).where(eq(schema.daily_logs.project_id, id)));
-    setPunch(await db.select().from(schema.punch_items).where(eq(schema.punch_items.project_id, id)));
-    setIncidents(await db.select().from(schema.safety_incidents).where(eq(schema.safety_incidents.project_id, id)));
-    const punches = (await db.select().from(schema.time_punches).where(eq(schema.time_punches.project_id, id))) as TimePunch[];
-    const labourMap = new Map<number, { name: string; minutes: number; job: string }>();
-    for (const entry of pairPunches(punches)) {
-      const person = users.find((u) => u.id === entry.punchIn.user_id);
-      const prev = labourMap.get(entry.punchIn.user_id);
-      labourMap.set(entry.punchIn.user_id, {
-        name: person?.name ?? `#${entry.punchIn.user_id}`,
-        minutes: (prev?.minutes ?? 0) + entry.minutes,
-        job: rows[0].name as string,
-      });
-    }
-    setLabour([...labourMap.values()].sort((a, b) => b.minutes - a.minutes));
-    setSavedReports(await db.select().from(schema.project_reports).where(eq(schema.project_reports.project_id, id)));
-    setLoading(false);
   }
 
   useEffect(() => {

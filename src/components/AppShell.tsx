@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -51,6 +51,8 @@ import { isProjectSection, PROJECT_NAV_GROUPS, projectSectionPath } from "@/lib/
 import { visibleProjectModules } from "@/lib/permissions";
 import { NAV_SECTIONS_KEY } from "@/lib/constants";
 import { ForcePasswordDialog } from "@/components/ForcePasswordDialog";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { PageSkeleton } from "@/components/Skeleton";
 import { MenuTour } from "@/components/MenuTour";
 import { cn } from "@/lib/utils";
 import type { MessageKey } from "@/lib/i18n/en";
@@ -652,12 +654,15 @@ export function AppShell() {
 
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
           <div className={cn("mx-auto", location.pathname === "/projects" ? "max-w-none" : "max-w-6xl")}>
-            <Outlet />
+            {/* Keyed by path so a crash on one page clears when the user navigates away. */}
+            <ErrorBoundary key={location.pathname} inline>
+              <Suspense fallback={<PageSkeleton />}>
+                <Outlet />
+              </Suspense>
+            </ErrorBoundary>
           </div>
         </main>
       </div>
-      <ForcePasswordDialog />
-      <MenuTour />
     </div>
   );
 }

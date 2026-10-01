@@ -1,14 +1,13 @@
-import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
 import { drizzle as drizzleProxy } from "drizzle-orm/pg-proxy";
-import { PGlite } from "@electric-sql/pglite";
 import * as schema from "./schema";
-import { MIGRATE_SQL } from "./migrate-sql";
 
 export { schema };
 
+type QueryFn = (sql: string, params: unknown[]) => Promise<{ rows: unknown[][] }>;
+
 const useRemote = import.meta.env.PROD;
 
-async function remoteQuery(sql: string, params: unknown[], _method: "all" | "execute") {
+async function remoteQuery(sql: string, params: unknown[]) {
   const res = await fetch("/api/db", {
     method: "POST",
     credentials: "include",
@@ -22,18 +21,33 @@ async function remoteQuery(sql: string, params: unknown[], _method: "all" | "exe
   return { rows: data.rows ?? [] };
 }
 
+/**
+ * Dev only: an in-browser Postgres (PGlite, persisted in IndexedDB). Loaded on
+ * demand so its ~13 MB of WASM never ships in the production bundle.
+ */
 function createLocal() {
-  const client = new PGlite("idb://app-db");
-  (window as any).__devs_pglite = client;
-  const db = drizzlePglite(client, { schema });
-  const ready = (async () => {
-    await client.exec(MIGRATE_SQL);
+  const client = (async () => {
+    const [{ PGlite }, { MIGRATE_SQL }] = await Promise.all([
+      import("@electric-sql/pglite"),
+      import("./migrate-sql"),
+    ]);
+    const pg = new PGlite("idb://app-db");
+    (window as any).__devs_pglite = pg;
+    await pg.exec(MIGRATE_SQL);
+    return pg;
   })();
-  return { db, ready };
+  const query: QueryFn = async (sql, params) => {
+    const pg = await client;
+    const result = await pg.query<unknown[]>(sql, params, { rowMode: "array" });
+    // Match the production API, which serializes timestamps as ISO strings.
+    return {
+      rows: result.rows.map((row) => row.map((cell) => (cell instanceof Date ? cell.toISOString() : cell))),
+    };
+  };
+  return { query, ready: client.then(() => undefined) };
 }
 
 function createRemote() {
-  const db = drizzleProxy(remoteQuery, { schema });
   const ready = (async () => {
     const res = await fetch("/api/db", {
       method: "POST",
@@ -43,10 +57,10 @@ function createRemote() {
     });
     if (!res.ok) throw new Error(`Database error (${res.status})`);
   })();
-  return { db, ready };
+  return { query: remoteQuery as QueryFn, ready };
 }
 
 const instance = useRemote ? createRemote() : createLocal();
 
-export const db = instance.db;
+export const db = drizzleProxy((sql, params) => instance.query(sql, params), { schema });
 export const dbReady = instance.ready;

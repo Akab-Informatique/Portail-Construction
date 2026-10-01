@@ -49,14 +49,21 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState<number | null>(readStoredClient);
 
+  // Only an admin previewing as a client is scoped to the selected client, so
+  // only then must switching clients reload the workspace.
+  const scopeClientId = user?.view_as === "client" ? selectedClientId : null;
+
   const refresh = useCallback(async () => {
     try {
       await dbReady;
-      let allClients = (await db.select().from(schema.clients)) as Client[];
-      let allProjects = (await db.select().from(schema.projects)) as Project[];
-      const allColumns = await loadBoardColumns();
-
-      const allowed = await getAccessibleClientIds(user, selectedClientId);
+      const [clientRows, projectRows, allColumns, allowed] = await Promise.all([
+        db.select().from(schema.clients),
+        db.select().from(schema.projects),
+        loadBoardColumns(),
+        getAccessibleClientIds(user, scopeClientId),
+      ]);
+      let allClients = clientRows as Client[];
+      let allProjects = projectRows as Project[];
       if (allowed) {
         const ids = new Set(allowed);
         allClients = allClients.filter((c) => ids.has(c.id));
@@ -71,7 +78,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     } finally {
       setReady(true);
     }
-  }, [user, selectedClientId]);
+  }, [user, scopeClientId]);
 
   useEffect(() => {
     void refresh();
