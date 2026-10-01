@@ -160,6 +160,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const mode = session.is_admin ? readViewAs() : "admin";
           await ensureGroupsAsAdmin(Boolean(session.is_admin));
           await loadPermissions(session.id, mode, Boolean(session.is_admin));
+        } else if (!import.meta.env.PROD && localStorage.getItem(SESSION_KEY)) {
+          // Dev only: the in-browser database has no server session, so the
+          // signed-in user id is remembered locally between reloads.
+          const rows = await db.select().from(schema.users).where(eq(schema.users.id, Number(localStorage.getItem(SESSION_KEY))));
+          const match = rows[0];
+          if (cancelled) return;
+          if (match?.is_active) {
+            const session = toSession(match);
+            setRealUser(session);
+            applyPrefs(session);
+            await loadPermissions(session.id, session.is_admin ? readViewAs() : "admin", Boolean(session.is_admin));
+          } else {
+            localStorage.removeItem(SESSION_KEY);
+          }
         } else {
           localStorage.removeItem(SESSION_KEY);
         }
@@ -225,7 +239,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setViewAsState("admin");
       localStorage.removeItem(VIEW_AS_KEY);
       applyPrefs(session);
-      localStorage.removeItem(SESSION_KEY);
+      if (import.meta.env.PROD) localStorage.removeItem(SESSION_KEY);
+      else localStorage.setItem(SESSION_KEY, String(match.id));
       await loadPermissions(match.id, "admin", Boolean(session.is_admin));
       return null;
     } catch (err) {

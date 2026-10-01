@@ -57,6 +57,10 @@
   --warning: #fbaa19;
   --info: #51514e;
   --copper: #fbaa19;
+
+  /* Drafting-paper grid behind page content. */
+  --grid-line: rgba(0, 0, 0, 0.03);
+  --grid-line-strong: rgba(0, 0, 0, 0.055);
 }
 
 .dark {
@@ -104,11 +108,15 @@
   --warning: #fbaa19;
   --info: #d1d3d4;
   --copper: #fbaa19;
+
+  --grid-line: rgba(255, 255, 255, 0.035);
+  --grid-line-strong: rgba(255, 255, 255, 0.06);
 }
 
 @theme inline {
   --font-sans: "Barlow", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Barlow Condensed", "Barlow", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -199,6 +207,88 @@
     letter-spacing: 0.01em;
     text-transform: uppercase;
   }
+}
+
+@layer components {
+  /* Yellow structural beam with a slow light sweep — the FRX signature accent. */
+  .frx-beam {
+    position: relative;
+    overflow: hidden;
+    background-color: var(--frx-yellow);
+  }
+  .frx-beam::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    width: 40%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+    animation: frx-sweep 6s ease-in-out infinite;
+  }
+
+  /* Faint drafting grid: 8px minor, 40px major lines. */
+  .frx-paper {
+    background-color: var(--background);
+    background-image:
+      linear-gradient(var(--grid-line-strong) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line-strong) 1px, transparent 1px),
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 40px 40px, 40px 40px, 8px 8px, 8px 8px;
+    background-position: -1px -1px;
+  }
+
+  /* Small technical label: mono, uppercase, spaced. */
+  .frx-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  /* Crop-mark corners, like a sheet border on a drawing. */
+  .frx-ticks {
+    position: relative;
+  }
+  .frx-ticks::before,
+  .frx-ticks::after {
+    content: "";
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    pointer-events: none;
+    border-color: var(--frx-yellow);
+    border-style: solid;
+  }
+  .frx-ticks::before {
+    top: -1px;
+    left: -1px;
+    border-width: 2px 0 0 2px;
+  }
+  .frx-ticks::after {
+    right: -1px;
+    bottom: -1px;
+    border-width: 0 2px 2px 0;
+  }
+}
+
+@keyframes frx-sweep {
+  0% { transform: translateX(-120%); }
+  60%, 100% { transform: translateX(320%); }
+}
+
+/* Slow drifting light behind the login page. */
+@keyframes frx-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.9; }
+  50% { transform: translate3d(4%, -3%, 0) scale(1.08); opacity: 1; }
+}
+
+/* A window lighting up: off → flicker → on, then holds. */
+@keyframes frx-window {
+  0%, 30% { opacity: 0; }
+  34% { opacity: 0.6; }
+  37% { opacity: 0.1; }
+  42%, 100% { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

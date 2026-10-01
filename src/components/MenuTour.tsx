@@ -23,23 +23,23 @@ export function MenuTour() {
   const [box, setBox] = useState<DOMRect | null>(null);
 
   const steps = useMemo<Step[]>(() => {
+    const admin = Boolean(realUser?.is_admin);
+    // Same order as the menu, top to bottom.
     const list: Step[] = [
       { id: "dashboard", title: "tour.step.dashboard.title", body: "tour.step.dashboard.body" },
-      { id: "documents", title: "tour.step.documents.title", body: "tour.step.documents.body" },
       { id: "projectsDocs", title: "tour.step.projectsDocs.title", body: "tour.step.projectsDocs.body" },
+      ...(admin ? [{ id: "reports", title: "tour.step.reports.title", body: "tour.step.reports.body" } as Step] : []),
       { id: "operations", title: "tour.step.operations.title", body: "tour.step.operations.body" },
+      { id: "documents", title: "tour.step.documents.title", body: "tour.step.documents.body" },
       { id: "tools", title: "tour.step.tools.title", body: "tour.step.tools.body" },
+      ...(admin
+        ? ([
+            { id: "accounting", title: "tour.step.accounting.title", body: "tour.step.accounting.body" },
+            { id: "setup", title: "tour.step.setup.title", body: "tour.step.setup.body" },
+          ] as Step[])
+        : []),
       { id: "profile", title: "tour.step.profile.title", body: "tour.step.profile.body" },
     ];
-    if (realUser?.is_admin) {
-      list.splice(3, 0, { id: "reports", title: "tour.step.reports.title", body: "tour.step.reports.body" });
-      list.splice(list.length - 1, 0, {
-        id: "accounting",
-        title: "tour.step.accounting.title",
-        body: "tour.step.accounting.body",
-      });
-      list.splice(list.length - 1, 0, { id: "setup", title: "tour.step.setup.title", body: "tour.step.setup.body" });
-    }
     return list;
   }, [realUser?.is_admin]);
 
