@@ -1,4 +1,4 @@
-import { createContext, Suspense, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, Suspense, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { ChangeNotifications } from "@/components/ChangeNotifications";
 import { InstallAppButton } from "@/components/InstallAppButton";
 import { Logo } from "@/components/Logo";
@@ -27,6 +27,7 @@ import {
   Sun,
   Timer,
   Users,
+  FlaskConical,
   ReceiptText,
   Wallet,
   Wrench,
@@ -92,7 +93,38 @@ function hasGroupBilling(permissions: { module: string; can_view: number }[]) {
  * The main menu, ordered the way work flows: overview → the client you are
  * working on → field time → money. Shared by the sidebar and the Ctrl+K palette.
  */
+const DEV_KEY = "frx.showDev";
+const DEV_EVENT = "frx:showdev";
+
+function readShowDev() {
+  try {
+    return localStorage.getItem(DEV_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Whether the "In development" sidebar section is shown. Hidden by default; admins toggle it from the sidebar. */
+function useShowDev() {
+  const [show, setShow] = useState(readShowDev);
+  useEffect(() => {
+    const sync = () => setShow(readShowDev());
+    window.addEventListener(DEV_EVENT, sync);
+    return () => window.removeEventListener(DEV_EVENT, sync);
+  }, []);
+  const toggle = useCallback(() => {
+    try {
+      localStorage.setItem(DEV_KEY, readShowDev() ? "0" : "1");
+    } catch {
+      /* storage unavailable */
+    }
+    window.dispatchEvent(new Event(DEV_EVENT));
+  }, []);
+  return [show, toggle] as const;
+}
+
 export function useNavModel(): NavSection[] {
+  const [showDev] = useShowDev();
   const { t } = useI18n();
   const { user, can, permissions } = useAuth();
   const { selectedClient, clientProjects, clients } = useWorkspace();
@@ -178,14 +210,16 @@ export function useNavModel(): NavSection[] {
         items: [{ id: "billingMgmt", to: "/finance/billing", label: t("nav.billingMgmt"), icon: ReceiptText }],
       });
       // Work in progress: the invoice/quote builder lives here until it is ready.
-      sections.push({
-        id: "development",
-        label: t("nav.section.development"),
-        items: [{ id: "allBilling", to: "/accounting/billing", label: t("nav.allBilling"), icon: Wallet }],
-      });
+      if (showDev) {
+        sections.push({
+          id: "development",
+          label: t("nav.section.development"),
+          items: [{ id: "allBilling", to: "/accounting/billing", label: t("nav.allBilling"), icon: Wallet }],
+        });
+      }
     }
     return sections;
-  }, [t, user, can, permissions, selectedClient, clientProjects.length, clients.length]);
+  }, [t, user, can, permissions, selectedClient, clientProjects.length, clients.length, showDev]);
 }
 
 type SidebarCtx = { collapsed: boolean; onNavigate?: () => void };
@@ -384,6 +418,7 @@ function SidebarBody({
   const location = useLocation();
   const { projectMode } = useWorkspace();
   const sections = useNavModel();
+  const [showDev, toggleDev] = useShowDev();
   const clock = useClock();
   const [guardOpen, setGuardOpen] = useState(false);
   const isAdmin = Boolean(realUser?.is_admin) && user?.view_as !== "client";
@@ -473,20 +508,37 @@ function SidebarBody({
             </button>
           ) : null}
           {isAdmin ? (
-            <button
-              type="button"
-              data-tour="setup"
-              onClick={() => {
-                onNavigate?.();
-                navigate("/settings");
-              }}
-              title={collapsed ? t("nav.setup") : undefined}
-              aria-label={collapsed ? t("nav.setup") : undefined}
-              className={cn(itemClass(onSetup, collapsed), "w-full")}
-            >
-              <Settings className={cn("size-[17px] shrink-0", onSetup ? "text-primary" : "opacity-75")} />
-              {!collapsed && t("nav.setup")}
-            </button>
+            <div className={cn("flex items-center", collapsed && "flex-col gap-1")}>
+              <button
+                type="button"
+                data-tour="setup"
+                onClick={() => {
+                  onNavigate?.();
+                  navigate("/settings");
+                }}
+                title={collapsed ? t("nav.setup") : undefined}
+                aria-label={collapsed ? t("nav.setup") : undefined}
+                className={cn(itemClass(onSetup, collapsed), "min-w-0 flex-1", collapsed && "w-full")}
+              >
+                <Settings className={cn("size-[17px] shrink-0", onSetup ? "text-primary" : "opacity-75")} />
+                {!collapsed && t("nav.setup")}
+              </button>
+              {/* Shows or hides the "In development" section (hidden by default) */}
+              <button
+                type="button"
+                onClick={toggleDev}
+                aria-pressed={showDev}
+                title={showDev ? t("nav.devHide") : t("nav.devShow")}
+                aria-label={showDev ? t("nav.devHide") : t("nav.devShow")}
+                className={cn(
+                  "flex h-9 shrink-0 items-center justify-center rounded-sm text-white/45 transition-colors hover:bg-white/[0.05] hover:text-white",
+                  collapsed ? "w-full" : "w-9",
+                  showDev && "text-primary hover:text-primary",
+                )}
+              >
+                <FlaskConical className="size-[15px]" />
+              </button>
+            </div>
           ) : null}
           <div className={cn("mt-2 flex items-center gap-1", collapsed && "flex-col")}>
             <button
