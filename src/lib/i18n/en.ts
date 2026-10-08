@@ -1047,6 +1047,8 @@ export const en = {
   "billing.ai.confidence.low": "The AI was not sure about this document. Please check every figure.",
   "billing.ai.notConfigured": "AI reading is not set up, so please enter the figures yourself. (Admin → Setup → AI)",
   "billing.ai.failed": "The AI could not read this document. Please enter the figures yourself.",
+  "billing.upload.forbidden": "Your account cannot upload documents. You need FRX staff access (and must not be viewing as a client).",
+  "billing.upload.signedOut": "Your session has expired. Please sign in again.",
   "billing.ai.read": "Read by AI",
   "billing.review.needTotal": "Enter the total amount.",
   "billing.review.needName": "Enter a number or a title.",

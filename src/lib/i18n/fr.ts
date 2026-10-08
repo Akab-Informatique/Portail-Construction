@@ -1048,6 +1048,8 @@ export const fr: Record<MessageKey, string> = {
   "billing.ai.confidence.low": "L’IA n’était pas sûre de ce document. Veuillez vérifier chaque montant.",
   "billing.ai.notConfigured": "La lecture par IA n’est pas configurée; entrez les montants vous-même. (Configuration → IA)",
   "billing.ai.failed": "L’IA n’a pas pu lire ce document. Entrez les montants vous-même.",
+  "billing.upload.forbidden": "Votre compte ne peut pas déposer de documents. Il faut un accès du personnel FRX (et ne pas être en mode « voir comme client »).",
+  "billing.upload.signedOut": "Votre session a expiré. Veuillez vous reconnecter.",
   "billing.ai.read": "Lu par l’IA",
   "billing.review.needTotal": "Entrez le montant total.",
   "billing.review.needName": "Entrez un numéro ou un titre.",

@@ -154,14 +154,19 @@ export function BillingUploadDialog({
           text: `${t(`billing.ai.confidence.${conf}` as "billing.ai.confidence.high")}${result.extracted.notes ? ` — ${result.extracted.notes}` : ""}`,
         });
       } else {
-        const key = result.aiError === "ai.notConfigured" ? "billing.ai.notConfigured" : "billing.ai.failed";
-        setAiMessage({ tone: "warn", text: t(key as "billing.ai.failed") });
+        const notConfigured = result.aiError === "ai.notConfigured";
+        setAiMessage({
+          tone: "warn",
+          text: notConfigured ? t("billing.ai.notConfigured") : `${t("billing.ai.failed")}${result.aiError ? ` (${result.aiError})` : ""}`,
+        });
       }
       setPhase("review");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "billing.upload.failed";
-      const translated = t(msg as "billing.upload.failed");
-      setError(translated === msg ? msg : translated);
+      // "billing.upload.failed:403" -> translated text plus the HTTP code, so the real cause is easy to report.
+      const [key, code] = msg.split(":");
+      const translated = t(key as "billing.upload.failed");
+      setError(translated === key ? msg : code ? `${translated} (HTTP ${code})` : translated);
       setPhase("pick");
     }
   }

@@ -94,7 +94,7 @@ export default async function handler(req: Req, res: Res) {
   // ---- download ----
   if (req.method === "GET") {
     const user = await requireApiUser(req);
-    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    if (!user) return res.status(401).json({ error: "billing.upload.signedOut" });
     const id = int(req.query?.id);
     if (!id) return res.status(400).json({ error: "id is required" });
     const row = (await serverQuery("SELECT client_id, published, file_name, file_type FROM billing_files WHERE id = $1", [id])).rows[0] as
@@ -129,7 +129,7 @@ export default async function handler(req: Req, res: Res) {
     if (hasDatabase()) {
       const user = await requireApiUser(req);
       if (!user) return res.status(401).json({ error: "Unauthorized" });
-      if (!isInternalStaff(user)) return res.status(403).json({ error: "Forbidden" });
+      if (!isInternalStaff(user)) return res.status(403).json({ error: "billing.upload.forbidden" });
     }
     const bytes = Buffer.from(String(body.data ?? ""), "base64");
     const mime = sniff(bytes);
@@ -162,9 +162,12 @@ export default async function handler(req: Req, res: Res) {
 
   if (!hasDatabase()) return res.status(200).json({ local: true });
   const user = await requireApiUser(req);
-  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  if (!user) return res.status(401).json({ error: "billing.upload.signedOut" });
   // Only FRX staff manage billing files; clients can never upload or delete.
-  if (!isInternalStaff(user)) return res.status(403).json({ error: "Forbidden" });
+  if (!isInternalStaff(user)) {
+    console.warn(`billing-files: refused user ${user.id} (type ${user.user_type}, view ${user.view_as})`);
+    return res.status(403).json({ error: "billing.upload.forbidden" });
+  }
 
   if (action === "upload") {
     const kind = body.kind === "invoice" ? "invoice" : body.kind === "quote" ? "quote" : null;
