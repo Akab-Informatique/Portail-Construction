@@ -31,6 +31,10 @@ export type UploadTarget = {
   parent?: BillingFile | null;
   /** Open client requests this annex answers. */
   requests?: BillingRequest[];
+  /** How many versions the quote already has (original included): the next one is numbered number-N. */
+  nextVersion?: number;
+  /** The file is an add-on to the final quote (not a new version). */
+  addon?: boolean;
 };
 
 type Phase = "pick" | "analyzing" | "review";
@@ -133,11 +137,14 @@ export function BillingUploadDialog({
         projectId: projectId === NONE ? null : Number(projectId),
         parentId: parent?.id ?? null,
         requestId: requestId === NONE ? null : Number(requestId),
+        addon: Boolean(target?.addon),
         userId,
       });
       const r = result.record;
       setRecord(r);
-      setNumber(r.number ?? "");
+      // A new version of a quote is numbered 1487-1, 1487-2... unless the file itself carries a different number.
+      const suggested = parent && target?.nextVersion ? `${parent.number || parent.id}-${target.addon ? "A" : ""}${target.nextVersion}` : "";
+      setNumber(parent && (!r.number || r.number === parent.number) ? suggested : r.number ?? "");
       setTitle(r.title ?? "");
       setDescription(r.description ?? "");
       setIssuedOn(r.issued_on ?? new Date().toISOString().slice(0, 10));
@@ -227,7 +234,9 @@ export function BillingUploadDialog({
   }
 
   const title0 = parent
-    ? t("billing.upload.annexTitle", { number: parent.number || String(parent.id) })
+    ? target?.addon
+      ? t("billing.upload.addonTitle", { number: parent.number || String(parent.id) })
+      : t("billing.upload.annexTitle", { number: parent.number || String(parent.id) })
     : kind === "invoice"
       ? t("billing.upload.invoiceTitle")
       : t("billing.upload.quoteTitle");

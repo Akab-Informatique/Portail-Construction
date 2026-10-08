@@ -45,15 +45,94 @@ export async function listRequestsForClient(clientId: number): Promise<BillingRe
     .orderBy(desc(schema.billing_requests.id))) as BillingRequest[];
 }
 
-// ---------- totals ----------
+// ---------- versions and add-ons of a quote ----------
+// Before the quote is final, newer versions (1487, 1487-1, 1487-2...) REPLACE each other: the client accepts a version,
+// the latest accepted one is in force and the older ones become "void". Once staff mark a version as final, no more
+// versions can be added; any new PDF is an add-on (1487-A1...) that the client accepts or declines, and an accepted
+// add-on is ADDED to the final quote's total.
 
-/** A quote's amount plus every annex the client accepted. */
-export function quoteEffectiveTotal(quote: BillingFile, all: BillingFile[]) {
-  return quote.amount + annexesOf(quote, all).filter((a) => a.status === "accepted").reduce((sum, a) => sum + a.amount, 0);
+/** The original quote of a chain. */
+export function rootOf(file: BillingFile, all: BillingFile[]) {
+  return file.parent_id ? all.find((f) => f.id === file.parent_id) ?? file : file;
 }
 
+/** The original quote followed by its newer versions (not add-ons), oldest first. */
+export function versionsOf(file: BillingFile, all: BillingFile[]) {
+  const root = rootOf(file, all);
+  return [root, ...all.filter((f) => f.parent_id === root.id && f.is_addon !== 1).sort((a, b) => a.id - b.id)];
+}
+
+/** Add-ons to the final quote, oldest first. */
+export function addonsOf(file: BillingFile, all: BillingFile[]) {
+  const root = rootOf(file, all);
+  return all.filter((f) => f.parent_id === root.id && f.is_addon === 1).sort((a, b) => a.id - b.id);
+}
+
+/** Every document of the quote: versions first, then add-ons. */
+export function chainOf(file: BillingFile, all: BillingFile[]) {
+  return [...versionsOf(file, all), ...addonsOf(file, all)];
+}
+
+/** The final approved version, when staff have marked one. */
+export function finalVersion(file: BillingFile, all: BillingFile[]) {
+  return versionsOf(file, all).find((f) => f.is_final === 1);
+}
+
+/** Newer versions the client can already see (drafts do not count). */
+function newerVersions(file: BillingFile, all: BillingFile[]) {
+  return versionsOf(file, all).filter((f) => f.id > file.id && f.published === 1);
+}
+
+/**
+ * Status of one document: "void" when a newer version took its place, "final" for the final approved version.
+ * Add-ons simply keep their own status (sent / accepted / rejected).
+ */
+export function revisionStatus(file: BillingFile, all: BillingFile[]) {
+  if (file.kind !== "quote") return displayStatus(file);
+  if (file.is_addon === 1) return file.status;
+  if (file.status === "rejected") return "rejected";
+  const newer = newerVersions(file, all);
+  if (file.status === "accepted") {
+    if (newer.some((f) => f.status === "accepted")) return "void";
+    return file.is_final === 1 ? "final" : "accepted";
+  }
+  if (file.status === "sent") return file.published === 1 && newer.length > 0 ? "void" : "sent";
+  return file.status;
+}
+
+/** The version in force: the latest accepted one, else the newest one still waiting, else the original. */
+export function currentRevision(file: BillingFile, all: BillingFile[]) {
+  const chain = versionsOf(file, all);
+  const visible = chain.filter((f) => f.published === 1);
+  const live = visible.filter((f) => revisionStatus(f, all) !== "void" && f.status !== "rejected");
+  return live.find((f) => f.status === "accepted") ?? live[live.length - 1] ?? chain[0];
+}
+
+/** Quote total = the version in force plus every add-on the client accepted. */
+export function quoteEffectiveTotal(quote: BillingFile, all: BillingFile[]) {
+  const addons = addonsOf(quote, all)
+    .filter((a) => a.published === 1 && a.status === "accepted")
+    .reduce((sum, a) => sum + a.amount, 0);
+  return currentRevision(quote, all).amount + addons;
+}
+
+/** Newer documents of a quote (everything except the original). */
 export function annexesOf(quote: BillingFile, all: BillingFile[]) {
-  return all.filter((f) => f.parent_id === quote.id).sort((a, b) => a.id - b.id);
+  return chainOf(quote, all).slice(1);
+}
+
+/** A version or add-on the client still has to accept or decline. */
+export function isPendingDecision(file: BillingFile, all: BillingFile[]) {
+  return file.kind === "quote" && file.published === 1 && file.status === "sent" && revisionStatus(file, all) === "sent";
+}
+
+/** Staff mark (or unmark) the final approved version. Only one version per quote can be final. */
+export async function setFinalVersion(file: BillingFile, all: BillingFile[], final: boolean) {
+  await dbReady;
+  const others = versionsOf(file, all).filter((f) => f.id !== file.id && f.is_final === 1).map((f) => f.id);
+  if (final && others.length) await db.update(schema.billing_files).set({ is_final: 0 }).where(inArray(schema.billing_files.id, others));
+  await db.update(schema.billing_files).set({ is_final: final ? 1 : 0 }).where(eq(schema.billing_files.id, file.id));
+  notify();
 }
 
 /** Overdue is computed from the due date; staff only ever set sent/paid. */
@@ -82,6 +161,8 @@ export type UploadInput = {
   projectId?: number | null;
   parentId?: number | null;
   requestId?: number | null;
+  /** The file is an add-on to the final quote (not a new version). */
+  addon?: boolean;
   userId: number;
 };
 
@@ -125,6 +206,7 @@ export async function uploadBillingFile(input: UploadInput): Promise<UploadResul
       project_id: input.projectId ?? null,
       parent_id: input.parentId ?? null,
       request_id: input.requestId ?? null,
+      addon: Boolean(input.addon),
       file_name: input.file.name,
       data,
     });
@@ -143,6 +225,7 @@ export async function uploadBillingFile(input: UploadInput): Promise<UploadResul
       project_id: input.projectId ?? null,
       parent_id: input.parentId ?? null,
       request_id: input.requestId ?? null,
+      is_addon: input.addon ? 1 : 0,
       status: "sent",
       published: 0,
       file_name: input.file.name,

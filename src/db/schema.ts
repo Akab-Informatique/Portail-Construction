@@ -358,6 +358,10 @@ export const billing_files = pgTable("billing_files", {
   issued_on: text("issued_on"),
   due_on: text("due_on"),
   status: text("status").notNull().default("sent"),
+  /** 1 = this version of the quote is the final approved one: no more versions, only add-ons from then on. */
+  is_final: integer("is_final").notNull().default(0),
+  /** 1 = an add-on to the final quote (its amount is added to the quote once the client accepts it). */
+  is_addon: integer("is_addon").notNull().default(0),
   /** 0 until staff confirm the extracted data; clients only ever see published rows. */
   published: integer("published").notNull().default(0),
   file_name: text("file_name"),

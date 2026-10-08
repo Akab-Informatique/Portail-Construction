@@ -2,8 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import {
   BadgeCheck,
-  ChevronDown,
-  ChevronRight,
+  Stamp,
   Eye,
   FileText,
   FileUp,
@@ -16,15 +15,21 @@ import { db, dbReady, schema } from "../db";
 import { useAuth } from "@/lib/auth";
 import {
   BILLING_FILES_EVENT,
-  annexesOf,
+  addonsOf,
+  chainOf,
+  currentRevision,
   deleteBillingFile,
+  finalVersion,
   displayStatus,
   listBillingFiles,
   listBillingRequests,
   markBillingSeen,
   quoteEffectiveTotal,
+  revisionStatus,
   saveFileDetails,
   setFileStatus,
+  setFinalVersion,
+  versionsOf,
 } from "@/lib/billing-files";
 import { formatDate, money } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
@@ -62,7 +67,6 @@ export function FinanceBillingPage() {
   const [uploadTarget, setUploadTarget] = useState<UploadTarget | null>(null);
   const [viewing, setViewing] = useState<BillingFile | null>(null);
   const [editing, setEditing] = useState<BillingFile | null>(null);
-  const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [busyId, setBusyId] = useState<number | null>(null);
 
   const groupBilling = permissions.some((p) => p.module === "billing" && Number(p.can_view) === 1);
@@ -104,9 +108,9 @@ export function FinanceBillingPage() {
     if (found) {
       setTab(found.kind === "quote" ? "quotes" : "invoices");
       setViewing(found);
-      setExpanded((current) => new Set(current).add(found.id));
-      const reqIds = requests.filter((r) => r.file_id === found.id && r.staff_seen === 0).map((r) => r.id);
-      const fileIds = [found, ...annexesOf(found, files)].filter((f) => f.staff_seen === 0).map((f) => f.id);
+      const chain = chainOf(found, files);
+      const reqIds = requests.filter((r) => chain.some((c) => c.id === r.file_id) && r.staff_seen === 0).map((r) => r.id);
+      const fileIds = chain.filter((f) => f.staff_seen === 0).map((f) => f.id);
       void markBillingSeen({ requestIds: reqIds, fileIds });
     }
     setParams({}, { replace: true });
@@ -124,9 +128,10 @@ export function FinanceBillingPage() {
   const invoicedTotal = invoices.filter(published).reduce((s, f) => s + f.amount, 0);
   const outstanding = invoices.filter(published).filter((f) => displayStatus(f) !== "paid").reduce((s, f) => s + f.amount, 0);
   const overdueTotal = invoices.filter(published).filter((f) => displayStatus(f) === "overdue").reduce((s, f) => s + f.amount, 0);
-  const liveQuotes = quotes.filter(published).filter((f) => f.status !== "rejected");
-  const quotesTotal = liveQuotes.reduce((s, f) => s + quoteEffectiveTotal(f, files), 0);
-  const annexTotal = liveQuotes.reduce((s, f) => s + (quoteEffectiveTotal(f, files) - f.amount), 0);
+  // Each quote counts once, at the amount of the version in force (never a sum of versions).
+  const liveQuotes = quotes.filter(published).filter((q) => revisionStatus(currentRevision(q, files), files) !== "rejected");
+  // Version in force + accepted add-ons.
+  const quotesTotal = liveQuotes.reduce((sum, q) => sum + quoteEffectiveTotal(q, files), 0);
   const openRequests = requests.filter((r) => r.status === "open" && (clientFilter === ALL || String(r.client_id) === clientFilter)).length;
 
   if (user?.user_type === "external") return <Navigate to="/" replace />;
@@ -139,15 +144,6 @@ export function FinanceBillingPage() {
         description={t("billing.restrictedDesc")}
       />
     );
-  }
-
-  function toggle(id: number) {
-    setExpanded((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
   }
 
   async function remove(file: BillingFile) {
@@ -170,36 +166,45 @@ export function FinanceBillingPage() {
   }
 
   const openUpload = (kind: "invoice" | "quote") => setUploadTarget({ kind });
-  const openAnnex = (quote: BillingFile) =>
-    setUploadTarget({ kind: "quote", parent: quote, requests: requests.filter((r) => r.file_id === quote.id) });
+  const openAnnex = (quote: BillingFile, addon = false) =>
+    setUploadTarget({
+      kind: "quote",
+      parent: quote,
+      addon,
+      nextVersion: addon ? addonsOf(quote, files).length + 1 : versionsOf(quote, files).length,
+      requests: requests.filter((r) => chainOf(quote, files).some((c) => c.id === r.file_id)),
+    });
 
-  function renderRow(file: BillingFile, depth: 0 | 1) {
-    const isQuote = file.kind === "quote" && depth === 0;
-    const annexes = isQuote ? annexesOf(file, files) : [];
-    const reqs = isQuote ? requests.filter((r) => r.file_id === file.id) : [];
+  /** One row per document. A quote and its newer versions are listed together, oldest first. */
+  function renderRow(file: BillingFile, isVersion: boolean) {
+    const isQuote = file.kind === "quote";
+    const chain = isQuote ? chainOf(file, files) : [];
+    const current = isQuote ? currentRevision(file, files) : null;
+    const status = revisionStatus(file, files);
+    const isVoid = status === "void";
+    const isAddon = file.is_addon === 1;
+    const finalExists = isQuote ? Boolean(finalVersion(file, files)) : false;
+    const reqs = isQuote && !isVersion ? requests.filter((r) => chain.some((c) => c.id === r.file_id)) : [];
     const open = reqs.filter((r) => r.status === "open");
-    const isOpen = expanded.has(file.id);
-    const amount = isQuote ? quoteEffectiveTotal(file, files) : file.amount;
-    const unseen =
-      file.staff_seen === 0 || reqs.some((r) => r.staff_seen === 0) || annexes.some((a) => a.staff_seen === 0);
+    const unseen = file.staff_seen === 0 || reqs.some((r) => r.staff_seen === 0);
+    const muted = isVoid ? "text-muted-foreground" : "";
 
     return (
-      <tr key={file.id} className={depth ? "bg-muted/20" : "hover:bg-muted/30"}>
-        <td className="px-3 py-3">
-          {isQuote && (annexes.length > 0 || reqs.length > 0) ? (
-            <button type="button" onClick={() => toggle(file.id)} aria-label={t("billing.mods.toggle")} className="text-muted-foreground hover:text-foreground">
-              {isOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
-            </button>
-          ) : null}
-        </td>
-        <td className={`px-3 py-3 font-medium tabular-nums ${depth ? "pl-8" : ""}`}>
-          {depth ? "↳ " : ""}
-          {file.number || `#${file.id}`}
+      <tr key={file.id} className={isVersion ? "bg-muted/20" : "hover:bg-muted/30"}>
+        <td className={`px-3 py-3 font-medium tabular-nums ${isVersion ? "pl-8" : ""} ${muted}`}>
+          <span className={isVoid ? "line-through" : ""}>
+            {isVersion ? (isAddon ? "↳ + " : "↳ ") : ""}
+            {file.number || `#${file.id}`}
+          </span>
           {unseen ? <span className="ml-2 inline-block size-2 rounded-full bg-primary align-middle" title={t("billing.new")} /> : null}
         </td>
-        <td className="px-3 py-3">
+        <td className={`px-3 py-3 ${muted}`}>
           <p className="font-medium">{file.title || "—"}</p>
           <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+            {isQuote && !isAddon && current && chain.length > 1 && file.id === current.id ? (
+              <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-px text-foreground">{t("billing.version.current")}</span>
+            ) : null}
+            {isAddon ? <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-px text-foreground">{t("billing.addon.badge")}</span> : null}
             {file.published !== 1 ? <span className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-px text-amber-800 dark:text-amber-300">{t("billing.draft")}</span> : null}
             {file.ai_status === "analyzed" ? (
               <span className="inline-flex items-center gap-1">
@@ -218,21 +223,33 @@ export function FinanceBillingPage() {
         <td className="px-3 py-3 text-muted-foreground">{file.project_id ? projectName.get(file.project_id) ?? "—" : "—"}</td>
         <td className="px-3 py-3 tabular-nums text-muted-foreground">{formatDate(file.issued_on, locale)}</td>
         <td className="px-3 py-3 tabular-nums text-muted-foreground">{file.kind === "invoice" ? formatDate(file.due_on, locale) : "—"}</td>
-        <td className="px-3 py-3 text-right font-medium tabular-nums">
-          {money(amount, locale)}
-          {isQuote && amount !== file.amount ? (
-            <p className="text-[11px] font-normal text-muted-foreground">{t("billing.quote.withAnnexes", { base: money(file.amount, locale) })}</p>
-          ) : null}
+        <td className={`px-3 py-3 text-right font-medium tabular-nums ${muted}`}>
+          <span className={isVoid ? "line-through" : ""}>
+            {isAddon ? "+ " : ""}
+            {money(file.amount, locale)}
+          </span>
         </td>
         <td className="px-3 py-3">
-          <StatusPill file={file} mode="staff" />
+          <StatusPill file={file} mode="staff" status={status} />
         </td>
         <td className="px-3 py-3">
           <div className="flex justify-end gap-1.5">
-            {isQuote && canManage && open.length > 0 ? (
-              <Button size="sm" onClick={() => openAnnex(file)}>
+            {isQuote && !isVersion && canManage && file.status !== "rejected" ? (
+              <Button size="sm" variant={open.length > 0 ? "default" : "outline"} onClick={() => openAnnex(file, finalExists)}>
                 <FileUp className="size-3.5" />
-                {t("billing.addDocument")}
+                {finalExists ? t("billing.addon.upload") : t("billing.addDocument")}
+              </Button>
+            ) : null}
+            {isQuote && !isAddon && canManage && status === "accepted" && !finalExists ? (
+              <Button
+                size="icon-sm"
+                variant="outline"
+                title={t("billing.final.mark")}
+                onClick={() => {
+                  if (window.confirm(t("billing.final.confirm", { number: file.number || String(file.id) }))) void setFinalVersion(file, files, true);
+                }}
+              >
+                <Stamp className="size-3.5" />
               </Button>
             ) : null}
             <Button size="icon-sm" variant="outline" title={t("billing.file.view")} onClick={() => setViewing(file)}>
@@ -282,7 +299,6 @@ export function FinanceBillingPage() {
         <table className="w-full min-w-[980px] text-sm">
           <thead className="border-b bg-muted/40 text-left text-[11px] uppercase tracking-wider text-muted-foreground">
             <tr>
-              <th className="w-8 px-3 py-3" />
               <th className="px-3 py-3 font-medium">{t("billing.number")}</th>
               <th className="px-3 py-3 font-medium">{t("billing.docTitle")}</th>
               <th className="px-3 py-3 font-medium">{t("billing.client")}</th>
@@ -295,10 +311,9 @@ export function FinanceBillingPage() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {rows.flatMap((row) => [
-              renderRow(row, 0),
-              ...(kind === "quote" && expanded.has(row.id) ? annexesOf(row, files).map((a) => renderRow(a, 1)) : []),
-            ])}
+            {rows.flatMap((row) =>
+              kind === "quote" ? chainOf(row, files).map((version, i) => renderRow(version, i > 0)) : [renderRow(row, false)],
+            )}
           </tbody>
         </table>
       </div>
@@ -338,7 +353,7 @@ export function FinanceBillingPage() {
         <Summary
           label={t("billing.stat.quotes")}
           value={money(quotesTotal, locale)}
-          hint={annexTotal > 0 ? t("billing.stat.annexHint", { amount: money(annexTotal, locale) }) : t("billing.stat.quoteCount", { n: liveQuotes.length })}
+          hint={t("billing.stat.quoteCount", { n: liveQuotes.length })}
         />
       </div>
 
@@ -402,9 +417,9 @@ export function FinanceBillingPage() {
         companyName="FRX Construction"
         onClose={() => setViewing(null)}
         onChanged={() => void load()}
-        onAddDocument={(quote) => {
+        onAddDocument={(quote, addon) => {
           setViewing(null);
-          openAnnex(quote);
+          openAnnex(quote, addon);
         }}
       />
 

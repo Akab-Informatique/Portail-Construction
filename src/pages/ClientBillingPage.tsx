@@ -1,15 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { eq } from "drizzle-orm";
-import { Eye, FileText, Receipt } from "lucide-react";
+import { Eye, FileText, PenLine, Receipt, X } from "lucide-react";
 import { db, dbReady, schema } from "../db";
 import { useAuth } from "@/lib/auth";
+import { logActivity } from "@/lib/activity";
 import {
   BILLING_FILES_EVENT,
+  chainOf,
+  currentRevision,
+  decideFile,
   displayStatus,
   listPublishedForClient,
+  isPendingDecision,
   listRequestsForClient,
   quoteEffectiveTotal,
+  revisionStatus,
 } from "@/lib/billing-files";
 import { formatDate, money } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
@@ -18,6 +24,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { PageSkeleton } from "@/components/Skeleton";
 import { BillingFileDialog, StatusPill } from "@/components/BillingFileDialog";
+import { QuoteSignDialog } from "@/components/QuoteSignDialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -41,6 +48,8 @@ export function ClientBillingPage() {
   const [requests, setRequests] = useState<BillingRequest[]>([]);
   const [viewing, setViewing] = useState<BillingFile | null>(null);
   const [tab, setTab] = useState("invoices");
+  const [signing, setSigning] = useState<BillingFile | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
 
   const isExternal = user?.user_type === "external";
   const clientView = isExternal || user?.view_as === "client";
@@ -96,6 +105,24 @@ export function ClientBillingPage() {
   const quotes = roots.filter((f) => f.kind === "quote");
   const workspaceClient = clients.find((c) => c.id === id) ?? client;
 
+  /** The client accepts (signed) or declines a quote or one of its annexes. */
+  async function decide(target: BillingFile, decision: "accepted" | "rejected", input: { signerName?: string; signature?: string } = {}) {
+    setBusyId(target.id);
+    try {
+      await decideFile(target, decision, input);
+      await logActivity({
+        action: `${decision === "accepted" ? "accepted" : "declined"} ${target.parent_id ? "quote annex" : "quote"}`,
+        details: `${target.number || target.id}${input.signerName ? ` signed by ${input.signerName}` : ""}`,
+        clientId: target.client_id,
+        userId: user?.id,
+      });
+      setSigning(null);
+      await load();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   if (loading) return <PageSkeleton />;
   if (!canView) {
     return (
@@ -123,8 +150,11 @@ export function ClientBillingPage() {
 
   const outstanding = invoices.filter((d) => displayStatus(d) !== "paid").reduce((sum, d) => sum + d.amount, 0);
   const paid = invoices.filter((d) => d.status === "paid").reduce((sum, d) => sum + d.amount, 0);
-  const quoted = quotes.filter((q) => q.status !== "rejected").reduce((sum, q) => sum + quoteEffectiveTotal(q, files), 0);
-  const waiting = files.filter((f) => f.kind === "quote" && f.status === "sent").length;
+  // Each quote counts once, at the amount of the version in force.
+  const quoted = quotes
+    .filter((q) => revisionStatus(currentRevision(q, files), files) !== "rejected")
+    .reduce((sum, q) => sum + quoteEffectiveTotal(q, files), 0);
+  const waiting = files.filter((f) => isPendingDecision(f, files)).length;
 
   return (
     <div>
@@ -166,6 +196,10 @@ export function ClientBillingPage() {
             emptyTitle={t("billing.empty.invoices")}
             emptyDesc={t("billing.empty.invoicesDesc")}
             onOpen={setViewing}
+            canDecide={false}
+            busyId={busyId}
+            onAccept={setSigning}
+            onDecline={(f) => void decide(f, "rejected")}
           />
         </TabsContent>
         <TabsContent value="quotes">
@@ -178,6 +212,10 @@ export function ClientBillingPage() {
             emptyTitle={t("billing.empty.quotes")}
             emptyDesc={t("billing.empty.quotesDesc")}
             onOpen={setViewing}
+            canDecide={isExternal}
+            busyId={busyId}
+            onAccept={setSigning}
+            onDecline={(f) => void decide(f, "rejected")}
           />
         </TabsContent>
       </Tabs>
@@ -194,6 +232,15 @@ export function ClientBillingPage() {
         companyName={workspaceClient.company_name}
         onClose={() => setViewing(null)}
         onChanged={() => void load()}
+      />
+
+      <QuoteSignDialog
+        quote={signing ? { id: signing.id, number: signing.number || String(signing.id), title: signing.title, amount: signing.amount } : null}
+        companyName={workspaceClient.company_name}
+        defaultName={user?.name ?? ""}
+        busy={busyId === signing?.id}
+        onCancel={() => setSigning(null)}
+        onSubmit={(input) => signing && void decide(signing, "accepted", input)}
       />
     </div>
   );
@@ -218,6 +265,10 @@ function FileList({
   emptyTitle,
   emptyDesc,
   onOpen,
+  canDecide,
+  busyId,
+  onAccept,
+  onDecline,
 }: {
   rows: BillingFile[];
   all: BillingFile[];
@@ -227,6 +278,10 @@ function FileList({
   emptyTitle: string;
   emptyDesc: string;
   onOpen: (file: BillingFile) => void;
+  canDecide: boolean;
+  busyId: number | null;
+  onAccept: (file: BillingFile) => void;
+  onDecline: (file: BillingFile) => void;
 }) {
   const { t, locale } = useI18n();
   if (rows.length === 0) {
@@ -236,6 +291,74 @@ function FileList({
         title={emptyTitle}
         description={emptyDesc}
       />
+    );
+  }
+
+  /** One row per document: a quote and its newer versions are listed together, oldest first. */
+  function renderRow(file: BillingFile, root: BillingFile, isVersion: boolean) {
+    const status = revisionStatus(file, all);
+    const isVoid = status === "void";
+    const chain = kind === "quote" ? chainOf(root, all) : [];
+    const current = kind === "quote" ? currentRevision(root, all) : null;
+    const pending = canDecide && isPendingDecision(file, all);
+    const openRequests =
+      kind === "quote" && !isVersion ? requests.filter((r) => r.status === "open" && chain.some((c) => c.id === r.file_id)).length : 0;
+    const muted = isVoid ? "text-muted-foreground" : "";
+
+    return (
+      <tr key={file.id} className={isVersion ? "cursor-pointer bg-muted/20" : "cursor-pointer hover:bg-muted/30"} onClick={() => onOpen(root)}>
+        <td className={`px-4 py-3 font-medium tabular-nums ${isVersion ? "pl-8" : ""} ${muted}`}>
+          <span className={isVoid ? "line-through" : ""}>
+            {isVersion ? (file.is_addon === 1 ? "↳ + " : "↳ ") : ""}
+            {file.number || `#${file.id}`}
+          </span>
+        </td>
+        <td className={`px-4 py-3 ${muted}`}>
+          <p className="font-medium">{file.title || "—"}</p>
+          <p className="mt-0.5 flex flex-wrap gap-1.5 text-xs text-muted-foreground">
+            {current && file.is_addon !== 1 && chain.length > 1 && file.id === current.id ? (
+              <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-px text-foreground">{t("billing.version.current")}</span>
+            ) : null}
+            {file.is_addon === 1 ? <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-px text-foreground">{t("billing.addon.badge")}</span> : null}
+            {pending ? (
+              <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-px text-foreground">{t("billing.annex.pendingCount", { n: 1 })}</span>
+            ) : null}
+            {openRequests > 0 ? <span>{t("billing.requests.count", { n: openRequests })}</span> : null}
+          </p>
+        </td>
+        <td className="px-4 py-3 text-muted-foreground">{isVersion ? "" : projects.find((p) => p.id === file.project_id)?.name ?? t("billing.noProject")}</td>
+        <td className="px-4 py-3 tabular-nums text-muted-foreground">{formatDate(file.issued_on, locale)}</td>
+        {kind === "invoice" ? <td className="px-4 py-3 tabular-nums text-muted-foreground">{formatDate(file.due_on, locale)}</td> : null}
+        <td className={`px-4 py-3 text-right font-medium tabular-nums ${muted}`}>
+          <span className={isVoid ? "line-through" : ""}>
+            {file.is_addon === 1 ? "+ " : ""}
+            {money(file.amount, locale)}
+          </span>
+        </td>
+        <td className="px-4 py-3">
+          <StatusPill file={file} mode="client" status={status} />
+        </td>
+        <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+          <div className="flex flex-wrap justify-end gap-2">
+            {pending ? (
+              <>
+                <Button size="sm" variant="outline" disabled={busyId === file.id} onClick={() => onDecline(file)}>
+                  <X className="size-3.5" />
+                  {t("billing.reject")}
+                </Button>
+                <Button size="sm" disabled={busyId === file.id} onClick={() => onAccept(file)}>
+                  <PenLine className="size-3.5" />
+                  {t("billing.approve")}
+                </Button>
+              </>
+            ) : null}
+            <Button size="sm" variant="outline" onClick={() => onOpen(root)}>
+              <Eye className="size-3.5" />
+              {t("billing.file.view")}
+            </Button>
+          </div>
+        </td>
+      </tr>
     );
   }
 
@@ -255,43 +378,9 @@ function FileList({
           </tr>
         </thead>
         <tbody className="divide-y">
-          {rows.map((row) => {
-            const pendingAnnexes = kind === "quote" ? all.filter((a) => a.parent_id === row.id && a.status === "sent").length : 0;
-            const openRequests = kind === "quote" ? requests.filter((r) => r.file_id === row.id && r.status === "open").length : 0;
-            const total = kind === "quote" ? quoteEffectiveTotal(row, all) : row.amount;
-            return (
-              <tr key={row.id} className="cursor-pointer hover:bg-muted/30" onClick={() => onOpen(row)}>
-                <td className="px-4 py-3 font-medium tabular-nums">{row.number || `#${row.id}`}</td>
-                <td className="px-4 py-3">
-                  <p className="font-medium">{row.title || "—"}</p>
-                  <p className="mt-0.5 flex flex-wrap gap-1.5 text-xs text-muted-foreground">
-                    {pendingAnnexes > 0 ? (
-                      <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-px text-foreground">{t("billing.annex.pendingCount", { n: pendingAnnexes })}</span>
-                    ) : null}
-                    {openRequests > 0 ? <span>{t("billing.requests.count", { n: openRequests })}</span> : null}
-                  </p>
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">{projects.find((p) => p.id === row.project_id)?.name ?? t("billing.noProject")}</td>
-                <td className="px-4 py-3 tabular-nums text-muted-foreground">{formatDate(row.issued_on, locale)}</td>
-                {kind === "invoice" ? <td className="px-4 py-3 tabular-nums text-muted-foreground">{formatDate(row.due_on, locale)}</td> : null}
-                <td className="px-4 py-3 text-right font-medium tabular-nums">
-                  {money(total, locale)}
-                  {kind === "quote" && total !== row.amount ? (
-                    <p className="text-[11px] font-normal text-muted-foreground">{t("billing.quote.withAnnexes", { base: money(row.amount, locale) })}</p>
-                  ) : null}
-                </td>
-                <td className="px-4 py-3">
-                  <StatusPill file={row} mode="client" />
-                </td>
-                <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                  <Button size="sm" variant="outline" onClick={() => onOpen(row)}>
-                    <Eye className="size-3.5" />
-                    {t("billing.file.view")}
-                  </Button>
-                </td>
-              </tr>
-            );
-          })}
+          {rows.flatMap((row) =>
+            kind === "quote" ? chainOf(row, all).map((version, i) => renderRow(version, row, i > 0)) : [renderRow(row, row, false)],
+          )}
         </tbody>
       </table>
     </div>

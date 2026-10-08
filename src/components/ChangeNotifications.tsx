@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { MessageSquareMore } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { BILLING_FILES_EVENT, listBillingFiles, listBillingRequests, markBillingSeen } from "@/lib/billing-files";
+import { BILLING_FILES_EVENT, isPendingDecision, listBillingFiles, listBillingRequests, markBillingSeen } from "@/lib/billing-files";
 import { formatDate, money } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { useWorkspace } from "@/lib/workspace";
@@ -84,10 +84,10 @@ export function ChangeNotifications() {
     const out: Item[] = [];
     if (isClient) {
       for (const f of files) {
-        if (f.published !== 1 || f.kind !== "quote" || f.status !== "sent" || !inScope(f.client_id)) continue;
+        if (!isPendingDecision(f, files) || !inScope(f.client_id)) continue;
         out.push({
           key: `f${f.id}`,
-          label: f.parent_id ? t("qc.notify.proposed") : t("billing.notify.quoteToApprove"),
+          label: f.is_addon === 1 ? t("billing.notify.addonToApprove") : f.parent_id ? t("qc.notify.proposed") : t("billing.notify.quoteToApprove"),
           number: f.number || `#${f.id}`,
           title: f.title,
           clientId: f.client_id,
@@ -116,7 +116,9 @@ export function ChangeNotifications() {
         const accepted = f.status === "accepted";
         out.push({
           key: `f${f.id}`,
-          label: f.parent_id
+          label: f.is_addon === 1
+            ? accepted ? t("billing.notify.addonAccepted") : t("billing.notify.addonDeclined")
+            : f.parent_id
             ? accepted ? t("qc.notify.approved") : t("qc.notify.rejected")
             : accepted ? t("billing.notify.quoteAccepted") : t("billing.notify.quoteDeclined"),
           number: f.number || `#${f.id}`,

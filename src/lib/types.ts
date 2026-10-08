@@ -328,6 +328,10 @@ export type BillingFile = {
   due_on: string | null;
   status: string;
   published: number;
+  /** The final approved version of a quote (no more versions after it). */
+  is_final: number;
+  /** An add-on to the final quote. */
+  is_addon: number;
   file_name: string | null;
   file_type: string | null;
   file_size: number | null;

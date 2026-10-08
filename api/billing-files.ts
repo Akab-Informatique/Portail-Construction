@@ -196,10 +196,16 @@ export default async function handler(req: Req, res: Res) {
       const parent = (await serverQuery("SELECT kind, client_id, parent_id FROM billing_files WHERE id = $1", [parentId])).rows[0] as
         | { kind: string; client_id: number; parent_id: number | null }
         | undefined;
-      // Annexes only hang off an original quote of the same client.
+      // New versions and add-ons only hang off an original quote of the same client.
       if (!parent || parent.kind !== "quote" || parent.parent_id || Number(parent.client_id) !== clientId || kind !== "quote") {
         return res.status(400).json({ error: "Invalid parent quote" });
       }
+      // Once a version is final, only add-ons are allowed; before that, only versions.
+      const finals = Number(
+        ((await serverQuery("SELECT count(*)::int AS n FROM billing_files WHERE (id = $1 OR parent_id = $1) AND is_final = 1 AND is_addon = 0", [parentId])).rows[0] as { n: number }).n,
+      );
+      if (body.addon === true && finals === 0) return res.status(400).json({ error: "billing.upload.noFinal" });
+      if (body.addon !== true && finals > 0) return res.status(400).json({ error: "billing.upload.isFinal" });
     } else {
       parentId = null;
     }
@@ -209,10 +215,10 @@ export default async function handler(req: Req, res: Res) {
 
     const inserted = (
       await serverQuery(
-        `INSERT INTO billing_files (kind, client_id, project_id, parent_id, request_id, status, published, file_name, file_type, file_size, ai_status, uploaded_by, staff_seen)
-         VALUES ($1, $2, $3, $4, $5, 'sent', 0, $6, $7, $8, 'pending', $9, 1)
+        `INSERT INTO billing_files (kind, client_id, project_id, parent_id, request_id, is_addon, status, published, file_name, file_type, file_size, ai_status, uploaded_by, staff_seen)
+         VALUES ($1, $2, $3, $4, $5, $6, 'sent', 0, $7, $8, $9, 'pending', $10, 1)
          RETURNING id`,
-        [kind, clientId, projectId, parentId, requestId, fileName, mime, bytes.length, user.id],
+        [kind, clientId, projectId, parentId, requestId, parentId && body.addon === true ? 1 : 0, fileName, mime, bytes.length, user.id],
       )
     ).rows[0] as { id: number };
     await serverQuery("INSERT INTO billing_file_blobs (file_id, data) VALUES ($1, $2)", [inserted.id, bytes.toString("base64")]);

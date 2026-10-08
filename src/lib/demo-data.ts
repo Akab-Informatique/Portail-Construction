@@ -448,9 +448,28 @@ async function fakePdf(input: { kind: "invoice" | "quote"; number: string; clien
 }
 
 /** Fake uploaded invoices/quotes with annexes and open client requests, for the "Gestion de la facturation" module. */
+/** Local databases created before "final" and "add-on" existed: mark the Laval demo quote's accepted revision as final. */
+async function patchDemoFinal() {
+  const all = await db.select().from(schema.billing_files);
+  if (all.some((f) => f.is_final === 1 || f.is_addon === 1)) return;
+  const roots = all.filter((f) => f.kind === "quote" && !f.parent_id && f.status === "accepted");
+  for (const root of roots) {
+    const kids = all.filter((f) => f.parent_id === root.id).sort((a, b) => a.id - b.id);
+    const firstAccepted = kids.find((k) => k.status === "accepted");
+    if (!firstAccepted) continue;
+    await db.update(schema.billing_files).set({ is_final: 1 }).where(eq(schema.billing_files.id, firstAccepted.id));
+    for (const k of kids.filter((k) => k.id > firstAccepted.id)) {
+      await db.update(schema.billing_files).set({ is_addon: 1 }).where(eq(schema.billing_files.id, k.id));
+    }
+  }
+}
+
 async function seedBillingFiles() {
   const have = await db.select({ id: schema.billing_files.id }).from(schema.billing_files).limit(1);
-  if (have.length > 0) return;
+  if (have.length > 0) {
+    await patchDemoFinal();
+    return;
+  }
   const clientRows = await db.select().from(schema.clients);
   const byName = (needle: string) => clientRows.find((c) => c.company_name.includes(needle));
   const nordique = byName("Nordique");
@@ -477,6 +496,8 @@ async function seedBillingFiles() {
     requestId?: number | null;
     acceptedBy?: string | null;
     staffSeen?: number;
+    isFinal?: boolean;
+    isAddon?: boolean;
   };
   async function add(spec: Spec) {
     const issued = isoDate(spec.issuedOffset);
@@ -511,6 +532,8 @@ async function seedBillingFiles() {
         accepted_by: spec.acceptedBy ?? null,
         accepted_at: spec.acceptedBy ? new Date().toISOString() : null,
         staff_seen: spec.staffSeen ?? 1,
+        is_final: spec.isFinal ? 1 : 0,
+        is_addon: spec.isAddon ? 1 : 0,
       })
       .returning();
     await db.insert(schema.billing_file_blobs).values({ file_id: row.id, data: pdf.data });
@@ -542,8 +565,10 @@ async function seedBillingFiles() {
       staff_seen: 1,
     })
     .returning();
-  await add({ kind: "quote", number: `SOU-${yy}01-A1`, client: nordique, projectNeedle: "Peel", title: "Annexe — porte vitrée salle 2", lines: [{ description: "Porte vitrée à cadre noir, fournie et installée", quantity: 1, unit: "un", unit_price: 3200 }], issuedOffset: -1, dueOffset: null, status: "sent", parentId: peel.id, requestId: peelRequest.id });
-  await add({ kind: "quote", number: `SOU-${yy}02-A1`, client: laval, projectNeedle: "unit 114", title: "Annexe — enseigne lumineuse", lines: [{ description: "Enseigne lumineuse DEL et alimentation", quantity: 1, unit: "forfait", unit_price: 6400 }], issuedOffset: -20, dueOffset: null, status: "accepted", parentId: retail.id, acceptedBy: "Daniel Roy" });
+  await add({ kind: "quote", number: `SOU-${yy}01-1`, client: nordique, projectNeedle: "Peel", title: "Modification — porte vitrée salle 2", lines: [{ description: "Porte vitrée à cadre noir, fournie et installée", quantity: 1, unit: "un", unit_price: 3200 }], issuedOffset: -1, dueOffset: null, status: "sent", parentId: peel.id, requestId: peelRequest.id });
+  await add({ kind: "quote", number: `SOU-${yy}02-1`, client: laval, projectNeedle: "unit 114", title: "Centre Carrefour — Unité 114, version révisée", lines: [{ description: "Aménagement complet de l’unité 114", quantity: 1, unit: "forfait", unit_price: 118000 }, { description: "Enseigne lumineuse DEL et alimentation", quantity: 1, unit: "forfait", unit_price: 6400 }], issuedOffset: -20, dueOffset: null, status: "accepted", parentId: retail.id, acceptedBy: "Daniel Roy", isFinal: true });
+  await add({ kind: "quote", number: `SOU-${yy}02-A1`, client: laval, projectNeedle: "unit 114", title: "Ajout — prises électriques supplémentaires", lines: [{ description: "Six prises électriques et circuit dédié pour la caisse", quantity: 1, unit: "forfait", unit_price: 2400 }], issuedOffset: -5, dueOffset: null, status: "accepted", parentId: retail.id, acceptedBy: "Daniel Roy", isAddon: true });
+  await add({ kind: "quote", number: `SOU-${yy}02-A2`, client: laval, projectNeedle: "unit 114", title: "Ajout — climatisation de la réserve", lines: [{ description: "Unité murale de climatisation, réserve", quantity: 1, unit: "forfait", unit_price: 3800 }], issuedOffset: -1, dueOffset: null, status: "sent", parentId: retail.id, isAddon: true });
   await db.insert(schema.billing_requests).values({
     file_id: retail.id,
     client_id: laval.id,
