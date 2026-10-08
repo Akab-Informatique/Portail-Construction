@@ -234,7 +234,7 @@ export function FinanceBillingPage() {
         </td>
         <td className="px-3 py-3">
           <div className="flex justify-end gap-1.5">
-            {isQuote && !isVersion && canManage && file.status !== "rejected" ? (
+            {isQuote && !isVersion && canManage ? (
               <Button size="sm" variant={open.length > 0 ? "default" : "outline"} onClick={() => openAnnex(file, finalExists)}>
                 <FileUp className="size-3.5" />
                 {finalExists ? t("billing.addon.upload") : t("billing.addDocument")}

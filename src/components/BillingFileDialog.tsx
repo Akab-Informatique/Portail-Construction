@@ -134,7 +134,6 @@ export function BillingFileDialog({
   const isQuote = root.kind === "quote";
   const shownStatus = revisionStatus(shown, allFiles);
   const rootRequests = requests.filter((r) => everything.some((f) => f.id === r.file_id)).sort((a, b) => a.id - b.id);
-  const closed = current.status === "rejected" && versions.length === 1 && !finalOne;
   const isImage = (shown.file_type ?? "").startsWith("image/");
   const hasOpenRequest = rootRequests.some((r) => r.status === "open");
   const pendingShown = canDecide && isPendingDecision(shown, allFiles);
@@ -360,13 +359,13 @@ export function BillingFileDialog({
                   </div>
                 ))}
 
-                {mode === "client" && !closed ? (
+                {mode === "client" ? (
                   <Button type="button" className="w-full sm:w-auto" onClick={() => setRequestOpen(true)}>
                     <MessageSquarePlus className="size-4" />
                     {finalOne ? t("qc.requestButtonFinal") : t("qc.requestButton")}
                   </Button>
                 ) : null}
-                {mode === "staff" && canManage && !closed && onAddDocument ? (
+                {mode === "staff" && canManage && onAddDocument ? (
                   <Button
                     type="button"
                     variant={hasOpenRequest ? "default" : "outline"}
