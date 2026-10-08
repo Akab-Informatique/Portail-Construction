@@ -32,6 +32,11 @@ function sniff(bytes: Buffer): Mime | null {
 
 const PROVIDERS: AiProvider[] = ["gemini", "anthropic"];
 
+/** Models the provider no longer serves; an old saved value falls back to the current default. */
+const RETIRED_MODELS = new Set(["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]);
+const usableModel = (model: string | undefined, provider: AiProvider) =>
+  model && !RETIRED_MODELS.has(model) ? model : DEFAULT_MODELS[provider];
+
 type StoredAi = { provider?: string; api_key?: string; model?: string; enabled?: boolean };
 
 /**
@@ -54,7 +59,7 @@ async function aiConfig(override?: StoredAi) {
 
   const savedProvider = String(stored.provider || "").toLowerCase() as AiProvider;
   if (stored.api_key?.trim() && PROVIDERS.includes(savedProvider)) {
-    return { provider: savedProvider, apiKey: stored.api_key.trim(), model: stored.model || DEFAULT_MODELS[savedProvider] };
+    return { provider: savedProvider, apiKey: stored.api_key.trim(), model: usableModel(stored.model, savedProvider) };
   }
 
   // Fallback: the server environment.
@@ -66,7 +71,7 @@ async function aiConfig(override?: StoredAi) {
   let provider = String(env.AI_PROVIDER || "").toLowerCase() as AiProvider;
   if (!PROVIDERS.includes(provider)) provider = envKeys.gemini ? "gemini" : envKeys.anthropic ? "anthropic" : "gemini";
   const apiKey = (env.AI_API_KEY || envKeys[provider] || "").trim();
-  return { provider, apiKey, model: env.AI_MODEL || DEFAULT_MODELS[provider] };
+  return { provider, apiKey, model: usableModel(env.AI_MODEL, provider) };
 }
 
 async function runAnalysis(kind: "invoice" | "quote", mime: Mime, base64: string, override?: StoredAi): Promise<{ extracted?: Extracted; error?: string }> {

@@ -21,7 +21,7 @@ export type Extracted = {
 export type AiProvider = "gemini" | "anthropic";
 
 export const DEFAULT_MODELS: Record<AiProvider, string> = {
-  gemini: "gemini-2.5-flash",
+  gemini: "gemini-3.8-flash",
   anthropic: "claude-sonnet-5-5",
 };
 

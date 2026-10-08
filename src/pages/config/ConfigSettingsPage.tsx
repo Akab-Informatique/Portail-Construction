@@ -582,7 +582,7 @@ export function ConfigSettingsPage() {
                   </select>
                 </Field>
                 <Field label={t("settings.ai.model")}>
-                  <Input placeholder={ai.provider === "anthropic" ? "claude-sonnet-5-5" : "gemini-2.5-flash"} value={ai.model} onChange={(e) => setAi({ ...ai, model: e.target.value })} />
+                  <Input placeholder={ai.provider === "anthropic" ? "claude-sonnet-5-5" : "gemini-3.8-flash"} value={ai.model} onChange={(e) => setAi({ ...ai, model: e.target.value })} />
                 </Field>
                 <Field label={t("settings.ai.apiKey")}>
                   <Input type="password" autoComplete="new-password" placeholder={ai.provider === "anthropic" ? "sk-ant-…" : "AIza…"} value={ai.api_key} onChange={(e) => setAi({ ...ai, api_key: e.target.value })} />
