@@ -97,15 +97,11 @@ export function LoginPage() {
       </div>
 
       <header className="relative z-10 flex items-center justify-between px-6 py-5 sm:px-10 [@media(max-height:800px)]:py-3">
-        <div className="flex items-center gap-3">
-          <img src="/brand/logo-icon.png" alt="" className="size-9 object-contain sm:size-10" />
-          <div className="leading-none">
-            <p className="font-display text-lg font-bold tracking-[0.2em]">FRX</p>
-            <p className="mt-1 font-display text-[10px] font-semibold tracking-[0.36em] text-[#fbaa19]">
-              {t("brand.construction")}
-            </p>
-          </div>
-        </div>
+        <img
+          src="/brand/frx-construction-logo-white.png"
+          alt="FRX Construction"
+          className="h-10 w-auto object-contain sm:h-12"
+        />
         <div className="flex overflow-hidden rounded-sm border border-[#2e2e2c] bg-black/60" role="group" aria-label="Language">
           {(["en", "fr"] as const).map((code) => (
             <button
