@@ -187,11 +187,17 @@ export function AuthCard({ children }: { children: ReactNode }) {
       <BorderBeam size={110} duration={9} delay={4.5} borderWidth={2} colorFrom="#fff4d4" colorTo="#fbaa19" />
       {/* Wedge: flat top, 20° slanted underside (same angle as the background diagonals) */}
       <p
-        className="relative -mx-8 mb-7 flex h-[132px] flex-col items-start justify-end bg-[#ffa62c] px-8 pb-3 font-['Barlow_Condensed'] text-[34px] font-normal uppercase leading-[1.1] tracking-[0.2em] text-white sm:-mx-10 sm:px-10 [@media(max-height:800px)]:-mx-7 [@media(max-height:800px)]:mb-5 [@media(max-height:800px)]:h-[116px] [@media(max-height:800px)]:px-7"
+        className="relative -mx-8 mb-7 flex h-[132px] flex-col items-start justify-end bg-[#ffa62c] px-8 pb-[34px] font-['Barlow_Condensed'] text-[34px] font-semibold uppercase leading-[1.1] tracking-[0.2em] text-white sm:-mx-10 sm:px-10 [@media(max-height:800px)]:-mx-7 [@media(max-height:800px)]:mb-5 [@media(max-height:800px)]:h-[116px] [@media(max-height:800px)]:px-7"
         style={{ clipPath: "polygon(0 0, 100% 0, 100% calc(100% - 91px), calc(100% - 250px) 100%, 0 100%)" }}
       >
-        <span>{lead}</span>
-        <span>{last}.</span>
+        {/* Slight perspective so the words recede into the screen, like the site's tagline */}
+        <span
+          className="flex origin-left flex-col [text-shadow:0_2px_6px_rgba(120,60,0,0.35)]"
+          style={{ transform: "perspective(520px) rotateY(-16deg) scale(1.02)" }}
+        >
+          <span>{lead}</span>
+          <span>{last}.</span>
+        </span>
       </p>
       <div className="relative">{children}</div>
     </div>
