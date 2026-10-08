@@ -4,6 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import fs from "fs";
 import path from "path";
 import { mailDevServer } from "./vite-plugins/mail-dev-server";
+import { billingFilesDevServer } from "./vite-plugins/billing-files-dev-server";
 import { sharepointDevServer } from "./vite-plugins/sharepoint-dev-server";
 import { dbDevServer } from "./vite-plugins/db-dev-server";
 
@@ -55,7 +56,7 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
-  plugins: [react(), tailwindcss(), mailDevServer(), sharepointDevServer(), dbDevServer(), stripPreviewInspector()],
+  plugins: [react(), tailwindcss(), mailDevServer(), billingFilesDevServer(), sharepointDevServer(), dbDevServer(), stripPreviewInspector()],
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },
   },

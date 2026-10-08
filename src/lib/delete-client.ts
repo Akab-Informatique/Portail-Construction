@@ -16,7 +16,17 @@ const PROJECT_TABLES = [
   schema.time_punches,
 ] as const;
 
+async function deleteBillingFilesOf(clientId: number) {
+  const files = await db.select({ id: schema.billing_files.id }).from(schema.billing_files).where(eq(schema.billing_files.client_id, clientId));
+  const ids = files.map((f) => f.id);
+  if (ids.length) await db.delete(schema.billing_file_blobs).where(inArray(schema.billing_file_blobs.file_id, ids));
+  await db.delete(schema.billing_requests).where(eq(schema.billing_requests.client_id, clientId));
+  await db.delete(schema.billing_files).where(eq(schema.billing_files.client_id, clientId));
+}
+
 export async function deleteClientCascade(clientId: number) {
+  await deleteBillingFilesOf(clientId);
+  await db.delete(schema.quote_changes).where(eq(schema.quote_changes.client_id, clientId));
   const projects = await db.select({ id: schema.projects.id }).from(schema.projects).where(eq(schema.projects.client_id, clientId));
   const projectIds = projects.map((p) => p.id);
 

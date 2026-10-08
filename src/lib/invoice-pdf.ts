@@ -1,8 +1,8 @@
 import { jsPDF } from "jspdf";
 import { downloadBlob } from "./download";
 import { formatDate, moneyExact } from "./format";
-import { documentTotals, formatAddress, invoiceTitle, lineAmount } from "./invoice";
-import type { BillingDocument, Client, CompanyProfile, Locale, Project } from "./types";
+import { documentTotals, formatAddress, invoiceTitle, lineAmount, parseLines } from "./invoice";
+import type { BillingDocument, Client, CompanyProfile, Locale, Project, QuoteChange } from "./types";
 
 const YELLOW: [number, number, number] = [251, 170, 25];
 const BLACK: [number, number, number] = [0, 0, 0];
@@ -14,12 +14,134 @@ function money(value: number, locale: Locale) {
   return moneyExact(value, locale);
 }
 
+/** Annexes (client change requests priced by FRX) that are added after the quote pages. */
+function addAnnexPages(pdf: jsPDF, doc: BillingDocument, changes: QuoteChange[], company: CompanyProfile, locale: Locale) {
+  const isFr = locale === "fr";
+  const pageW = pdf.internal.pageSize.getWidth();
+  for (const change of changes) {
+    pdf.addPage();
+    const lines = parseLines(change.line_items);
+    pdf.setFillColor(...YELLOW);
+    pdf.rect(0, 0, pageW, 6, "F");
+    pdf.setFont("helvetica", "bold");
+    pdf.setTextColor(...BLACK);
+    pdf.setFontSize(22);
+    pdf.text(isFr ? "ANNEXE" : "ANNEX", 16, 22);
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(11);
+    pdf.setTextColor(...CONCRETE);
+    pdf.text(`Nº ${change.number}  ·  ${isFr ? "Soumission" : "Quote"} ${doc.number}`, 16, 29);
+    pdf.setDrawColor(...PALE);
+    pdf.line(16, 34, pageW - 16, 34);
+
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(13);
+    pdf.setTextColor(...BLACK);
+    pdf.text(change.title, 16, 44, { maxWidth: pageW - 32 });
+    let y = 52;
+    if (change.description) {
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(10);
+      pdf.setTextColor(...CONCRETE);
+      const wrapped = pdf.splitTextToSize(change.description, pageW - 32) as string[];
+      pdf.text(wrapped, 16, y);
+      y += wrapped.length * 5 + 4;
+    }
+
+    if (lines.length > 0) {
+      pdf.setFillColor(...BLACK);
+      pdf.rect(16, y, pageW - 32, 8, "F");
+      pdf.setTextColor(...PAPER);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(8);
+      pdf.text("DESCRIPTION", 18, y + 5.5);
+      pdf.text(isFr ? "QTÉ" : "QTY", 128, y + 5.5, { align: "right" });
+      pdf.text(isFr ? "P.U." : "UNIT", 156, y + 5.5, { align: "right" });
+      pdf.text(isFr ? "MONTANT" : "AMOUNT", pageW - 18, y + 5.5, { align: "right" });
+      let rowY = y + 14;
+      pdf.setFont("helvetica", "normal");
+      pdf.setTextColor(...BLACK);
+      pdf.setFontSize(9);
+      lines.forEach((line, i) => {
+        if (i % 2 === 1) {
+          pdf.setFillColor(248, 248, 247);
+          pdf.rect(16, rowY - 5, pageW - 32, 8, "F");
+        }
+        pdf.text(line.description || "—", 18, rowY);
+        pdf.text(`${line.quantity} ${line.unit}`, 128, rowY, { align: "right" });
+        pdf.text(money(line.unit_price, locale), 156, rowY, { align: "right" });
+        pdf.text(money(lineAmount(line), locale), pageW - 18, rowY, { align: "right" });
+        rowY += 8;
+      });
+      pdf.setDrawColor(...PALE);
+      pdf.line(16, rowY, pageW - 16, rowY);
+      const boxX = 122;
+      let ty = rowY + 8;
+      const rows: [string, number][] = [
+        [isFr ? "Sous-total" : "Subtotal", change.subtotal ?? 0],
+        ["TPS / GST 5 %", change.tax_gst ?? 0],
+        ["TVQ / QST 9.975 %", change.tax_qst ?? 0],
+      ];
+      pdf.setFontSize(9);
+      rows.forEach(([label, value]) => {
+        pdf.setTextColor(...CONCRETE);
+        pdf.text(label, boxX, ty);
+        pdf.setTextColor(...BLACK);
+        pdf.text(money(value, locale), pageW - 18, ty, { align: "right" });
+        ty += 6;
+      });
+      pdf.setFillColor(...YELLOW);
+      pdf.rect(boxX - 4, ty - 4, pageW - boxX - 12, 10, "F");
+      pdf.setTextColor(...BLACK);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(11);
+      pdf.text("TOTAL", boxX, ty + 3);
+      pdf.text(money(change.amount, locale), pageW - 18, ty + 3, { align: "right" });
+      y = ty + 18;
+    }
+
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(8);
+    pdf.setTextColor(...CONCRETE);
+    if (change.status === "approved") {
+      pdf.text(isFr ? "APPROUVÉE ET SIGNÉE PAR" : "APPROVED AND SIGNED BY", 16, y);
+      if (change.signature) {
+        try {
+          pdf.addImage(change.signature, "PNG", 16, y + 2, 46, 16);
+        } catch {
+          /* ignore invalid signature image */
+        }
+      }
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(9);
+      pdf.setTextColor(...BLACK);
+      pdf.text(change.signed_by || "", 16, y + 22);
+      if (change.decided_at) {
+        pdf.setTextColor(...CONCRETE);
+        pdf.setFontSize(8);
+        pdf.text(formatDate(change.decided_at, locale), 16, y + 26);
+      }
+    } else {
+      pdf.text(isFr ? "EN ATTENTE D’APPROBATION DU CLIENT" : "AWAITING CLIENT APPROVAL", 16, y);
+    }
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(8);
+    pdf.setTextColor(...CONCRETE);
+    pdf.text(`${isFr ? "TPS" : "GST"} ${company.gst}   ${isFr ? "TVQ" : "QST"} ${company.qst}`, 16, 236);
+    pdf.setFillColor(...YELLOW);
+    pdf.rect(0, 271, pageW, 4, "F");
+    pdf.text("FRX Construction  ·  frxconstruction.ca", pageW / 2, 277, { align: "center" });
+  }
+}
+
 export function buildInvoicePdf(opts: {
   doc: BillingDocument;
   client: Client;
   project?: Project | null;
   company: CompanyProfile;
   locale: Locale;
+  /** Quote annexes to append (only priced ones are printed). */
+  changes?: QuoteChange[];
 }) {
   const { doc, client, project, company, locale } = opts;
   const pdf = new jsPDF({ unit: "mm", format: "letter" });
@@ -207,6 +329,9 @@ export function buildInvoicePdf(opts: {
   pdf.setTextColor(...CONCRETE);
   pdf.text("FRX Construction  ·  frxconstruction.ca", pageW / 2, 277, { align: "center" });
 
+  const annexes = (opts.changes ?? []).filter((c) => c.status === "proposed" || c.status === "approved");
+  if (annexes.length > 0) addAnnexPages(pdf, doc, annexes, company, locale);
+
   return pdf;
 }
 
@@ -216,6 +341,7 @@ export async function downloadInvoicePdf(opts: {
   project?: Project | null;
   company: CompanyProfile;
   locale: Locale;
+  changes?: QuoteChange[];
 }) {
   const pdf = buildInvoicePdf(opts);
   const blob = pdf.output("blob");
@@ -228,6 +354,7 @@ export function printInvoice(opts: {
   project?: Project | null;
   company: CompanyProfile;
   locale: Locale;
+  changes?: QuoteChange[];
 }) {
   const pdf = buildInvoicePdf(opts);
   const url = pdf.output("bloburl");
@@ -256,6 +383,7 @@ export function invoicePdfBase64(opts: {
   project?: Project | null;
   company: CompanyProfile;
   locale: Locale;
+  changes?: QuoteChange[];
 }) {
   return buildInvoicePdf(opts).output("datauristring").split(",")[1] ?? "";
 }

@@ -201,6 +201,16 @@ export type SmtpSettings = {
   portal_url?: string;
 };
 
+export type AiSettings = {
+  enabled: boolean;
+  /** gemini (free tier available) or anthropic (Claude). The server's .env overrides this. */
+  provider: "gemini" | "anthropic";
+  /** API key. Stored on the server; the browser only ever sees a masked value. */
+  api_key: string;
+  /** Empty = the provider's default model. */
+  model: string;
+};
+
 export type EmailTemplateKey = "send_invoice" | "send_quote" | "follow_up" | "password_reset";
 
 export type EmailTemplate = {
@@ -269,3 +279,93 @@ export type ModuleId =
   | "clients"
   | "users"
   | "billing";
+
+export type QuoteChangeStatus = "requested" | "proposed" | "approved" | "rejected" | "cancelled";
+
+/** A client change request on a quote, or an add-on annex priced by FRX. */
+export type QuoteChange = {
+  id: number;
+  quote_id: number;
+  client_id: number;
+  number: string;
+  origin: "client" | "staff";
+  status: QuoteChangeStatus;
+  title: string;
+  description: string | null;
+  line_items: string | null;
+  subtotal: number | null;
+  tax_gst: number | null;
+  tax_qst: number | null;
+  amount: number;
+  requested_by: number | null;
+  requested_at: string | null;
+  proposed_by: number | null;
+  proposed_at: string | null;
+  decided_by: number | null;
+  decided_at: string | null;
+  signed_by: string | null;
+  signature: string | null;
+  staff_seen: number;
+  created_at: Date;
+};
+
+/** An invoice or quote uploaded as a file. A row with parent_id is an annex of that quote. */
+export type BillingFile = {
+  id: number;
+  kind: "invoice" | "quote";
+  client_id: number;
+  project_id: number | null;
+  parent_id: number | null;
+  request_id: number | null;
+  number: string;
+  title: string;
+  description: string | null;
+  subtotal: number | null;
+  tax_gst: number | null;
+  tax_qst: number | null;
+  amount: number;
+  issued_on: string | null;
+  due_on: string | null;
+  status: string;
+  published: number;
+  file_name: string | null;
+  file_type: string | null;
+  file_size: number | null;
+  ai_status: string;
+  ai_notes: string | null;
+  uploaded_by: number | null;
+  accepted_by: string | null;
+  accepted_at: string | null;
+  signature: string | null;
+  staff_seen: number;
+  created_at: Date;
+};
+
+export type BillingRequest = {
+  id: number;
+  file_id: number;
+  client_id: number;
+  number: string;
+  title: string;
+  description: string | null;
+  status: string;
+  requested_by: number | null;
+  requested_at: string | null;
+  staff_seen: number;
+  created_at: Date;
+};
+
+/** What the AI read from an uploaded document (a suggestion only). */
+export type ExtractedDocument = {
+  number?: string;
+  title?: string;
+  client_name?: string;
+  issued_on?: string;
+  due_on?: string;
+  subtotal?: number;
+  tax_gst?: number;
+  tax_qst?: number;
+  total?: number;
+  confidence?: "high" | "medium" | "low";
+  notes?: string;
+};

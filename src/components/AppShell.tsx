@@ -1,4 +1,5 @@
 import { createContext, Suspense, useContext, useEffect, useMemo, useState } from "react";
+import { ChangeNotifications } from "@/components/ChangeNotifications";
 import { InstallAppButton } from "@/components/InstallAppButton";
 import { Logo } from "@/components/Logo";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -26,6 +27,7 @@ import {
   Sun,
   Timer,
   Users,
+  ReceiptText,
   Wallet,
   Wrench,
 } from "lucide-react";
@@ -173,6 +175,12 @@ export function useNavModel(): NavSection[] {
         id: "finance",
         label: t("nav.section.finance"),
         tour: "accounting",
+        items: [{ id: "billingMgmt", to: "/finance/billing", label: t("nav.billingMgmt"), icon: ReceiptText }],
+      });
+      // Work in progress: the invoice/quote builder lives here until it is ready.
+      sections.push({
+        id: "development",
+        label: t("nav.section.development"),
         items: [{ id: "allBilling", to: "/accounting/billing", label: t("nav.allBilling"), icon: Wallet }],
       });
     }
@@ -536,6 +544,7 @@ const CRUMB: Record<string, MessageKey> = {
   profile: "nav.profile",
   billing: "nav.billing",
   accounting: "nav.allBilling",
+  finance: "nav.billingMgmt",
   settings: "nav.setup",
   punch: "nav.punch",
   timesheets: "nav.timesheets",
@@ -583,7 +592,7 @@ export function AppShell() {
       else navigate("/");
       return;
     }
-    if (mode !== "admin" && (location.pathname.startsWith("/settings") || location.pathname.startsWith("/accounting"))) {
+    if (mode !== "admin" && (location.pathname.startsWith("/settings") || location.pathname.startsWith("/accounting") || location.pathname.startsWith("/finance"))) {
       navigate("/");
     }
   }
@@ -701,6 +710,7 @@ export function AppShell() {
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : null}
+            <ChangeNotifications />
             <InstallAppButton className="[&>button]:size-8" />
             <div className="flex items-center overflow-hidden rounded-sm border">
               {(["en", "fr"] as const).map((code) => (

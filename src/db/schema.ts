@@ -306,6 +306,99 @@ export const billing_documents = pgTable("billing_documents", {
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
+/** Client change requests and the priced annexes (add-ons) that go with a quote. */
+export const quote_changes = pgTable("quote_changes", {
+  id: serial("id").primaryKey(),
+  quote_id: integer("quote_id").notNull(),
+  client_id: integer("client_id").notNull(),
+  number: text("number").notNull(),
+  /** "client" = asked for by the client, "staff" = added by FRX. */
+  origin: text("origin").notNull(),
+  /** requested -> proposed (annex priced, waiting on the client) -> approved | rejected, or cancelled. */
+  status: text("status").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  line_items: text("line_items"),
+  subtotal: real("subtotal"),
+  tax_gst: real("tax_gst"),
+  tax_qst: real("tax_qst"),
+  amount: real("amount").notNull().default(0),
+  requested_by: integer("requested_by"),
+  requested_at: text("requested_at"),
+  proposed_by: integer("proposed_by"),
+  proposed_at: text("proposed_at"),
+  decided_by: integer("decided_by"),
+  decided_at: text("decided_at"),
+  signed_by: text("signed_by"),
+  signature: text("signature"),
+  /** 0 = FRX staff have not looked at this yet (drives the notification bubble). */
+  staff_seen: integer("staff_seen").notNull().default(0),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+/**
+ * Invoices and quotes uploaded as files ("Gestion de la facturation"). The amounts are read from the file
+ * (by AI, then confirmed by staff) and are for consultation only. A row with parent_id is an annex (sub-file)
+ * of the original quote and counts toward it once the client accepts it.
+ */
+export const billing_files = pgTable("billing_files", {
+  id: serial("id").primaryKey(),
+  kind: text("kind").notNull(),
+  client_id: integer("client_id").notNull(),
+  project_id: integer("project_id"),
+  parent_id: integer("parent_id"),
+  request_id: integer("request_id"),
+  number: text("number").notNull().default(""),
+  title: text("title").notNull().default(""),
+  description: text("description"),
+  subtotal: real("subtotal"),
+  tax_gst: real("tax_gst"),
+  tax_qst: real("tax_qst"),
+  amount: real("amount").notNull().default(0),
+  issued_on: text("issued_on"),
+  due_on: text("due_on"),
+  status: text("status").notNull().default("sent"),
+  /** 0 until staff confirm the extracted data; clients only ever see published rows. */
+  published: integer("published").notNull().default(0),
+  file_name: text("file_name"),
+  file_type: text("file_type"),
+  file_size: integer("file_size"),
+  /** pending | analyzed | manual | failed */
+  ai_status: text("ai_status").notNull().default("manual"),
+  ai_notes: text("ai_notes"),
+  uploaded_by: integer("uploaded_by"),
+  accepted_by: text("accepted_by"),
+  accepted_at: text("accepted_at"),
+  signature: text("signature"),
+  /** 0 = staff have not seen the client's decision yet (drives the notification bubble). */
+  staff_seen: integer("staff_seen").notNull().default(1),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+/** The file bytes (base64), kept apart so list queries stay light. Read only through the server. */
+export const billing_file_blobs = pgTable("billing_file_blobs", {
+  id: serial("id").primaryKey(),
+  file_id: integer("file_id").notNull(),
+  data: text("data").notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+/** A client's request to modify or add to an uploaded quote. */
+export const billing_requests = pgTable("billing_requests", {
+  id: serial("id").primaryKey(),
+  file_id: integer("file_id").notNull(),
+  client_id: integer("client_id").notNull(),
+  number: text("number").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  /** open = waiting for FRX, answered = FRX attached an annex. */
+  status: text("status").notNull().default("open"),
+  requested_by: integer("requested_by"),
+  requested_at: text("requested_at"),
+  staff_seen: integer("staff_seen").notNull().default(0),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const app_settings = pgTable("app_settings", {
   id: serial("id").primaryKey(),
   key: text("key").notNull(),

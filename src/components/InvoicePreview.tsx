@@ -1,5 +1,6 @@
 import { formatDate, moneyExact } from "@/lib/format";
 import { documentTotals, formatAddress, invoiceTitle, lineAmount } from "@/lib/invoice";
+import { Logo } from "@/components/Logo";
 import { useI18n } from "@/lib/i18n";
 import type { BillingDocument, Client, CompanyProfile, Project } from "@/lib/types";
 
@@ -22,12 +23,7 @@ export function InvoicePreview({
       <div className="h-1.5 bg-[#fbaa19]" />
       <div className="px-8 py-7">
         <div className="flex items-start justify-between gap-6">
-          <div>
-            <p className="font-display text-[28px] font-semibold uppercase leading-none tracking-[0.16em]">FRX</p>
-            <p className="mt-1 font-display text-[11px] font-medium uppercase tracking-[0.32em] text-[#fbaa19]">
-              {t("brand.construction")}
-            </p>
-          </div>
+          <Logo className="h-12" />
           <div className="text-right">
             <p className="font-display text-2xl font-semibold uppercase tracking-[0.12em]">
               {invoiceTitle(doc.kind, locale)}

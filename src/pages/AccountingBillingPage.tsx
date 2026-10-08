@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { ArrowRight, BellRing, Download, FileText, Mail, Pencil, Plus, Printer, Receipt, Wallet } from "lucide-react";
 import { eq } from "drizzle-orm";
 import { db, dbReady, schema } from "../db";
@@ -10,6 +10,8 @@ import { downloadBlob } from "@/lib/download";
 import { formatDate, isoDate, money, todayISO } from "@/lib/format";
 import { emptyLine, invoiceTitle, linesForDocument, serializeLines, totalsFromLines } from "@/lib/invoice";
 import { downloadInvoicePdf, invoicePdfBase64, printInvoice } from "@/lib/invoice-pdf";
+import { listChangesForQuote } from "@/lib/quote-changes";
+import { QuoteChangesSection } from "@/components/QuoteChanges";
 import { sendInvoiceEmail } from "@/lib/mail";
 import {
   applyEmailTemplate,
@@ -103,6 +105,8 @@ export function AccountingBillingPage() {
   const [smtp, setSmtp] = useState<SmtpSettings | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [preview, setPreview] = useState<BillingDocument | null>(null);
+  const [params, setParams] = useSearchParams();
+  const [tab, setTab] = useState("invoices");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<BillingForm>(blankForm("invoice", [], ""));
   const [saving, setSaving] = useState(false);
@@ -124,6 +128,18 @@ export function AccountingBillingPage() {
   );
   const homeClientId = clients[0]?.id;
   const mailReady = smtp ? smtpIsReady(smtp) : false;
+
+  // Opened from the notification bubble: /accounting/billing?quote=<id>
+  useEffect(() => {
+    const wanted = Number(params.get("quote"));
+    if (!wanted || docs.length === 0) return;
+    const found = docs.find((d) => d.id === wanted);
+    if (found) {
+      setTab(found.kind === "quote" ? "quotes" : "invoices");
+      setPreview(found);
+    }
+    setParams({}, { replace: true });
+  }, [docs, params, setParams]);
 
   async function load() {
     try {
@@ -257,6 +273,7 @@ export function AccountingBillingPage() {
           project: allProjects.find((p) => p.id === saved.project_id) ?? null,
           company,
           locale,
+          changes: await annexesOf(saved),
         }),
       });
       await db
@@ -340,6 +357,7 @@ export function AccountingBillingPage() {
           project: allProjects.find((p) => p.id === compose.doc.project_id) ?? null,
           company,
           locale,
+          changes: await annexesOf(compose.doc),
         }),
       });
       await db
@@ -415,20 +433,25 @@ export function AccountingBillingPage() {
     downloadBlob(new Blob([lines.join("\n")], { type: "text/csv" }), `${kind}s.csv`);
   }
 
-  function handlePdf(doc: BillingDocument) {
+  async function annexesOf(doc: BillingDocument) {
+    return doc.kind === "quote" ? await listChangesForQuote(doc.id).catch(() => []) : [];
+  }
+
+  async function handlePdf(doc: BillingDocument) {
     if (!company) return;
     const client = allClients.find((c) => c.id === doc.client_id);
     if (!client) return;
-    void downloadInvoicePdf({
+    await downloadInvoicePdf({
       doc,
       client,
       project: allProjects.find((p) => p.id === doc.project_id) ?? null,
       company,
       locale,
+      changes: await annexesOf(doc),
     });
   }
 
-  function handlePrint(doc: BillingDocument) {
+  async function handlePrint(doc: BillingDocument) {
     if (!company) return;
     const client = allClients.find((c) => c.id === doc.client_id);
     if (!client) return;
@@ -438,6 +461,7 @@ export function AccountingBillingPage() {
       project: allProjects.find((p) => p.id === doc.project_id) ?? null,
       company,
       locale,
+      changes: await annexesOf(doc),
     });
   }
 
@@ -494,7 +518,7 @@ export function AccountingBillingPage() {
         <SummaryCard label={t("billing.stat.quotes")} value={money(quoted, locale)} hint={t("billing.stat.quoteCount", { n: quotes.length })} />
       </div>
 
-      <Tabs defaultValue="invoices" className="gap-5">
+      <Tabs value={tab} onValueChange={setTab} className="gap-5">
         <TabsList>
           <TabsTrigger value="invoices">
             <Receipt className="size-3.5" />
@@ -621,6 +645,16 @@ export function AccountingBillingPage() {
                 project={allProjects.find((p) => p.id === preview.project_id) ?? null}
                 company={company}
               />
+              {preview.kind === "quote" && user ? (
+                <QuoteChangesSection
+                  quote={preview}
+                  mode="staff"
+                  canManage={canManage}
+                  userId={user.id}
+                  userName={user.name}
+                  companyName={company.legal_name}
+                />
+              ) : null}
             </div>
           ) : null}
         </DialogContent>

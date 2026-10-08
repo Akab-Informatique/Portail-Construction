@@ -1,147 +1,100 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { eq } from "drizzle-orm";
-import { FileText, PenLine, Printer, Receipt, X } from "lucide-react";
+import { Eye, FileText, Receipt } from "lucide-react";
 import { db, dbReady, schema } from "../db";
 import { useAuth } from "@/lib/auth";
-import { logActivity } from "@/lib/activity";
-import { acceptQuote, setQuoteStatus } from "@/lib/billing";
+import {
+  BILLING_FILES_EVENT,
+  displayStatus,
+  listPublishedForClient,
+  listRequestsForClient,
+  quoteEffectiveTotal,
+} from "@/lib/billing-files";
 import { formatDate, money } from "@/lib/format";
-import { invoiceTitle } from "@/lib/invoice";
-import { downloadInvoicePdf, printInvoice } from "@/lib/invoice-pdf";
-import { getCompanyProfile } from "@/lib/settings";
+import { useI18n } from "@/lib/i18n";
+import { useWorkspace } from "@/lib/workspace";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
-import { StatusBadge } from "@/components/StatusBadge";
 import { PageSkeleton } from "@/components/Skeleton";
-import { InvoicePreview } from "@/components/InvoicePreview";
-import { QuoteSignDialog } from "@/components/QuoteSignDialog";
+import { BillingFileDialog, StatusPill } from "@/components/BillingFileDialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { useI18n } from "@/lib/i18n";
-import { useWorkspace } from "@/lib/workspace";
-import type { BillingDocument, Client, CompanyProfile, Project } from "@/lib/types";
+import type { BillingFile, BillingRequest, Client, Project } from "@/lib/types";
 
+/**
+ * What a client sees: the invoices and quotes FRX uploaded and published for them (consultation only).
+ * Open a quote to accept it, ask for a modification (demande de changement) or approve an annex.
+ */
 export function ClientBillingPage() {
   const { clientId } = useParams();
   const id = Number(clientId);
   const { user, can } = useAuth();
   const { clients } = useWorkspace();
   const { t, locale } = useI18n();
+  const [params, setParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [client, setClient] = useState<Client | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [docs, setDocs] = useState<BillingDocument[]>([]);
-  const [company, setCompany] = useState<CompanyProfile | null>(null);
-  const [preview, setPreview] = useState<BillingDocument | null>(null);
-  const [signing, setSigning] = useState<BillingDocument | null>(null);
-  const [busyId, setBusyId] = useState<number | null>(null);
+  const [files, setFiles] = useState<BillingFile[]>([]);
+  const [requests, setRequests] = useState<BillingRequest[]>([]);
+  const [viewing, setViewing] = useState<BillingFile | null>(null);
+  const [tab, setTab] = useState("invoices");
 
-  const canView = Boolean(user?.is_admin || can("billing", "view") || user?.user_type === "external");
-  const canDecide = Boolean(user?.user_type === "external");
+  const isExternal = user?.user_type === "external";
+  const clientView = isExternal || user?.view_as === "client";
+  const canView = Boolean(user?.is_admin || can("billing", "view") || isExternal);
 
-  async function load() {
-    // Always leave the loading state, even if a query fails, so the page
-    // never sits on a blank skeleton.
+  const load = useCallback(async () => {
+    // Always leave the loading state, even if a query fails, so the page never sits on a blank skeleton.
     try {
       await dbReady;
       const rows = await db.select().from(schema.clients).where(eq(schema.clients.id, id));
       if (!rows[0]) {
         setClient(null);
-        setLoading(false);
         return;
       }
-      const jobs = (await db
-        .select()
-        .from(schema.projects)
-        .where(eq(schema.projects.client_id, id))) as Project[];
-      const bills = (await db
-        .select()
-        .from(schema.billing_documents)
-        .where(eq(schema.billing_documents.client_id, id))) as BillingDocument[];
+      const [jobs, docs, reqs] = await Promise.all([
+        db.select().from(schema.projects).where(eq(schema.projects.client_id, id)),
+        listPublishedForClient(id),
+        listRequestsForClient(id),
+      ]);
       setClient(rows[0] as Client);
-      setProjects(jobs);
-      setDocs(bills.sort((a, b) => String(b.issued_on ?? "").localeCompare(String(a.issued_on ?? ""))));
-      setCompany(await getCompanyProfile());
-      setLoading(false);
+      setProjects(jobs as Project[]);
+      setFiles(docs);
+      setRequests(reqs);
     } catch (err) {
       console.error("ClientBillingPage load failed", err);
     } finally {
       setLoading(false);
     }
-  }
+  }, [id]);
 
   useEffect(() => {
     void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+    const onChange = () => void load();
+    window.addEventListener(BILLING_FILES_EVENT, onChange);
+    return () => window.removeEventListener(BILLING_FILES_EVENT, onChange);
+  }, [load]);
 
-  const invoices = useMemo(() => docs.filter((d) => d.kind === "invoice"), [docs]);
-  const quotes = useMemo(() => docs.filter((d) => d.kind === "quote"), [docs]);
+  // Opened from the notification bubble: /clients/<id>/billing?file=<id>
+  useEffect(() => {
+    const wanted = Number(params.get("file"));
+    if (!wanted || files.length === 0) return;
+    const found = files.find((f) => f.id === wanted);
+    if (found) {
+      const root = found.parent_id ? files.find((f) => f.id === found.parent_id) ?? found : found;
+      setTab(root.kind === "quote" ? "quotes" : "invoices");
+      setViewing(root);
+    }
+    setParams({}, { replace: true });
+  }, [files, params, setParams]);
+
+  const roots = useMemo(() => files.filter((f) => !f.parent_id), [files]);
+  const invoices = roots.filter((f) => f.kind === "invoice");
+  const quotes = roots.filter((f) => f.kind === "quote");
   const workspaceClient = clients.find((c) => c.id === id) ?? client;
-
-  async function rejectQuote(quote: BillingDocument) {
-    setBusyId(quote.id);
-    await setQuoteStatus(quote.id, "rejected");
-    await logActivity({
-      action: "rejected quote",
-      details: quote.number,
-      clientId: id,
-      userId: user?.id,
-    });
-    setBusyId(null);
-    setPreview((current) => (current?.id === quote.id ? { ...current, status: "rejected" } : current));
-    await load();
-  }
-
-  async function signQuote(input: { signerName: string; signature: string }) {
-    if (!signing) return;
-    setBusyId(signing.id);
-    const accepted = await acceptQuote(signing, {
-      signerName: input.signerName,
-      signature: input.signature,
-      signedAt: new Date().toISOString(),
-    });
-    await logActivity({
-      action: "approved quote",
-      details: `${accepted.number} signed by ${input.signerName}`,
-      clientId: id,
-      userId: user?.id,
-    });
-    setBusyId(null);
-    setSigning(null);
-    setPreview(accepted);
-    await load();
-  }
-
-  function exportPdf(doc: BillingDocument) {
-    if (!company || !workspaceClient) return;
-    void downloadInvoicePdf({
-      doc,
-      client: workspaceClient,
-      project: projects.find((p) => p.id === doc.project_id) ?? null,
-      company,
-      locale,
-    });
-  }
-
-  function printDoc(doc: BillingDocument) {
-    if (!company || !workspaceClient) return;
-    printInvoice({
-      doc,
-      client: workspaceClient,
-      project: projects.find((p) => p.id === doc.project_id) ?? null,
-      company,
-      locale,
-    });
-  }
 
   if (loading) return <PageSkeleton />;
   if (!canView) {
@@ -153,7 +106,7 @@ export function ClientBillingPage() {
       />
     );
   }
-  if (!workspaceClient || !company) {
+  if (!workspaceClient) {
     return (
       <EmptyState
         icon={<Receipt className="size-5" />}
@@ -168,9 +121,10 @@ export function ClientBillingPage() {
     );
   }
 
-  const outstanding = invoices.filter((d) => d.status !== "paid").reduce((sum, d) => sum + d.amount, 0);
+  const outstanding = invoices.filter((d) => displayStatus(d) !== "paid").reduce((sum, d) => sum + d.amount, 0);
   const paid = invoices.filter((d) => d.status === "paid").reduce((sum, d) => sum + d.amount, 0);
-  const quoted = quotes.reduce((sum, d) => sum + d.amount, 0);
+  const quoted = quotes.filter((q) => q.status !== "rejected").reduce((sum, q) => sum + quoteEffectiveTotal(q, files), 0);
+  const waiting = files.filter((f) => f.kind === "quote" && f.status === "sent").length;
 
   return (
     <div>
@@ -183,10 +137,14 @@ export function ClientBillingPage() {
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <SummaryCard label={t("billing.stat.invoiced")} value={money(paid + outstanding, locale)} hint={t("billing.stat.paidHint", { amount: money(paid, locale) })} />
         <SummaryCard label={t("billing.stat.outstanding")} value={money(outstanding, locale)} hint={t("billing.stat.invoiceCount", { n: invoices.length })} />
-        <SummaryCard label={t("billing.stat.quotes")} value={money(quoted, locale)} hint={t("billing.stat.quoteCount", { n: quotes.length })} />
+        <SummaryCard
+          label={t("billing.stat.quotes")}
+          value={money(quoted, locale)}
+          hint={waiting > 0 && clientView ? t("billing.stat.toApprove", { n: waiting }) : t("billing.stat.quoteCount", { n: quotes.length })}
+        />
       </div>
 
-      <Tabs defaultValue="invoices" className="gap-5">
+      <Tabs value={tab} onValueChange={setTab} className="gap-5">
         <TabsList>
           <TabsTrigger value="invoices">
             <Receipt className="size-3.5" />
@@ -199,83 +157,43 @@ export function ClientBillingPage() {
         </TabsList>
 
         <TabsContent value="invoices">
-          <ReadOnlyList
+          <FileList
             rows={invoices}
+            all={files}
             projects={projects}
+            requests={requests}
+            kind="invoice"
             emptyTitle={t("billing.empty.invoices")}
             emptyDesc={t("billing.empty.invoicesDesc")}
-            kind="invoice"
-            onOpen={setPreview}
-            onPdf={exportPdf}
+            onOpen={setViewing}
           />
         </TabsContent>
         <TabsContent value="quotes">
-          <ReadOnlyList
+          <FileList
             rows={quotes}
+            all={files}
             projects={projects}
+            requests={requests}
+            kind="quote"
             emptyTitle={t("billing.empty.quotes")}
             emptyDesc={t("billing.empty.quotesDesc")}
-            kind="quote"
-            canDecide={canDecide}
-            busyId={busyId}
-            onAccept={setSigning}
-            onReject={(row) => void rejectQuote(row)}
-            onOpen={setPreview}
-            onPdf={exportPdf}
+            onOpen={setViewing}
           />
         </TabsContent>
       </Tabs>
 
-      <Dialog open={Boolean(preview)} onOpenChange={(open) => !open && setPreview(null)}>
-        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>
-              {preview ? `${invoiceTitle(preview.kind, locale)} ${preview.number}` : t("billing.preview")}
-            </DialogTitle>
-          </DialogHeader>
-          {preview ? (
-            <div className="space-y-4">
-              <div className="flex flex-wrap justify-end gap-2">
-                {canDecide && preview.kind === "quote" && (preview.status === "sent" || preview.status === "draft") ? (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={busyId === preview.id}
-                      onClick={() => void rejectQuote(preview)}
-                    >
-                      <X className="size-3.5" />
-                      {t("billing.reject")}
-                    </Button>
-                    <Button size="sm" disabled={busyId === preview.id} onClick={() => setSigning(preview)}>
-                      <PenLine className="size-3.5" />
-                      {t("billing.approve")}
-                    </Button>
-                  </>
-                ) : null}
-                <Button variant="outline" size="sm" onClick={() => printDoc(preview)}>
-                  <Printer className="size-3.5" />
-                  {t("billing.exportPdf")}
-                </Button>
-              </div>
-              <InvoicePreview
-                doc={preview}
-                client={workspaceClient}
-                project={projects.find((p) => p.id === preview.project_id) ?? null}
-                company={company}
-              />
-            </div>
-          ) : null}
-        </DialogContent>
-      </Dialog>
-
-      <QuoteSignDialog
-        quote={signing}
+      <BillingFileDialog
+        file={viewing}
+        allFiles={files}
+        requests={requests}
+        mode={clientView ? "client" : "staff"}
+        canDecide={isExternal}
+        canManage={false}
+        userId={user?.id ?? 0}
+        userName={user?.name ?? ""}
         companyName={workspaceClient.company_name}
-        defaultName={user?.name ?? ""}
-        busy={busyId === signing?.id}
-        onCancel={() => setSigning(null)}
-        onSubmit={(input) => void signQuote(input)}
+        onClose={() => setViewing(null)}
+        onChanged={() => void load()}
       />
     </div>
   );
@@ -291,30 +209,24 @@ function SummaryCard({ label, value, hint }: { label: string; value: string; hin
   );
 }
 
-function ReadOnlyList({
+function FileList({
   rows,
+  all,
   projects,
+  requests,
+  kind,
   emptyTitle,
   emptyDesc,
-  kind,
-  canDecide,
-  busyId,
-  onAccept,
-  onReject,
   onOpen,
-  onPdf,
 }: {
-  rows: BillingDocument[];
+  rows: BillingFile[];
+  all: BillingFile[];
   projects: Project[];
+  requests: BillingRequest[];
+  kind: "invoice" | "quote";
   emptyTitle: string;
   emptyDesc: string;
-  kind: "invoice" | "quote";
-  canDecide?: boolean;
-  busyId?: number | null;
-  onAccept?: (row: BillingDocument) => void;
-  onReject?: (row: BillingDocument) => void;
-  onOpen?: (row: BillingDocument) => void;
-  onPdf?: (row: BillingDocument) => void;
+  onOpen: (file: BillingFile) => void;
 }) {
   const { t, locale } = useI18n();
   if (rows.length === 0) {
@@ -328,7 +240,7 @@ function ReadOnlyList({
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border bg-card">
+    <div className="overflow-x-auto rounded-xl border bg-card">
       <table className="w-full min-w-[720px] text-sm">
         <thead className="border-b bg-muted/40 text-left text-[11px] uppercase tracking-wider text-muted-foreground">
           <tr>
@@ -336,63 +248,46 @@ function ReadOnlyList({
             <th className="px-4 py-3 font-medium">{t("billing.docTitle")}</th>
             <th className="px-4 py-3 font-medium">{t("billing.project")}</th>
             <th className="px-4 py-3 font-medium">{t("billing.issued")}</th>
-            <th className="px-4 py-3 font-medium">{t("billing.due")}</th>
+            {kind === "invoice" ? <th className="px-4 py-3 font-medium">{t("billing.due")}</th> : null}
             <th className="px-4 py-3 text-right font-medium">{t("billing.amount")}</th>
             <th className="px-4 py-3 font-medium">{t("billing.status")}</th>
-            <th className="px-4 py-3 font-medium" />
+            <th className="px-4 py-3" />
           </tr>
         </thead>
         <tbody className="divide-y">
           {rows.map((row) => {
-            const pending = row.status === "sent" || row.status === "draft";
+            const pendingAnnexes = kind === "quote" ? all.filter((a) => a.parent_id === row.id && a.status === "sent").length : 0;
+            const openRequests = kind === "quote" ? requests.filter((r) => r.file_id === row.id && r.status === "open").length : 0;
+            const total = kind === "quote" ? quoteEffectiveTotal(row, all) : row.amount;
             return (
-              <tr key={row.id} className="cursor-pointer hover:bg-muted/30" onClick={() => onOpen?.(row)}>
-                <td className="px-4 py-3 font-medium tabular-nums">{row.number}</td>
+              <tr key={row.id} className="cursor-pointer hover:bg-muted/30" onClick={() => onOpen(row)}>
+                <td className="px-4 py-3 font-medium tabular-nums">{row.number || `#${row.id}`}</td>
                 <td className="px-4 py-3">
-                  <p className="font-medium">{row.title}</p>
-                  {row.description ? <p className="text-xs text-muted-foreground">{row.description}</p> : null}
+                  <p className="font-medium">{row.title || "—"}</p>
+                  <p className="mt-0.5 flex flex-wrap gap-1.5 text-xs text-muted-foreground">
+                    {pendingAnnexes > 0 ? (
+                      <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-px text-foreground">{t("billing.annex.pendingCount", { n: pendingAnnexes })}</span>
+                    ) : null}
+                    {openRequests > 0 ? <span>{t("billing.requests.count", { n: openRequests })}</span> : null}
+                  </p>
                 </td>
-                <td className="px-4 py-3 text-muted-foreground">
-                  {projects.find((p) => p.id === row.project_id)?.name ?? t("billing.noProject")}
-                </td>
+                <td className="px-4 py-3 text-muted-foreground">{projects.find((p) => p.id === row.project_id)?.name ?? t("billing.noProject")}</td>
                 <td className="px-4 py-3 tabular-nums text-muted-foreground">{formatDate(row.issued_on, locale)}</td>
-                <td className="px-4 py-3 tabular-nums text-muted-foreground">{formatDate(row.due_on, locale)}</td>
-                <td className="px-4 py-3 text-right font-medium tabular-nums">{money(row.amount, locale)}</td>
+                {kind === "invoice" ? <td className="px-4 py-3 tabular-nums text-muted-foreground">{formatDate(row.due_on, locale)}</td> : null}
+                <td className="px-4 py-3 text-right font-medium tabular-nums">
+                  {money(total, locale)}
+                  {kind === "quote" && total !== row.amount ? (
+                    <p className="text-[11px] font-normal text-muted-foreground">{t("billing.quote.withAnnexes", { base: money(row.amount, locale) })}</p>
+                  ) : null}
+                </td>
                 <td className="px-4 py-3">
-                  <StatusBadge value={row.status} />
+                  <StatusPill file={row} mode="client" />
                 </td>
                 <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                  <div className="flex justify-end gap-2">
-                    {kind === "quote" && canDecide && pending ? (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busyId === row.id}
-                          onClick={() => onReject?.(row)}
-                        >
-                          <X className="size-3.5" />
-                          {t("billing.reject")}
-                        </Button>
-                        <Button size="sm" disabled={busyId === row.id} onClick={() => onAccept?.(row)}>
-                          <PenLine className="size-3.5" />
-                          {t("billing.approve")}
-                        </Button>
-                      </>
-                    ) : kind === "quote" && row.status === "accepted" ? (
-                      <span className="self-center text-xs text-muted-foreground">
-                        {row.signed_by
-                          ? t("billing.signedHint", { name: row.signed_by })
-                          : t("status.accepted")}
-                      </span>
-                    ) : kind === "quote" && row.status === "converted" ? (
-                      <span className="self-center text-xs text-muted-foreground">{t("billing.convertedHint")}</span>
-                    ) : null}
-                    <Button size="sm" variant="outline" onClick={() => onPdf?.(row)}>
-                      <Printer className="size-3.5" />
-                      {t("billing.exportPdf")}
-                    </Button>
-                  </div>
+                  <Button size="sm" variant="outline" onClick={() => onOpen(row)}>
+                    <Eye className="size-3.5" />
+                    {t("billing.file.view")}
+                  </Button>
                 </td>
               </tr>
             );

@@ -1,18 +1,22 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Building2, Cloud, FileText, Mail, Send, Settings, Users, Wallet, X, type LucideIcon } from "lucide-react";
+import { Building2, Cloud, FileText, Mail, Send, Settings, Sparkles, Users, Wallet, X, type LucideIcon } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import {
+  AI_KEY,
   COMPANY_KEY,
   DEFAULT_EMAIL_TEMPLATES,
   EMAIL_TEMPLATES_KEY,
+  EMPTY_AI,
   EMPTY_QUICKBOOKS,
   EMPTY_SHAREPOINT,
   EMPTY_SMTP,
   QUICKBOOKS_KEY,
   SHAREPOINT_KEY,
   SMTP_KEY,
+  getAiSettings,
+  getSetting,
   getCompanyProfile,
   getEmailTemplates,
   getQuickBooksSettings,
@@ -36,9 +40,9 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import type { MessageKey } from "@/lib/i18n/en";
 import { ConfigClientsPage } from "./ConfigClientsPage";
 import { ConfigInternalUsersPage } from "./ConfigInternalUsersPage";
-import type { CompanyProfile, EmailTemplateKey, EmailTemplates, QuickBooksSettings, SharePointSettings, SmtpSettings } from "@/lib/types";
+import type { AiSettings, CompanyProfile, EmailTemplateKey, EmailTemplates, QuickBooksSettings, SharePointSettings, SmtpSettings } from "@/lib/types";
 
-const TABS = ["company", "email", "templates", "quickbooks", "sharepoint", "clients", "users"] as const;
+const TABS = ["company", "email", "templates", "quickbooks", "sharepoint", "ai", "clients", "users"] as const;
 type SetupTab = (typeof TABS)[number];
 
 function isSetupTab(value: string | null): value is SetupTab {
@@ -59,6 +63,7 @@ const GROUPS: { label: MessageKey; items: { id: SetupTab; icon: LucideIcon; labe
     items: [
       { id: "quickbooks", icon: Wallet, label: "settings.tab.quickbooks" },
       { id: "sharepoint", icon: Cloud, label: "settings.tab.sharepoint" },
+      { id: "ai", icon: Sparkles, label: "settings.tab.ai" },
     ],
   },
   {
@@ -85,6 +90,7 @@ export function ConfigSettingsPage() {
   const location = useLocation();
   const [testTo, setTestTo] = useState("");
   const [smtpTest, setSmtpTest] = useState<string | null>(null);
+  const [aiTest, setAiTest] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -92,6 +98,7 @@ export function ConfigSettingsPage() {
   const [smtp, setSmtp] = useState<SmtpSettings>(EMPTY_SMTP);
   const [qb, setQb] = useState<QuickBooksSettings>(EMPTY_QUICKBOOKS);
   const [sp, setSp] = useState<SharePointSettings>(EMPTY_SHAREPOINT);
+  const [ai, setAi] = useState<AiSettings>(EMPTY_AI);
   const [templates, setTemplates] = useState<EmailTemplates>(DEFAULT_EMAIL_TEMPLATES);
   const [spTest, setSpTest] = useState<string | null>(null);
 
@@ -107,6 +114,7 @@ export function ConfigSettingsPage() {
         setSmtp(await getSmtpSettings());
         setQb(await getQuickBooksSettings());
         setSp(await getSharePointSettings());
+        setAi(await getAiSettings());
         setTemplates(await getEmailTemplates());
       } catch (err) {
         console.error("settings load failed", err);
@@ -129,6 +137,30 @@ export function ConfigSettingsPage() {
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
+
+  async function onTestAi() {
+    setAiTest(null);
+    setSaving(true);
+    try {
+      await setSetting(AI_KEY, JSON.stringify(ai));
+      // Local development keeps settings in the browser; the live server reads its own saved copy.
+      const raw = import.meta.env.PROD ? null : await getSetting(AI_KEY);
+      const res = await fetch("/api/billing-files", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "ai_test", ai: raw ? JSON.parse(raw) : undefined }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; provider?: string; model?: string };
+      if (data.ok) setAiTest(t("settings.ai.testOk", { model: data.model ?? "" }));
+      else if (data.error === "ai.notConfigured") setAiTest(t("settings.ai.testNoKey"));
+      else setAiTest(data.error || t("settings.sp.testFail"));
+    } catch (err) {
+      setAiTest(err instanceof Error ? err.message : t("settings.sp.testFail"));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function onTestSmtp() {
     setSmtpTest(null);
@@ -167,6 +199,7 @@ export function ConfigSettingsPage() {
     await setSetting(SMTP_KEY, JSON.stringify(smtp));
     await setSetting(QUICKBOOKS_KEY, JSON.stringify(qb));
     await setSetting(SHAREPOINT_KEY, JSON.stringify(sp));
+    await setSetting(AI_KEY, JSON.stringify(ai));
     await setSetting(EMAIL_TEMPLATES_KEY, JSON.stringify(templates));
     setSaving(false);
     setSaved(true);
@@ -524,6 +557,46 @@ export function ConfigSettingsPage() {
                 {spTest ? <p className="text-sm text-muted-foreground">{spTest}</p> : null}
               </div>
             </Card>
+          </form>
+        </TabsContent>
+        <TabsContent value="ai">
+          <form onSubmit={onSave} className="grid gap-5">
+            <Card className="gap-4 p-5">
+              <div>
+                <p className="text-sm font-medium">{t("settings.ai.title")}</p>
+                <p className="text-xs text-muted-foreground">{t("settings.ai.hint")}</p>
+              </div>
+              <div className="flex items-center justify-between rounded-md border px-3 py-2.5">
+                <p className="text-sm font-medium">{t("settings.ai.enabled")}</p>
+                <Switch checked={ai.enabled} onCheckedChange={(v) => setAi({ ...ai, enabled: v })} />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label={t("settings.ai.provider")}>
+                  <select
+                    className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                    value={ai.provider}
+                    onChange={(e) => setAi({ ...ai, provider: e.target.value === "anthropic" ? "anthropic" : "gemini" })}
+                  >
+                    <option value="gemini">{t("settings.ai.providerGemini")}</option>
+                    <option value="anthropic">{t("settings.ai.providerClaude")}</option>
+                  </select>
+                </Field>
+                <Field label={t("settings.ai.model")}>
+                  <Input placeholder={ai.provider === "anthropic" ? "claude-sonnet-5-5" : "gemini-2.5-flash"} value={ai.model} onChange={(e) => setAi({ ...ai, model: e.target.value })} />
+                </Field>
+                <Field label={t("settings.ai.apiKey")}>
+                  <Input type="password" autoComplete="new-password" placeholder={ai.provider === "anthropic" ? "sk-ant-…" : "AIza…"} value={ai.api_key} onChange={(e) => setAi({ ...ai, api_key: e.target.value })} />
+                </Field>
+              </div>
+              <p className="text-xs text-muted-foreground">{t("settings.ai.keyHint")}</p>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button type="button" variant="outline" disabled={saving} onClick={() => void onTestAi()}>
+                  {t("settings.ai.test")}
+                </Button>
+                {aiTest ? <p className="text-sm text-muted-foreground">{aiTest}</p> : null}
+              </div>
+            </Card>
+            <SaveBar saved={saved} saving={saving} />
           </form>
         </TabsContent>
         <TabsContent value="clients">

@@ -1,13 +1,14 @@
 import { eq } from "drizzle-orm";
 import { db, dbReady, schema } from "../db";
 import { DEFAULT_COMPANY } from "./invoice";
-import type { CompanyProfile, EmailTemplateKey, EmailTemplates, QuickBooksSettings, SharePointSettings, SmtpSettings } from "./types";
+import type { AiSettings, CompanyProfile, EmailTemplateKey, EmailTemplates, QuickBooksSettings, SharePointSettings, SmtpSettings } from "./types";
 
 export const SMTP_KEY = "smtp";
 export const COMPANY_KEY = "company";
 export const QUICKBOOKS_KEY = "quickbooks";
 export const SHAREPOINT_KEY = "sharepoint";
 export const EMAIL_TEMPLATES_KEY = "email_templates";
+export const AI_KEY = "ai";
 
 export const EMPTY_SMTP: SmtpSettings = {
   host: "",
@@ -19,6 +20,8 @@ export const EMPTY_SMTP: SmtpSettings = {
   secure: false,
   portal_url: "",
 };
+
+export const EMPTY_AI: AiSettings = { enabled: true, provider: "gemini", api_key: "", model: "" };
 
 export const EMPTY_QUICKBOOKS: QuickBooksSettings = {
   client_id: "",
@@ -93,7 +96,7 @@ function keepSecrets(prevRaw: string | null | undefined, nextRaw: string) {
   try {
     const prev = JSON.parse(prevRaw) as Record<string, unknown>;
     const next = JSON.parse(nextRaw) as Record<string, unknown>;
-    for (const key of ["password", "client_secret"]) {
+    for (const key of ["password", "client_secret", "api_key"]) {
       if (next[key] === "********" || next[key] === "") next[key] = prev[key];
     }
     return JSON.stringify(next);
@@ -162,6 +165,16 @@ export async function getQuickBooksSettings(): Promise<QuickBooksSettings> {
     ) as QuickBooksSettings;
   } catch {
     return { ...EMPTY_QUICKBOOKS };
+  }
+}
+
+export async function getAiSettings(): Promise<AiSettings> {
+  const raw = await getSetting(AI_KEY);
+  if (!raw) return { ...EMPTY_AI };
+  try {
+    return redactSecret({ ...EMPTY_AI, ...(JSON.parse(raw) as Partial<AiSettings>) }, ["api_key"]) as AiSettings;
+  } catch {
+    return { ...EMPTY_AI };
   }
 }
 

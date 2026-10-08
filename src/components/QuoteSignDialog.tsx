@@ -14,7 +14,6 @@ import {
 import { SignaturePad } from "@/components/SignaturePad";
 import { money } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
-import type { BillingDocument } from "@/lib/types";
 
 export function QuoteSignDialog({
   quote,
@@ -24,7 +23,7 @@ export function QuoteSignDialog({
   onCancel,
   onSubmit,
 }: {
-  quote: BillingDocument | null;
+  quote: { id: number; number: string; title: string; amount: number } | null;
   companyName: string;
   defaultName: string;
   busy?: boolean;

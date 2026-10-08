@@ -141,6 +141,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           try {
             await seedIfEmpty();
             if (!(await hasAnyUsers())) setNeedsSetup(true);
+            // Dev only: fake clients/jobs in the local browser database. Not bundled in production.
+            if (await hasAnyUsers()) await (await import("./demo-data")).seedDemoData();
           } catch (err) {
             console.error("local seed failed", err);
           }

@@ -25,7 +25,7 @@ const ROLE_ADMIN = "frx_api_admin";
 const ROLE_USER = "frx_api_user";
 const ROLE_CLIENT = "frx_api_client";
 /** Tables browser SQL may never touch; the server reads them itself. */
-const PRIVATE_TABLES = ["sessions", "app_settings", "password_resets"];
+const PRIVATE_TABLES = ["sessions", "app_settings", "password_resets", "billing_file_blobs"];
 /** Tables only effective admins may write. */
 const ADMIN_TABLES = [
   "users",
@@ -39,7 +39,7 @@ const ADMIN_TABLES = [
 ];
 /** Columns a non-admin may change on their own users row. */
 const USER_SELF_COLUMNS = ["name", "title", "phone", "avatar_initials", "locale", "theme", "tutorial_done"];
-const SECRET_KEYS = ["password", "client_secret"];
+const SECRET_KEYS = ["password", "client_secret", "api_key"];
 const REDACTED = "********";
 
 function statementsOf(sql: string) {
@@ -106,6 +106,9 @@ const CLIENT_SCOPED: Record<string, string> = {
   clients: "frx_client_ok(id)",
   projects: "frx_client_ok(client_id)",
   billing_documents: "frx_client_ok(client_id)",
+  quote_changes: "frx_client_ok(client_id)",
+  billing_files: "frx_client_ok(client_id)",
+  billing_requests: "frx_client_ok(client_id)",
   client_users: "frx_client_ok(client_id)",
   sharepoint_shares: "frx_client_ok(client_id)",
 };
@@ -213,6 +216,35 @@ async function ensureApiRoles() {
       `FOR UPDATE TO ${ROLE_CLIENT} USING (kind = 'quote' AND ${scopes.billing_documents})
        WITH CHECK (kind = 'quote' AND status IN ('accepted', 'rejected') AND ${scopes.billing_documents})`,
     ),
+    // Clients may file a change request on their own quotes and approve/decline a priced annex.
+    `GRANT INSERT ON quote_changes TO ${ROLE_CLIENT}`,
+    `GRANT UPDATE (status, decided_by, decided_at, signed_by, signature, staff_seen) ON quote_changes TO ${ROLE_CLIENT}`,
+    ...policy(
+      "quote_changes",
+      "frx_client_request",
+      `FOR INSERT TO ${ROLE_CLIENT} WITH CHECK (origin = 'client' AND status = 'requested' AND amount = 0 AND requested_by = ${ME} AND ${scopes.quote_changes})`,
+    ),
+    ...policy(
+      "quote_changes",
+      "frx_client_decide",
+      `FOR UPDATE TO ${ROLE_CLIENT} USING (status = 'proposed' AND ${scopes.quote_changes})
+       WITH CHECK (status IN ('approved', 'rejected') AND decided_by = ${ME} AND ${scopes.quote_changes})`,
+    ),
+    // Uploaded invoices/quotes: clients only ever see published rows, and may only accept/decline a quote that is waiting for them.
+    ...policy("billing_files", "frx_client_published", `AS RESTRICTIVE FOR SELECT TO ${ROLE_CLIENT} USING (published = 1)`),
+    `GRANT UPDATE (status, accepted_by, accepted_at, signature, staff_seen) ON billing_files TO ${ROLE_CLIENT}`,
+    ...policy(
+      "billing_files",
+      "frx_client_decide",
+      `FOR UPDATE TO ${ROLE_CLIENT} USING (kind = 'quote' AND status = 'sent' AND published = 1 AND ${scopes.billing_files})
+       WITH CHECK (status IN ('accepted', 'rejected') AND ${scopes.billing_files})`,
+    ),
+    `GRANT INSERT ON billing_requests TO ${ROLE_CLIENT}`,
+    ...policy(
+      "billing_requests",
+      "frx_client_request",
+      `FOR INSERT TO ${ROLE_CLIENT} WITH CHECK (status = 'open' AND requested_by = ${ME} AND ${scopes.billing_requests})`,
+    ),
     ...policy("activities", "frx_client_log", `FOR INSERT TO ${ROLE_CLIENT} WITH CHECK (user_id = ${ME} AND ${scopes.activities})`),
     ...policy(
       "activities",
@@ -286,7 +318,7 @@ async function loadHiddenColumns() {
      FROM pg_class c JOIN pg_attribute a ON a.attrelid = c.oid
      JOIN pg_namespace n ON n.oid = c.relnamespace
      WHERE n.nspname = 'public' AND a.attnum > 0
-       AND ((c.relname = 'users' AND a.attname = 'password') OR c.relname IN ('sessions', 'app_settings', 'password_resets'))`,
+       AND ((c.relname = 'users' AND a.attname = 'password') OR c.relname IN ('sessions', 'app_settings', 'password_resets', 'billing_file_blobs'))`,
   );
   hiddenColumns = new Set(result.rows.map((r) => `${r.table_id}:${r.column_id}`));
   return hiddenColumns;
@@ -780,6 +812,21 @@ async function finishPasswordReset(tokenRaw: string, password: string) {
   await getPool().query("DELETE FROM password_resets WHERE user_id = $1", [row.user_id]);
   await revokeUserSessions(row.user_id);
   return { ok: true };
+}
+
+/** Runs one trusted server-side query (the caller has already checked who is asking). */
+export async function serverQuery(sql: string, params: unknown[] = []) {
+  await ensureSchema();
+  return getPool().query(sql, params);
+}
+
+export function hasDatabase() {
+  return hasRemoteDb();
+}
+
+/** Client ids a signed-in user may see: "*" for everyone, or a comma list. */
+export async function clientScopeOf(session: { id: number; is_admin: number; user_type: string; all_clients: number; view_as?: string }) {
+  return allowedClientIds(session);
 }
 
 /** Session for the other API routes; a user who must change their password gets nothing else. */

@@ -25,6 +25,7 @@ const TimesheetsPage = lazyPage(() => import("@/pages/TimesheetsPage"), "Timeshe
 const DocumentsPage = lazyPage(() => import("@/pages/DocumentsPage"), "DocumentsPage");
 const DocumentsProjectsPage = lazyPage(() => import("@/pages/DocumentsProjectsPage"), "DocumentsProjectsPage");
 const ReportsPage = lazyPage(() => import("@/pages/ReportsPage"), "ReportsPage");
+const FinanceBillingPage = lazyPage(() => import("@/pages/FinanceBillingPage"), "FinanceBillingPage");
 
 function ProtectedLayout() {
   const { user, ready } = useAuth();
@@ -66,6 +67,7 @@ export default function App() {
           <Route path="clients/:clientId" element={<ClientDetailPage />} />
           <Route path="clients/:clientId/billing" element={<ClientBillingPage />} />
           <Route path="accounting/billing" element={<AccountingBillingPage />} />
+          <Route path="finance/billing" element={<FinanceBillingPage />} />
           <Route path="projects" element={<ProjectsPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="projects/:projectId" element={<ProjectDetailPage />} />
