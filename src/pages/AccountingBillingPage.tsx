@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { ArrowRight, Download, FileText, Mail, Pencil, Plus, Printer, Receipt, Wallet } from "lucide-react";
+import { ArrowRight, BellRing, Download, FileText, Mail, Pencil, Plus, Printer, Receipt, Wallet } from "lucide-react";
 import { eq } from "drizzle-orm";
 import { db, dbReady, schema } from "../db";
 import { useAuth } from "@/lib/auth";
@@ -48,6 +48,7 @@ import type {
   BillingKind,
   Client,
   CompanyProfile,
+  EmailTemplateKey,
   EmailTemplates,
   Project,
   QuickBooksSettings,
@@ -291,14 +292,14 @@ export function AccountingBillingPage() {
     await load();
   }
 
-  function openCompose(doc: BillingDocument) {
+  function openCompose(doc: BillingDocument, templateKey?: EmailTemplateKey) {
     if (!smtp || !company || !templates) {
       setNotice(t("billing.smtpMissing"));
       return;
     }
     const client = allClients.find((c) => c.id === doc.client_id);
     const project = allProjects.find((p) => p.id === doc.project_id);
-    const filled = applyEmailTemplate(templates[templateKeyForKind(doc.kind)], {
+    const filled = applyEmailTemplate(templates[templateKey ?? templateKeyForKind(doc.kind)], {
       client: client?.company_name ?? "",
       kind: invoiceTitle(doc.kind, locale),
       number: doc.number,
@@ -518,7 +519,8 @@ export function AccountingBillingPage() {
             onExport={() => exportCsv("invoice")}
             onOpen={setPreview}
             onPdf={handlePdf}
-            onSend={canManage ? openCompose : undefined}
+            onSend={canManage ? (doc) => openCompose(doc) : undefined}
+            onFollowUp={canManage ? (doc) => openCompose(doc, "follow_up") : undefined}
             busyId={busyId}
           />
         </TabsContent>
@@ -537,7 +539,7 @@ export function AccountingBillingPage() {
             busyId={busyId}
             onOpen={setPreview}
             onPdf={handlePdf}
-            onSend={canManage ? openCompose : undefined}
+            onSend={canManage ? (doc) => openCompose(doc) : undefined}
           />
         </TabsContent>
       </Tabs>
@@ -707,6 +709,7 @@ function DocTable({
   onOpen,
   onPdf,
   onSend,
+  onFollowUp,
 }: {
   kind: BillingKind;
   rows: BillingDocument[];
@@ -722,6 +725,7 @@ function DocTable({
   onOpen: (row: BillingDocument) => void;
   onPdf: (row: BillingDocument) => void;
   onSend?: (row: BillingDocument) => void;
+  onFollowUp?: (row: BillingDocument) => void;
 }) {
   const { t, locale } = useI18n();
   if (rows.length === 0) {
@@ -813,6 +817,18 @@ function DocTable({
                         >
                           <Mail className="size-3.5" />
                           <span className="sr-only">{t("billing.sendClient")}</span>
+                        </Button>
+                      ) : null}
+                      {kind === "invoice" && onFollowUp && row.status !== "paid" && row.status !== "draft" ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busyId === row.id}
+                          title={t("billing.followUp")}
+                          onClick={() => onFollowUp(row)}
+                        >
+                          <BellRing className="size-3.5" />
+                          <span className="sr-only">{t("billing.followUp")}</span>
                         </Button>
                       ) : null}
                       <Button size="sm" variant="outline" onClick={() => onPdf(row)}>

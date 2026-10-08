@@ -2,59 +2,21 @@ import { cn } from "@/lib/utils";
 
 type LogoProps = {
   className?: string;
-  markClassName?: string;
-  wordmark?: boolean;
+  /** Mark only (round icon) instead of the full horizontal logo. */
+  mark?: boolean;
+  /** White lettering, for dark backgrounds. */
   inverted?: boolean;
-  variant?: "mark" | "lockup" | "horizontal";
+  alt?: string;
 };
 
-export function Logo({
-  className,
-  markClassName,
-  wordmark = true,
-  inverted = false,
-  variant,
-}: LogoProps) {
-  if (variant === "horizontal") {
-    return (
-      <img
-        src="/brand/logo-horizontal.jpg"
-        alt="FRX Construction"
-        className={cn("h-10 w-auto object-contain object-left", className)}
-      />
-    );
-  }
-
-  const showWordmark = variant === "lockup" || (variant !== "mark" && wordmark);
-  const iconSrc = inverted ? "/brand/logo-icon.png" : "/brand/logo-icon-black.png";
-
+/** The one place the FRX Construction logo is rendered. */
+export function Logo({ className, mark = false, inverted = false, alt = "FRX Construction" }: LogoProps) {
+  const src = mark ? "/brand/logo-icon.png" : inverted ? "/brand/frx-logo-white.png" : "/brand/frx-logo-color.png";
   return (
-    <div className={cn("flex items-center gap-2.5", className)}>
-      <img
-        src={inverted ? "/brand/logo-icon.png" : iconSrc}
-        alt="FRX Construction"
-        className={cn("size-8 shrink-0 object-contain", markClassName)}
-      />
-      {showWordmark && (
-        <div className="leading-none">
-          <div
-            className={cn(
-              "font-display text-[18px] font-semibold uppercase tracking-[0.08em]",
-              inverted ? "text-sidebar-foreground" : "text-foreground",
-            )}
-          >
-            FRX
-          </div>
-          <div
-            className={cn(
-              "mt-0.5 text-[9px] font-semibold uppercase tracking-[0.22em]",
-              inverted ? "text-sidebar-foreground/55" : "text-muted-foreground",
-            )}
-          >
-            Construction
-          </div>
-        </div>
-      )}
-    </div>
+    <img
+      src={src}
+      alt={alt}
+      className={cn(mark ? "size-8 object-contain" : "h-10 w-auto object-contain object-left", className)}
+    />
   );
 }

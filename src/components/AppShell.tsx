@@ -1,4 +1,5 @@
 import { createContext, Suspense, useContext, useEffect, useMemo, useState } from "react";
+import { Logo } from "@/components/Logo";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -398,15 +399,7 @@ function SidebarBody({
             className="flex items-center gap-2.5"
             aria-label={t("nav.home")}
           >
-            <img src="/brand/logo-icon.png" alt="" className="size-8 object-contain" />
-            {!collapsed && (
-              <span className="leading-none">
-                <span className="block font-display text-[17px] font-bold tracking-[0.2em] text-white">FRX</span>
-                <span className="mt-0.5 block font-display text-[9.5px] font-semibold tracking-[0.34em] text-primary">
-                  {t("brand.construction")}
-                </span>
-              </span>
-            )}
+            <Logo inverted mark={collapsed} className={collapsed ? "size-9" : "h-10"} />
           </button>
           {onToggleCollapsed && !collapsed ? (
             <button

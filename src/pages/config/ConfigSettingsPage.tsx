@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Building2, Cloud, FileText, Mail, Settings, Users, Wallet } from "lucide-react";
-import { useSearchParams } from "react-router-dom";
+import { Building2, Cloud, FileText, Mail, Send, Settings, Users, Wallet, X, type LucideIcon } from "lucide-react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -20,10 +20,10 @@ import {
   getSmtpSettings,
   quickbooksReady,
   setSetting,
+  smtpReady,
   sharepointReady,
 } from "@/lib/settings";
 import { DEFAULT_COMPANY } from "@/lib/invoice";
-import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { PageSkeleton } from "@/components/Skeleton";
 import { Button } from "@/components/ui/button";
@@ -32,10 +32,11 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
+import type { MessageKey } from "@/lib/i18n/en";
 import { ConfigClientsPage } from "./ConfigClientsPage";
 import { ConfigInternalUsersPage } from "./ConfigInternalUsersPage";
-import type { CompanyProfile, EmailTemplates, QuickBooksSettings, SharePointSettings, SmtpSettings } from "@/lib/types";
+import type { CompanyProfile, EmailTemplateKey, EmailTemplates, QuickBooksSettings, SharePointSettings, SmtpSettings } from "@/lib/types";
 
 const TABS = ["company", "email", "templates", "quickbooks", "sharepoint", "clients", "users"] as const;
 type SetupTab = (typeof TABS)[number];
@@ -44,10 +45,46 @@ function isSetupTab(value: string | null): value is SetupTab {
   return TABS.includes(value as SetupTab);
 }
 
+const GROUPS: { label: MessageKey; items: { id: SetupTab; icon: LucideIcon; label: MessageKey }[] }[] = [
+  { label: "settings.group.general", items: [{ id: "company", icon: Building2, label: "settings.tab.company" }] },
+  {
+    label: "settings.group.communication",
+    items: [
+      { id: "email", icon: Mail, label: "settings.tab.email" },
+      { id: "templates", icon: FileText, label: "settings.tab.templates" },
+    ],
+  },
+  {
+    label: "settings.group.integrations",
+    items: [
+      { id: "quickbooks", icon: Wallet, label: "settings.tab.quickbooks" },
+      { id: "sharepoint", icon: Cloud, label: "settings.tab.sharepoint" },
+    ],
+  },
+  {
+    label: "settings.group.people",
+    items: [
+      { id: "clients", icon: Building2, label: "settings.tab.clients" },
+      { id: "users", icon: Users, label: "settings.tab.users" },
+    ],
+  },
+];
+
+const TEMPLATE_KEYS: { key: EmailTemplateKey; label: MessageKey; hint?: MessageKey }[] = [
+  { key: "send_invoice", label: "settings.templates.invoice" },
+  { key: "send_quote", label: "settings.templates.quote" },
+  { key: "follow_up", label: "settings.templates.followUp", hint: "settings.templates.followUpHint" },
+  { key: "password_reset", label: "settings.templates.passwordReset", hint: "settings.templates.passwordResetHint" },
+];
+
 export function ConfigSettingsPage() {
   const { user } = useAuth();
   const { t } = useI18n();
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [testTo, setTestTo] = useState("");
+  const [smtpTest, setSmtpTest] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -78,6 +115,42 @@ export function ConfigSettingsPage() {
       }
     })();
   }, []);
+
+  function closeOverlay() {
+    if (location.key !== "default") navigate(-1);
+    else navigate("/");
+  }
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeOverlay();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
+
+  async function onTestSmtp() {
+    setSmtpTest(null);
+    setSaving(true);
+    try {
+      await setSetting(SMTP_KEY, JSON.stringify(smtp));
+      const res = await fetch("/api/db", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "smtp_test", to: testTo.trim() || user?.email || "" }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; local?: boolean };
+      if (data.ok) setSmtpTest(t("settings.smtp.testOk"));
+      else if (data.local) setSmtpTest(t("settings.smtp.testLocal"));
+      else setSmtpTest(data.error || t("settings.sp.testFail"));
+    } catch (err) {
+      setSmtpTest(err instanceof Error ? err.message : t("settings.sp.testFail"));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   function setTab(next: string) {
     const value = isSetupTab(next) ? next : "company";
@@ -110,42 +183,77 @@ export function ConfigSettingsPage() {
     );
   }
 
+  const currentLabel = GROUPS.flatMap((g) => g.items).find((i) => i.id === tab)?.label ?? "settings.tab.company";
+
   return (
-    <div>
-      <PageHeader eyebrow={t("nav.setup")} title={t("settings.title")} description={t("settings.desc")} />
+    <div
+      className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/55 backdrop-blur-[2px] sm:p-5"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t("settings.title")}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) closeOverlay();
+      }}
+    >
+      <Tabs
+        value={tab}
+        onValueChange={setTab}
+        orientation="vertical"
+        className="flex h-full w-full max-w-[1180px] flex-col gap-0 overflow-hidden border bg-background shadow-2xl sm:rounded-lg md:flex-row"
+      >
+        <aside className="flex shrink-0 flex-col border-b bg-muted/40 md:w-60 md:border-b-0 md:border-r">
+          <div className="flex items-center justify-between px-4 py-3 md:py-5">
+            <div>
+              <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-muted-foreground">{t("nav.setup")}</p>
+              <p className="font-display text-2xl leading-none">{t("settings.title")}</p>
+            </div>
+            <Button type="button" variant="ghost" size="icon" className="md:hidden" onClick={closeOverlay} aria-label={t("settings.close")}>
+              <X className="size-4" />
+            </Button>
+          </div>
+          <nav className="flex gap-4 overflow-x-auto px-3 pb-3 md:flex-col md:gap-5 md:overflow-y-auto md:pb-5">
+            {GROUPS.map((group) => (
+              <div key={group.label} className="flex shrink-0 items-center gap-1 md:flex-col md:items-stretch md:gap-0.5">
+                <p className="hidden px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground md:block">
+                  {t(group.label)}
+                </p>
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  const active = item.id === tab;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setTab(item.id)}
+                      aria-current={active ? "page" : undefined}
+                      className={
+                        "flex shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-2.5 py-2 text-left text-sm transition-colors " +
+                        (active
+                          ? "bg-primary/15 font-medium text-foreground shadow-[inset_2px_0_0_var(--primary)]"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground")
+                      }
+                    >
+                      <Icon className="size-4" />
+                      {t(item.label)}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </nav>
+        </aside>
 
-      <Tabs value={tab} onValueChange={setTab} className="gap-5">
-        <TabsList className="flex h-auto w-full flex-wrap justify-start">
-          <TabsTrigger value="company">
-            <Building2 className="size-3.5" />
-            {t("settings.tab.company")}
-          </TabsTrigger>
-          <TabsTrigger value="email">
-            <Mail className="size-3.5" />
-            {t("settings.tab.email")}
-          </TabsTrigger>
-          <TabsTrigger value="templates">
-            <FileText className="size-3.5" />
-            {t("settings.tab.templates")}
-          </TabsTrigger>
-          <TabsTrigger value="quickbooks">
-            <Wallet className="size-3.5" />
-            {t("settings.tab.quickbooks")}
-          </TabsTrigger>
-          <TabsTrigger value="sharepoint">
-            <Cloud className="size-3.5" />
-            {t("settings.tab.sharepoint")}
-          </TabsTrigger>
-          <TabsTrigger value="clients">
-            <Building2 className="size-3.5" />
-            {t("settings.tab.clients")}
-          </TabsTrigger>
-          <TabsTrigger value="users">
-            <Users className="size-3.5" />
-            {t("settings.tab.users")}
-          </TabsTrigger>
-        </TabsList>
-
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="flex items-center justify-between gap-3 border-b px-5 py-3.5">
+            <div>
+              <h2 className="font-display text-[26px] leading-none">{t(currentLabel)}</h2>
+              <p className="mt-1 text-xs text-muted-foreground">{t("settings.desc")}</p>
+            </div>
+            <Button type="button" variant="ghost" size="icon" className="hidden md:inline-flex" onClick={closeOverlay} aria-label={t("settings.close")}>
+              <X className="size-4" />
+            </Button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-5">
         <TabsContent value="company">
           <form onSubmit={onSave} className="grid gap-5">
             <Card className="gap-4 p-5">
@@ -223,6 +331,26 @@ export function ConfigSettingsPage() {
                 </div>
                 <Switch checked={smtp.secure} onCheckedChange={(v) => setSmtp({ ...smtp, secure: v })} />
               </div>
+              <Field label={t("settings.portalUrl")}>
+                <Input
+                  type="url"
+                  placeholder="https://portail.frx.construction"
+                  value={smtp.portal_url ?? ""}
+                  onChange={(e) => setSmtp({ ...smtp, portal_url: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">{t("settings.portalUrlHint")}</p>
+              </Field>
+              <div className="flex flex-wrap items-end gap-3 rounded-md border border-dashed px-3 py-3">
+                <div className="min-w-[220px] flex-1 space-y-1.5">
+                  <Label>{t("settings.smtp.testTo")}</Label>
+                  <Input type="email" placeholder={user?.email ?? ""} value={testTo} onChange={(e) => setTestTo(e.target.value)} />
+                </div>
+                <Button type="button" variant="outline" disabled={saving || !smtpReady(smtp)} onClick={() => void onTestSmtp()}>
+                  <Send className="size-3.5" />
+                  {t("settings.smtp.test")}
+                </Button>
+                {smtpTest ? <p className="w-full text-sm text-muted-foreground">{smtpTest}</p> : null}
+              </div>
             </Card>
             <SaveBar saved={saved} saving={saving} />
           </form>
@@ -236,11 +364,12 @@ export function ConfigSettingsPage() {
                 <p className="text-xs text-muted-foreground">{t("settings.templates.hint")}</p>
               </div>
               <div className="grid gap-6 lg:grid-cols-2">
-                {(["send_invoice", "send_quote"] as const).map((key) => (
+                {TEMPLATE_KEYS.map(({ key, label, hint }) => (
                   <div key={key} className="space-y-3 rounded-lg border p-4">
-                    <p className="text-sm font-medium">
-                      {key === "send_invoice" ? t("settings.templates.invoice") : t("settings.templates.quote")}
-                    </p>
+                    <div>
+                      <p className="text-sm font-medium">{t(label)}</p>
+                      {hint ? <p className="mt-0.5 text-xs text-muted-foreground">{t(hint)}</p> : null}
+                    </div>
                     <Field label={t("settings.templates.subject")}>
                       <Input
                         value={templates[key].subject}
@@ -403,6 +532,8 @@ export function ConfigSettingsPage() {
         <TabsContent value="users">
           <ConfigInternalUsersPage embedded />
         </TabsContent>
+          </div>
+        </div>
       </Tabs>
     </div>
   );

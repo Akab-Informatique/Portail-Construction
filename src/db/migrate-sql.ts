@@ -87,6 +87,8 @@ UPDATE sharepoint_shares SET item_id = '' WHERE item_id IS NULL;
 CREATE INDEX IF NOT EXISTS users_email_lower_idx ON users (lower(email));
 CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions (user_id);
 CREATE INDEX IF NOT EXISTS sessions_expires_idx ON sessions (expires_at);
+CREATE TABLE IF NOT EXISTS password_resets (id SERIAL PRIMARY KEY, token_hash TEXT NOT NULL, user_id INTEGER NOT NULL, expires_at TEXT NOT NULL, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
+CREATE INDEX IF NOT EXISTS password_resets_hash_idx ON password_resets (token_hash);
 CREATE INDEX IF NOT EXISTS app_settings_key_idx ON app_settings (key);
 CREATE INDEX IF NOT EXISTS client_users_user_idx ON client_users (user_id);
 CREATE INDEX IF NOT EXISTS client_users_client_idx ON client_users (client_id);

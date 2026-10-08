@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { WorkspaceProvider } from "@/lib/workspace";
 import { ClockProvider } from "@/lib/clock";
 import { LoginPage } from "@/pages/LoginPage";
+import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
 import { lazyPage } from "@/lib/lazy-page";
 
 const DashboardPage = lazyPage(() => import("@/pages/DashboardPage"), "DashboardPage");
@@ -47,6 +48,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route element={<ProtectedLayout />}>
         <Route
           element={

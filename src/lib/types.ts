@@ -197,9 +197,11 @@ export type SmtpSettings = {
   from_name: string;
   from_email: string;
   secure: boolean;
+  /** Public address of the portal, used to build links in emails (e.g. password reset). */
+  portal_url?: string;
 };
 
-export type EmailTemplateKey = "send_invoice" | "send_quote";
+export type EmailTemplateKey = "send_invoice" | "send_quote" | "follow_up" | "password_reset";
 
 export type EmailTemplate = {
   key: EmailTemplateKey;

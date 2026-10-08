@@ -17,6 +17,7 @@ export const EMPTY_SMTP: SmtpSettings = {
   from_name: "FRX Construction",
   from_email: "",
   secure: false,
+  portal_url: "",
 };
 
 export const EMPTY_QUICKBOOKS: QuickBooksSettings = {
@@ -48,6 +49,16 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplates = {
     key: "send_quote",
     subject: "{kind} {number} — {company}",
     body: "Hello {client},\n\nPlease find attached {kind} {number} ({title}) for {amount}. Reply if you have questions.\n\nThank you,\n{company}",
+  },
+  follow_up: {
+    key: "follow_up",
+    subject: "Follow-up: {kind} {number} — {company}",
+    body: "Hello {client},\n\nThis is a friendly follow-up on {kind} {number} ({title}) for {amount}. Please let us know if you have any questions or need anything from us.\n\nThank you,\n{company}",
+  },
+  password_reset: {
+    key: "password_reset",
+    subject: "Reset your {company} password",
+    body: "Hello {name},\n\nWe received a request to reset your password. Use the link below within 1 hour:\n\n{link}\n\nIf you did not ask for this, you can ignore this email.\n\n{company}",
   },
 };
 
@@ -183,6 +194,8 @@ export async function getEmailTemplates(): Promise<EmailTemplates> {
     return {
       send_invoice: { ...DEFAULT_EMAIL_TEMPLATES.send_invoice, ...parsed.send_invoice, key: "send_invoice" },
       send_quote: { ...DEFAULT_EMAIL_TEMPLATES.send_quote, ...parsed.send_quote, key: "send_quote" },
+      follow_up: { ...DEFAULT_EMAIL_TEMPLATES.follow_up, ...parsed.follow_up, key: "follow_up" },
+      password_reset: { ...DEFAULT_EMAIL_TEMPLATES.password_reset, ...parsed.password_reset, key: "password_reset" },
     };
   } catch {
     return structuredClone(DEFAULT_EMAIL_TEMPLATES);

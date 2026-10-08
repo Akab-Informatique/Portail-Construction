@@ -1,6 +1,9 @@
+import { createHash, randomBytes } from "node:crypto";
+import nodemailer from "nodemailer";
 import pg from "pg";
 import { MIGRATE_SQL } from "../src/db/migrate-sql.ts";
 import { hashPassword, hashPasswordParams, verifyPassword } from "./_lib/password.ts";
+import { mergeSmtp, type Smtp } from "./_lib/smtp.ts";
 import {
   clearSessionCookie,
   cookieHeaderOf,
@@ -22,7 +25,7 @@ const ROLE_ADMIN = "frx_api_admin";
 const ROLE_USER = "frx_api_user";
 const ROLE_CLIENT = "frx_api_client";
 /** Tables browser SQL may never touch; the server reads them itself. */
-const PRIVATE_TABLES = ["sessions", "app_settings"];
+const PRIVATE_TABLES = ["sessions", "app_settings", "password_resets"];
 /** Tables only effective admins may write. */
 const ADMIN_TABLES = [
   "users",
@@ -283,7 +286,7 @@ async function loadHiddenColumns() {
      FROM pg_class c JOIN pg_attribute a ON a.attrelid = c.oid
      JOIN pg_namespace n ON n.oid = c.relnamespace
      WHERE n.nspname = 'public' AND a.attnum > 0
-       AND ((c.relname = 'users' AND a.attname = 'password') OR c.relname IN ('sessions', 'app_settings'))`,
+       AND ((c.relname = 'users' AND a.attname = 'password') OR c.relname IN ('sessions', 'app_settings', 'password_resets'))`,
   );
   hiddenColumns = new Set(result.rows.map((r) => `${r.table_id}:${r.column_id}`));
   return hiddenColumns;
@@ -658,6 +661,127 @@ export function isInternalStaff(session: { user_type: string; view_as?: string }
   return session.user_type === "internal" && session.view_as !== "client";
 }
 
+// ---- Outgoing system mail + password reset ----
+const RESET_TTL_MS = 60 * 60 * 1000;
+const RESET_MAX_REQUESTS = 5;
+const resetRequests = new Map<string, { count: number; first: number }>();
+
+function resetThrottled(key: string) {
+  const now = Date.now();
+  const entry = resetRequests.get(key);
+  if (!entry || now - entry.first > LOGIN_WINDOW_MS) {
+    resetRequests.set(key, { count: 1, first: now });
+    return false;
+  }
+  entry.count += 1;
+  return entry.count > RESET_MAX_REQUESTS;
+}
+
+async function storedJson<T>(key: string): Promise<T | undefined> {
+  try {
+    const raw = await readStoredSetting(key);
+    return raw ? (JSON.parse(raw) as T) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Sends one plain-text mail through the configured SMTP account. Throws when SMTP is not set up. */
+async function sendSystemMail(to: string, subject: string, text: string) {
+  const smtp = mergeSmtp(await storedJson<Smtp>("smtp"));
+  if (!smtp.host || !smtp.from_email) throw new Error("SMTP is not configured.");
+  const port = Number(smtp.port) || 587;
+  const transporter = nodemailer.createTransport({
+    host: smtp.host,
+    port,
+    secure: Boolean(smtp.secure) || port === 465,
+    auth: smtp.username ? { user: smtp.username, pass: smtp.password || "" } : undefined,
+  });
+  await transporter.sendMail({
+    from: smtp.from_name ? { name: smtp.from_name, address: smtp.from_email } : smtp.from_email,
+    to,
+    subject: subject.replace(/[\r\n]+/g, " ").slice(0, 300),
+    text,
+  });
+}
+
+const RESET_DEFAULTS = {
+  en: {
+    subject: "Reset your {company} password",
+    body: "Hello {name},\n\nWe received a request to reset your password. Use the link below within 1 hour:\n\n{link}\n\nIf you did not ask for this, you can ignore this email.\n\n{company}",
+  },
+  fr: {
+    subject: "Réinitialisez votre mot de passe {company}",
+    body: "Bonjour {name},\n\nNous avons reçu une demande de réinitialisation de votre mot de passe. Utilisez le lien ci-dessous dans l’heure qui suit :\n\n{link}\n\nSi vous n’êtes pas à l’origine de cette demande, ignorez ce courriel.\n\n{company}",
+  },
+};
+
+function fillTemplate(text: string, vars: Record<string, string>) {
+  return Object.entries(vars).reduce((acc, [k, v]) => acc.split(`{${k}}`).join(v), text);
+}
+
+/** Always resolves quietly: the caller answers the same way whether or not the address exists. */
+async function startPasswordReset(emailRaw: string, locale: string) {
+  const email = emailRaw.trim().toLowerCase();
+  if (!email) return;
+  const found = await getPool().query("SELECT id, name, is_active FROM users WHERE lower(email) = $1 LIMIT 1", [email]);
+  const user = found.rows[0] as { id: number; name: string; is_active: number } | undefined;
+  if (!user || Number(user.is_active) !== 1) return;
+
+  const smtpStored = await storedJson<Smtp & { portal_url?: string }>("smtp");
+  const baseUrl = String(process.env.APP_URL || smtpStored?.portal_url || "").trim().replace(/\/+$/, "");
+  if (!/^https?:\/\//i.test(baseUrl)) {
+    console.error("password reset: set the Portal URL (Setup > Email) or APP_URL so the link can be built");
+    return;
+  }
+
+  const token = randomBytes(32).toString("hex");
+  const hash = createHash("sha256").update(token).digest("hex");
+  await getPool().query("DELETE FROM password_resets WHERE user_id = $1 OR expires_at < $2", [
+    user.id,
+    new Date().toISOString(),
+  ]);
+  await getPool().query("INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES ($1, $2, $3)", [
+    hash,
+    user.id,
+    new Date(Date.now() + RESET_TTL_MS).toISOString(),
+  ]);
+
+  const templates = await storedJson<Record<string, { subject?: string; body?: string }>>("email_templates");
+  const defaults = RESET_DEFAULTS[locale === "fr" ? "fr" : "en"];
+  const tpl = {
+    subject: templates?.password_reset?.subject || defaults.subject,
+    body: templates?.password_reset?.body || defaults.body,
+  };
+  const company = await storedJson<{ legal_name?: string }>("company");
+  const vars = {
+    name: user.name,
+    link: `${baseUrl}/reset-password?token=${token}`,
+    company: company?.legal_name || "FRX Construction",
+  };
+  try {
+    await sendSystemMail(email, fillTemplate(tpl.subject, vars), fillTemplate(tpl.body, vars));
+  } catch (err) {
+    console.error("password reset mail failed", err);
+  }
+}
+
+async function finishPasswordReset(tokenRaw: string, password: string) {
+  if (password.trim().length < 8) return { error: "profile.passwordShort" };
+  const hash = createHash("sha256").update(tokenRaw).digest("hex");
+  const row = (
+    await getPool().query("SELECT id, user_id, expires_at FROM password_resets WHERE token_hash = $1 LIMIT 1", [hash])
+  ).rows[0] as { id: number; user_id: number; expires_at: string } | undefined;
+  if (!row || new Date(row.expires_at).getTime() < Date.now()) return { error: "reset.invalidLink" };
+  await getPool().query("UPDATE users SET password = $2, must_change_password = 0 WHERE id = $1", [
+    row.user_id,
+    hashPassword(password),
+  ]);
+  await getPool().query("DELETE FROM password_resets WHERE user_id = $1", [row.user_id]);
+  await revokeUserSessions(row.user_id);
+  return { ok: true };
+}
+
 /** Session for the other API routes; a user who must change their password gets nothing else. */
 export async function requireApiUser(req: { headers?: Record<string, unknown> }) {
   await ensureSchema();
@@ -775,6 +899,7 @@ const AUTH_ACTIONS = new Set([
   "complete_tutorial",
   "set_tutorial",
   "view_as",
+  "reset_password",
 ]);
 
 export async function handleDbRequest(req: { method?: string; body?: any; headers?: Record<string, unknown>; query?: Record<string, unknown>; url?: string }, res: any) {
@@ -982,6 +1107,54 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
         [id],
       );
       return res.status(200).json({ user: publicUser(updated.rows[0]) });
+    }
+    if (action === "request_password_reset") {
+      if (!hasRemoteDb()) return res.status(200).json({ ok: true, local: true });
+      const email = String(req.body?.email ?? "").trim().toLowerCase();
+      const clientIp = String(req.headers?.["x-client-ip"] ?? "");
+      if (resetThrottled(`email:${email}`) || (clientIp && resetThrottled(`ip:${clientIp}`))) {
+        return res.status(429).json({ error: "login.error.throttled" });
+      }
+      await ensureSchema();
+      // Same answer whether or not the address exists, so accounts cannot be enumerated.
+      await startPasswordReset(email, String(req.body?.locale ?? "en")).catch((err) =>
+        console.error("password reset failed", err),
+      );
+      return res.status(200).json({ ok: true });
+    }
+    if (action === "reset_password") {
+      if (!hasRemoteDb()) return res.status(200).json({ local: true });
+      const clientIp = String(req.headers?.["x-client-ip"] ?? "");
+      if (clientIp && loginBlocked(`reset:${clientIp}`, LOGIN_MAX_FAILURES_PER_IP)) {
+        return res.status(429).json({ error: "login.error.throttled" });
+      }
+      await ensureSchema();
+      const result = await finishPasswordReset(String(req.body?.token ?? ""), String(req.body?.password ?? ""));
+      if ("error" in result && clientIp) recordLoginFailure(`reset:${clientIp}`);
+      return res.status("error" in result ? 400 : 200).json(result);
+    }
+    if (action === "smtp_test") {
+      if (!hasRemoteDb()) return res.status(200).json({ local: true });
+      const session = await loadSessionUser(req);
+      if (!session) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      if (!effectiveAdmin(session)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      const to = String(req.body?.to ?? session.email ?? "").trim();
+      if (!/^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]+$/.test(to)) {
+        res.status(400).json({ error: "Invalid recipient email." });
+        return;
+      }
+      try {
+        await sendSystemMail(to, "SMTP test", "This is a test message from your FRX portal. Your email settings work.");
+        return res.status(200).json({ ok: true });
+      } catch (err) {
+        return res.status(400).json({ error: err instanceof Error ? err.message : "Send failed" });
+      }
     }
     if (action === "change_password") {
       if (!hasRemoteDb()) {
