@@ -164,9 +164,10 @@ export function BillingUploadDialog({
     } catch (err) {
       const msg = err instanceof Error ? err.message : "billing.upload.failed";
       // "billing.upload.failed:403" -> translated text plus the HTTP code, so the real cause is easy to report.
-      const [key, code] = msg.split(":");
+      const [head, detail] = msg.split("|");
+      const [key, code] = head.split(":");
       const translated = t(key as "billing.upload.failed");
-      setError(translated === key ? msg : code ? `${translated} (HTTP ${code})` : translated);
+      setError(translated === key ? msg : detail ? `${translated} [${detail}]` : code ? `${translated} (HTTP ${code})` : translated);
       setPhase("pick");
     }
   }

@@ -128,7 +128,7 @@ export async function uploadBillingFile(input: UploadInput): Promise<UploadResul
       file_name: input.file.name,
       data,
     });
-    if (!res.ok) throw new Error(String(payload.error || `billing.upload.failed:${res.status}`));
+    if (!res.ok) throw new Error(String(payload.error ? `${payload.error}${payload.detail ? `|${payload.detail}` : ""}` : `billing.upload.failed:${res.status}`));
     notify();
     return { record: payload.file as BillingFile, extracted: (payload.extracted as ExtractedDocument | null) ?? null, aiError: payload.ai_error ?? null };
   }

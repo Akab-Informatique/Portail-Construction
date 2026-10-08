@@ -85,6 +85,14 @@ async function runAnalysis(kind: "invoice" | "quote", mime: Mime, base64: string
   }
 }
 
+/**
+ * FRX staff, or a real administrator. A real admin is trusted even if their session was left in "view as client" mode,
+ * so a stale view switch can never lock them out of billing.
+ */
+function canManageBilling(user: { user_type: string; is_admin: number; view_as?: string }) {
+  return Number(user.is_admin) === 1 || isInternalStaff(user);
+}
+
 const int = (v: unknown) => {
   const n = Number(v);
   return Number.isInteger(n) && n > 0 ? n : null;
@@ -101,7 +109,7 @@ export default async function handler(req: Req, res: Res) {
       | { client_id: number; published: number; file_name: string | null; file_type: string | null }
       | undefined;
     if (!row) return res.status(404).json({ error: "Not found" });
-    const staff = isInternalStaff(user);
+    const staff = canManageBilling(user);
     if (!staff) {
       const scope = await clientScopeOf(user);
       const allowed = scope === "*" || scope.split(",").includes(String(row.client_id));
@@ -129,7 +137,7 @@ export default async function handler(req: Req, res: Res) {
     if (hasDatabase()) {
       const user = await requireApiUser(req);
       if (!user) return res.status(401).json({ error: "Unauthorized" });
-      if (!isInternalStaff(user)) return res.status(403).json({ error: "billing.upload.forbidden" });
+      if (!canManageBilling(user)) return res.status(403).json({ error: "billing.upload.forbidden" });
     }
     const bytes = Buffer.from(String(body.data ?? ""), "base64");
     const mime = sniff(bytes);
@@ -164,9 +172,12 @@ export default async function handler(req: Req, res: Res) {
   const user = await requireApiUser(req);
   if (!user) return res.status(401).json({ error: "billing.upload.signedOut" });
   // Only FRX staff manage billing files; clients can never upload or delete.
-  if (!isInternalStaff(user)) {
+  if (!canManageBilling(user)) {
     console.warn(`billing-files: refused user ${user.id} (type ${user.user_type}, view ${user.view_as})`);
-    return res.status(403).json({ error: "billing.upload.forbidden" });
+    return res.status(403).json({
+      error: "billing.upload.forbidden",
+      detail: `account type ${user.user_type}, admin ${Number(user.is_admin)}, view ${user.view_as ?? "?"}`,
+    });
   }
 
   if (action === "upload") {
