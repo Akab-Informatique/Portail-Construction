@@ -1,10 +1,9 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { ArrowRight, Eye, EyeOff, Loader2, Lock } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BorderBeam } from "@/components/ui/border-beam";
-import { BuildingElevation } from "@/components/BuildingElevation";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -12,25 +11,68 @@ import { cn } from "@/lib/utils";
 const fieldClass =
   "h-12 rounded-sm border-[#2e2e2c] bg-black/60 px-4 text-[15px] text-white placeholder:text-[#6b6b68] focus-visible:border-[#fbaa19] focus-visible:ring-[3px] focus-visible:ring-[#fbaa19]/25";
 
-/** Warm, slowly drifting light pools — the "site lights at dusk" backdrop. */
-function Glow({ className }: { className?: string }) {
+/** Hairline construction lines, same style as the FRX brochure: thin orange verticals, horizontals and shallow diagonals. */
+const LINES: [number, number, number, number][] = [
+  // verticals (paired, like the brochure)
+  [250, -50, 250, 950],
+  [274, -50, 274, 950],
+  [1326, -50, 1326, 950],
+  [1350, -50, 1350, 950],
+  // horizontals
+  [-50, 150, 1650, 150],
+  [-50, 770, 1650, 770],
+  // diagonals
+  [-50, 790, 1010, 404],
+  [180, 950, 1010, 648],
+  [640, -50, 1500, 500],
+  [1650, 430, 1180, 80],
+];
+
+function LineSet({ stroke }: { stroke: string }) {
   return (
-    <div aria-hidden className={cn("pointer-events-none absolute inset-0 overflow-hidden", className)}>
+    <svg className="absolute inset-0 size-full" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" fill="none">
+      {LINES.map(([x1, y1, x2, y2], i) => (
+        <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={stroke} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+      ))}
+    </svg>
+  );
+}
+
+/** Lines drift slightly against the cursor; a brighter copy is revealed in a spotlight around it. */
+function Lines() {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute -inset-6"
+      style={{ transform: "translate3d(calc(var(--px) * -14px), calc(var(--py) * -10px), 0)" }}
+    >
+      <div className="absolute inset-0 opacity-[0.28]">
+        <LineSet stroke="#ffa62c" />
+      </div>
       <div
-        className="absolute -left-[20%] -top-[25%] h-[80%] w-[80%] rounded-full"
+        className="absolute inset-0"
         style={{
-          background: "radial-gradient(closest-side, rgba(251,170,25,0.22), transparent)",
-          animation: "frx-drift 14s ease-in-out infinite",
+          WebkitMaskImage: "radial-gradient(circle 280px at var(--mx) var(--my), #000 0%, transparent 100%)",
+          maskImage: "radial-gradient(circle 280px at var(--mx) var(--my), #000 0%, transparent 100%)",
         }}
-      />
-      <div
-        className="absolute -bottom-[30%] -right-[15%] h-[75%] w-[75%] rounded-full"
-        style={{
-          background: "radial-gradient(closest-side, rgba(251,170,25,0.14), transparent)",
-          animation: "frx-drift 18s ease-in-out -6s infinite reverse",
-        }}
-      />
+      >
+        <LineSet stroke="#ffb94a" />
+      </div>
     </div>
+  );
+}
+
+/** Orange site-light that follows the mouse. */
+function MouseGlow() {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-0"
+      style={{
+        background:
+          "radial-gradient(circle 520px at var(--mx) var(--my), rgba(251,170,25,0.20), rgba(251,170,25,0.06) 45%, transparent 75%)",
+      }}
+    />
   );
 }
 
@@ -39,7 +81,7 @@ function Grid() {
   return (
     <div
       aria-hidden
-      className="pointer-events-none absolute inset-0 [mask-image:radial-gradient(ellipse_90%_80%_at_40%_40%,#000_35%,transparent)]"
+      className="pointer-events-none absolute inset-0 [mask-image:radial-gradient(ellipse_100%_90%_at_50%_50%,#000_40%,transparent)]"
       style={{
         backgroundImage:
           "linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)",
@@ -62,6 +104,44 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const cur = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    const target = { ...cur };
+    let raf = 0;
+    const paint = () => {
+      el.style.setProperty("--mx", `${cur.x}px`);
+      el.style.setProperty("--my", `${cur.y}px`);
+      el.style.setProperty("--px", String((cur.x / window.innerWidth - 0.5) * 2));
+      el.style.setProperty("--py", String((cur.y / window.innerHeight - 0.5) * 2));
+    };
+    const tick = () => {
+      cur.x += (target.x - cur.x) * 0.12;
+      cur.y += (target.y - cur.y) * 0.12;
+      paint();
+      raf = Math.abs(target.x - cur.x) + Math.abs(target.y - cur.y) > 0.5 ? requestAnimationFrame(tick) : 0;
+    };
+    const onMove = (e: PointerEvent) => {
+      target.x = e.clientX;
+      target.y = e.clientY;
+      if (reduce) {
+        cur.x = target.x;
+        cur.y = target.y;
+        paint();
+      } else if (!raf) raf = requestAnimationFrame(tick);
+    };
+    paint();
+    window.addEventListener("pointermove", onMove);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      cancelAnimationFrame(raf);
+    };
+  }, []);
+
   if (ready && user) return <Navigate to={from} replace />;
 
   async function onSubmit(e: FormEvent) {
@@ -82,19 +162,11 @@ export function LoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden bg-black text-white">
+    <div ref={rootRef} className="relative flex min-h-screen flex-col overflow-hidden bg-black text-white">
       <Grid />
-      <Glow />
+      <MouseGlow />
+      <Lines />
       <div className="frx-beam relative z-10 h-1 w-full" aria-hidden />
-
-      {/* The job site frames the card: one building each side, cranes on the outer edges */}
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between">
-        <BuildingElevation
-          showLevels={false}
-          className="hidden h-[min(46vh,470px)] w-auto -scale-x-100 opacity-70 md:block"
-        />
-        <BuildingElevation className="h-[min(34vh,340px)] w-auto opacity-40 md:h-[min(46vh,470px)] md:opacity-70" />
-      </div>
 
       <header className="relative z-10 flex items-center justify-between px-6 py-5 sm:px-10 [@media(max-height:800px)]:py-3">
         <img
@@ -110,7 +182,7 @@ export function LoginPage() {
               onClick={() => setLocale(code)}
               aria-pressed={locale === code}
               className={cn(
-                "frx-label min-w-11 px-3 py-2 transition-colors",
+                "font-display text-[13px] font-medium uppercase tracking-[0.28em] min-w-11 px-3 py-2 transition-colors",
                 locale === code ? "bg-[#fbaa19] text-black" : "text-[#8a8a86] hover:text-white",
               )}
             >
@@ -120,18 +192,15 @@ export function LoginPage() {
         </div>
       </header>
 
-      <main className="relative z-10 flex flex-1 flex-col items-center justify-center px-5 pb-[min(22vh,230px)] pt-2 [@media(max-height:800px)]:pb-[9vh]">
-        <div className="mb-7 text-center [@media(max-height:800px)]:mb-4">
-          <p className="frx-label mb-3 flex items-center justify-center gap-3 text-[#fbaa19]">
-            <span className="h-px w-8 bg-[#fbaa19]" aria-hidden />
+      <main className="relative z-10 flex flex-1 flex-col items-center justify-center px-5 pb-10 pt-2">
+        {/* Brochure-style wedge tag */}
+        <div className="mb-6 [@media(max-height:800px)]:mb-4">
+          <p
+            className="bg-[#ffa62c] px-8 pb-2 pt-5 font-display text-[22px] font-medium uppercase leading-none tracking-[0.28em] text-white"
+            style={{ clipPath: "polygon(0 28%, 100% 0, 100% 100%, 0 100%)" }}
+          >
             {t("brand.slogan")}
-            <span className="h-px w-8 bg-[#fbaa19]" aria-hidden />
           </p>
-          <h1 className="font-display text-[clamp(28px,min(4.6vw,6.6vh),58px)] font-bold leading-none tracking-tight">
-            {t("login.hero.line1")}{" "}
-            <span className="text-[#fbaa19] [text-shadow:0_0_40px_rgba(251,170,25,0.4)]">{t("login.hero.line2")}</span>{" "}
-            {t("login.hero.line3")}
-          </h1>
         </div>
 
         <div className="relative w-full max-w-[440px]">
@@ -144,7 +213,7 @@ export function LoginPage() {
             <BorderBeam size={170} duration={9} borderWidth={2} colorFrom="#fbaa19" colorTo="#fff4d4" />
             <BorderBeam size={110} duration={9} delay={4.5} borderWidth={2} colorFrom="#fff4d4" colorTo="#fbaa19" />
               <form onSubmit={onSubmit} className="relative">
-                <p className="frx-label flex items-center gap-2 text-[#8a8a86]">
+                <p className="font-display text-[13px] font-medium uppercase tracking-[0.28em] flex items-center gap-2 text-[#8a8a86]">
                   <Lock className="size-3 text-[#fbaa19]" />
                   {t("login.secure")}
                 </p>
@@ -157,7 +226,7 @@ export function LoginPage() {
                 <div className="mt-8 space-y-5 [@media(max-height:800px)]:mt-6 [@media(max-height:800px)]:space-y-4">
                   {needsSetup ? (
                     <div className="space-y-2">
-                      <Label htmlFor="name" className="frx-label text-[#a3a3a0]">
+                      <Label htmlFor="name" className="font-display text-[13px] font-medium uppercase tracking-[0.28em] text-[#a3a3a0]">
                         {t("login.setup.name")}
                       </Label>
                       <Input
@@ -172,7 +241,7 @@ export function LoginPage() {
                   ) : null}
 
                   <div className="space-y-2">
-                    <Label htmlFor="email" className="frx-label text-[#a3a3a0]">
+                    <Label htmlFor="email" className="font-display text-[13px] font-medium uppercase tracking-[0.28em] text-[#a3a3a0]">
                       {t("login.email")}
                     </Label>
                     <Input
@@ -189,7 +258,7 @@ export function LoginPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="password" className="frx-label text-[#a3a3a0]">
+                    <Label htmlFor="password" className="font-display text-[13px] font-medium uppercase tracking-[0.28em] text-[#a3a3a0]">
                       {t("login.password")}
                     </Label>
                     <div className="relative">
@@ -238,7 +307,7 @@ export function LoginPage() {
                 </button>
               </form>
           </div>
-          <p className="frx-label relative mt-5 text-center text-[#6b6b68]">© {new Date().getFullYear()} FRX Construction</p>
+          <p className="font-display text-[13px] font-medium uppercase tracking-[0.28em] relative mt-5 text-center text-[#6b6b68]">© {new Date().getFullYear()} FRX Construction</p>
         </div>
       </main>
 
