@@ -180,7 +180,7 @@ export function LoginPage() {
         <img
           src="/brand/frx-construction-logo-white.png"
           alt="FRX Construction"
-          className="h-10 w-auto object-contain sm:h-12"
+          className="h-16 w-auto object-contain sm:h-[88px]"
         />
         <div className="flex overflow-hidden rounded-sm border border-[#2e2e2c] bg-black/60" role="group" aria-label="Language">
           {(["en", "fr"] as const).map((code) => (
@@ -212,8 +212,8 @@ export function LoginPage() {
             className="relative -mb-px flex h-[140px] flex-col items-start justify-end bg-[#ffa62c] px-8 pb-3 font-display text-[30px] uppercase leading-[1.1] tracking-[0.22em] text-white [@media(max-height:800px)]:h-[130px]"
             style={{ clipPath: "polygon(0 0, calc(100% - 250px) 0, 100% 91px, 100% 100%, 0 100%)" }}
           >
-            <span className="[-webkit-text-stroke:1.2px_currentColor]">{slogan.lead}</span>
-            <span className="font-['Barlow_Condensed'] text-[32px] font-light tracking-[0.2em]">{slogan.last}.</span>
+            <span className="font-['Barlow_Condensed'] text-[38px] font-medium tracking-[0.2em]">{slogan.lead}</span>
+            <span className="font-['Barlow_Condensed'] text-[30px] font-light tracking-[0.2em]">{slogan.last}.</span>
           </p>
           <div className="relative overflow-hidden rounded-md rounded-tl-none border border-white/[0.1] bg-[#0b0b0b]/90 p-8 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.9)] backdrop-blur-md sm:p-10 [@media(max-height:800px)]:p-7">
             <BorderBeam size={170} duration={9} borderWidth={2} colorFrom="#fbaa19" colorTo="#fff4d4" />
