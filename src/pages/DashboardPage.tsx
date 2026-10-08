@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { db, dbReady, schema } from "../db";
 import { useAuth } from "@/lib/auth";
+import { withProjectMoney } from "@/lib/project-money";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PageSkeleton } from "@/components/Skeleton";
@@ -86,6 +87,7 @@ export function DashboardPage() {
         const visibleClients = allowed ? allClients.filter((c) => allowed.includes(c.id)) : allClients;
         const visibleProjects = allowed ? allProjects.filter((p) => allowed.includes(p.client_id)) : allProjects;
         const projectIds = visibleProjects.map((p) => p.id);
+        const moneyProjects = await withProjectMoney(visibleProjects);
 
         let rfis = 0;
         let punch = 0;
@@ -110,7 +112,7 @@ export function DashboardPage() {
 
         if (!cancelled) {
           setClients(visibleClients);
-          setProjects(visibleProjects);
+          setProjects(moneyProjects);
           setOpenRfis(rfis);
           setOpenPunch(punch);
           setActivities(acts);

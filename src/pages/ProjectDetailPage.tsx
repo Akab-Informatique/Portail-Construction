@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { ArrowLeft, FolderKanban, Pencil, Plus, Users } from "lucide-react";
 import { db, dbReady, schema } from "../db";
 import { useAuth } from "@/lib/auth";
+import { withProjectMoney } from "@/lib/project-money";
 import { logActivity } from "@/lib/activity";
 import { formatDate, money, moneyExact, percent, todayISO } from "@/lib/format";
 import { visibleProjectModules } from "@/lib/permissions";
@@ -132,7 +133,8 @@ export function ProjectDetailPage() {
         db.select().from(schema.project_members).where(eq(schema.project_members.project_id, id)),
         getCompanyProfile(),
         db.select().from(schema.project_tasks).where(eq(schema.project_tasks.project_id, id)),
-        db.select().from(schema.budget_items).where(eq(schema.budget_items.project_id, id)),
+        // Real costs are private to FRX staff; a client simply gets no lines.
+        db.select().from(schema.budget_items).where(eq(schema.budget_items.project_id, id)).catch(() => [] as (typeof schema.budget_items.$inferSelect)[]),
         db.select().from(schema.calendar_events).where(eq(schema.calendar_events.project_id, id)),
         db.select().from(schema.rfis).where(eq(schema.rfis.project_id, id)),
         db.select().from(schema.change_orders).where(eq(schema.change_orders.project_id, id)),
@@ -144,7 +146,7 @@ export function ProjectDetailPage() {
       ]);
       const people = users as User[];
       const punches = punchesRaw as TimePunch[];
-      setProject(rows[0] as Project);
+      setProject((await withProjectMoney([rows[0] as Project]))[0]);
       setClientName(clients[0]?.company_name ?? "");
       setClientRow((clients[0] as Client) ?? null);
       setCompany(companyProfile);
@@ -199,7 +201,8 @@ export function ProjectDetailPage() {
     const spent = items.reduce((s, i) => s + i.actual, 0);
     await db.update(schema.projects).set({ spent }).where(eq(schema.projects.id, id));
     setBudget(items);
-    setProject((p) => (p ? { ...p, spent } : p));
+    // `spent` shown on screen is paid invoices; the real cost lives in `cost`.
+    setProject((p) => (p ? { ...p, cost: spent } : p));
   }
 
   if (loading) return <PageSkeleton />;

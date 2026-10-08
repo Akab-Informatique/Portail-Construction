@@ -242,17 +242,15 @@ export function ProjectFormFields({
           <Input value={form.city} onChange={(e) => onChange({ ...form, city: e.target.value })} />
         </Field>
       </div>
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field label={t("clients.start")}>
           <Input type="date" value={form.start_date} onChange={(e) => onChange({ ...form, start_date: e.target.value })} />
         </Field>
         <Field label={t("clients.end")}>
           <Input type="date" value={form.end_date} onChange={(e) => onChange({ ...form, end_date: e.target.value })} />
         </Field>
-        <Field label={t("clients.budgetCad")}>
-          <Input type="number" min="0" value={form.budget} onChange={(e) => onChange({ ...form, budget: e.target.value })} />
-        </Field>
       </div>
+      <p className="text-xs text-muted-foreground">{t("clients.budgetFromQuotes")}</p>
       <div className="space-y-2 rounded-lg border p-3">
         <p className="text-sm font-medium">{t("sp.assignFolder")}</p>
         <p className="text-xs text-muted-foreground">{t("sp.assignFolderHint")}</p>

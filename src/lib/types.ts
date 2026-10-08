@@ -63,6 +63,10 @@ export type Project = {
   geo_radius_m: number | null;
   require_geofence: number;
   created_at: Date;
+  /** Added by withProjectMoney: real cost kept apart (budget = accepted quotes, spent = paid invoices). */
+  cost?: number;
+  invoiced?: number;
+  paid?: number;
 };
 
 export type TimePunch = {

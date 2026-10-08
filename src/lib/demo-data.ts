@@ -464,10 +464,62 @@ async function patchDemoFinal() {
   }
 }
 
+/**
+ * The project budget now comes from accepted quotes, so every demo job that has invoices needs an accepted quote.
+ * Also seeds a private target margin. Safe to run on an existing local database.
+ */
+async function ensureDemoContracts() {
+  const clientRows = await db.select().from(schema.clients);
+  const nordique = clientRows.find((c) => c.company_name.includes("Nordique"));
+  if (!nordique) return;
+  const projectRows = await db.select().from(schema.projects).where(eq(schema.projects.client_id, nordique.id));
+  const lobby = projectRows.find((p) => p.name.includes("Lobby"));
+  if (!lobby) return;
+  const files = await db.select().from(schema.billing_files).where(eq(schema.billing_files.client_id, nordique.id));
+  const hasAccepted = files.some((f) => f.kind === "quote" && !f.parent_id && f.project_id === lobby.id && f.status === "accepted");
+  if (!hasAccepted) {
+    const lines: Line[] = [
+      { description: "Rénovation du lobby — démolition, plafond et éclairage", quantity: 1, unit: "forfait", unit_price: 310000 },
+      { description: "Revêtement de sol en pierre et ébénisterie", quantity: 1, unit: "forfait", unit_price: 106000 },
+    ];
+    const pdf = await fakePdf({ kind: "quote", number: "SOU-DEMO-LOBBY", client: nordique.company_name, title: lobby.name, lines, issued: isoDate(-80), due: null });
+    const [marc] = await db.select().from(schema.users).where(eq(schema.users.email, "marc@frxconstruction.ca"));
+    const [row] = await db
+      .insert(schema.billing_files)
+      .values({
+        kind: "quote",
+        client_id: nordique.id,
+        project_id: lobby.id,
+        number: "SOU-DEMO-LOBBY",
+        title: "Tour Sherbrooke — Lobby, contrat accepté",
+        subtotal: pdf.totals.subtotal,
+        tax_gst: pdf.totals.gst,
+        tax_qst: pdf.totals.qst,
+        amount: pdf.totals.total,
+        issued_on: isoDate(-80),
+        status: "accepted",
+        published: 1,
+        is_final: 1,
+        file_name: "SOU-DEMO-LOBBY.pdf",
+        file_type: "application/pdf",
+        file_size: pdf.size,
+        ai_status: "analyzed",
+        accepted_by: "Sophie Gagnon",
+        accepted_at: new Date().toISOString(),
+        uploaded_by: marc?.id ?? null,
+      })
+      .returning();
+    await db.insert(schema.billing_file_blobs).values({ file_id: row.id, data: pdf.data });
+  }
+  const targets = await db.select().from(schema.project_finance).where(eq(schema.project_finance.project_id, lobby.id));
+  if (targets.length === 0) await db.insert(schema.project_finance).values({ project_id: lobby.id, target_margin_pct: 30 });
+}
+
 async function seedBillingFiles() {
   const have = await db.select({ id: schema.billing_files.id }).from(schema.billing_files).limit(1);
   if (have.length > 0) {
     await patchDemoFinal();
+    await ensureDemoContracts();
     return;
   }
   const clientRows = await db.select().from(schema.clients);
@@ -580,6 +632,7 @@ async function seedBillingFiles() {
     requested_at: new Date().toISOString(),
     staff_seen: 0,
   });
+  await ensureDemoContracts();
 }
 
 /** Sample change requests on the first demo quote: one waiting for pricing, one annex waiting for the client. */

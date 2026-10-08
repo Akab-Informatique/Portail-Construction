@@ -127,6 +127,11 @@ export function BillingUploadDialog({
       setError(t("billing.upload.needClient"));
       return;
     }
+    if (projectId === NONE) {
+      // The project decides which budget the quote or invoice belongs to, so it is required.
+      setError(t("billing.upload.needProject"));
+      return;
+    }
     setError(null);
     setPhase("analyzing");
     try {
@@ -306,10 +311,9 @@ export function BillingUploadDialog({
                 <Label>{t("billing.project")}</Label>
                 <Select value={projectId} onValueChange={setProjectId} disabled={!clientId}>
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder={t("billing.upload.pickProject")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={NONE}>{t("billing.noProject")}</SelectItem>
                     {clientProjects.map((p) => (
                       <SelectItem key={p.id} value={String(p.id)}>
                         {p.name}
@@ -425,7 +429,7 @@ export function BillingUploadDialog({
               </Button>
             </>
           ) : (
-            <Button type="button" onClick={() => void analyze()} disabled={phase === "analyzing" || !file || !clientId}>
+            <Button type="button" onClick={() => void analyze()} disabled={phase === "analyzing" || !file || !clientId || projectId === NONE}>
               {phase === "analyzing" ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
               {phase === "analyzing" ? t("billing.upload.analyzing") : t("billing.upload.analyze")}
             </Button>

@@ -98,6 +98,8 @@ CREATE TABLE IF NOT EXISTS billing_file_blobs (id SERIAL PRIMARY KEY, file_id IN
 CREATE UNIQUE INDEX IF NOT EXISTS billing_file_blobs_file_idx ON billing_file_blobs (file_id);
 CREATE TABLE IF NOT EXISTS billing_requests (id SERIAL PRIMARY KEY, file_id INTEGER NOT NULL, client_id INTEGER NOT NULL, number TEXT NOT NULL, title TEXT NOT NULL, description TEXT, status TEXT NOT NULL DEFAULT 'open', requested_by INTEGER, requested_at TEXT, staff_seen INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
 CREATE INDEX IF NOT EXISTS billing_requests_file_idx ON billing_requests (file_id);
+CREATE TABLE IF NOT EXISTS project_finance (id SERIAL PRIMARY KEY, project_id INTEGER NOT NULL, target_margin_pct REAL, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS project_finance_project_idx ON project_finance (project_id);
 CREATE TABLE IF NOT EXISTS password_resets (id SERIAL PRIMARY KEY, token_hash TEXT NOT NULL, user_id INTEGER NOT NULL, expires_at TEXT NOT NULL, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
 CREATE INDEX IF NOT EXISTS password_resets_hash_idx ON password_resets (token_hash);
 CREATE INDEX IF NOT EXISTS app_settings_key_idx ON app_settings (key);

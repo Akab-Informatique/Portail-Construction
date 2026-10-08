@@ -11,6 +11,7 @@ import { useLocation } from "react-router-dom";
 import { db, dbReady, schema } from "../db";
 import { CLIENT_KEY } from "./constants";
 import { useAuth } from "./auth";
+import { withProjectMoney } from "./project-money";
 import { loadBoardColumns } from "./board";
 import { getAccessibleClientIds } from "./access";
 import type { BoardColumn, Client, Project } from "./types";
@@ -71,7 +72,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       }
 
       setClients(allClients);
-      setProjects(allProjects);
+      // Project budget = accepted quotes, spent = paid invoices (see project-money.ts).
+      setProjects(await withProjectMoney(allProjects));
       setColumns(allColumns);
     } catch (err) {
       console.error("workspace refresh failed", err);

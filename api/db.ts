@@ -26,6 +26,11 @@ const ROLE_USER = "frx_api_user";
 const ROLE_CLIENT = "frx_api_client";
 /** Tables browser SQL may never touch; the server reads them itself. */
 const PRIVATE_TABLES = ["sessions", "app_settings", "password_resets", "billing_file_blobs"];
+/**
+ * Tables only FRX staff may read or write: real project costs and the target margin. Clients get no privilege on them at
+ * all, so the database itself refuses them even if someone talks to the API directly.
+ */
+const STAFF_ONLY_TABLES = ["project_finance", "budget_items"];
 /** Tables only effective admins may write. */
 const ADMIN_TABLES = [
   "users",
@@ -126,6 +131,7 @@ const PROJECT_SCOPED = [
   "project_reports",
   "sharepoint_folders",
   "time_punches",
+  "project_finance",
 ];
 const ME = "NULLIF(current_setting('frx.user_id', true), '')::int";
 const ALL_CLIENTS = "(current_setting('frx.client_ids', true) = '*')";
@@ -169,7 +175,9 @@ async function ensureApiRoles() {
        FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
                 AND tablename NOT IN (${list([...PRIVATE_TABLES, ...ADMIN_TABLES])}) LOOP
          EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO ${ROLE_ADMIN}, ${ROLE_USER}', t);
-         EXECUTE format('GRANT SELECT ON %I TO ${ROLE_CLIENT}', t);
+         IF t <> ALL (ARRAY[${list(STAFF_ONLY_TABLES)}]) THEN
+           EXECUTE format('GRANT SELECT ON %I TO ${ROLE_CLIENT}', t);
+         END IF;
        END LOOP;
        FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = 'public'
                 AND tablename IN (${list(ADMIN_TABLES.filter((n) => n !== "users"))}) LOOP

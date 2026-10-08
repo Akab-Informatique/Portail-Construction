@@ -403,6 +403,15 @@ export const billing_requests = pgTable("billing_requests", {
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
+/** PRIVATE to FRX staff (clients can never read it): the target margin of a project. */
+export const project_finance = pgTable("project_finance", {
+  id: serial("id").primaryKey(),
+  project_id: integer("project_id").notNull(),
+  /** Margin FRX aims for on this project, in percent of the contract before taxes. */
+  target_margin_pct: real("target_margin_pct"),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const app_settings = pgTable("app_settings", {
   id: serial("id").primaryKey(),
   key: text("key").notNull(),
