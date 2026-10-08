@@ -156,7 +156,7 @@ function toBase64(file: File) {
 
 export type UploadInput = {
   file: File;
-  kind: "invoice" | "quote";
+  kind: "invoice" | "quote" | "supplier";
   clientId: number;
   projectId?: number | null;
   parentId?: number | null;

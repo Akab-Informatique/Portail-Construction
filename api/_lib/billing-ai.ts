@@ -198,9 +198,15 @@ export async function analyzeDocument(input: {
   model?: string;
   mime: Mime;
   base64: string;
-  kind: "invoice" | "quote";
+  kind: "invoice" | "quote" | "supplier";
 }): Promise<Extracted> {
-  const prompt = `This document is a ${input.kind === "quote" ? "quote (soumission)" : "invoice (facture)"}. Read it and record the data.`;
+  const label =
+    input.kind === "quote"
+      ? "quote (soumission)"
+      : input.kind === "supplier"
+        ? "supplier invoice (facture de fournisseur) received by a general contractor: put the supplier who issued it in client_name"
+        : "invoice (facture)";
+  const prompt = `This document is a ${label}. Read it and record the data.`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 90_000);
   try {

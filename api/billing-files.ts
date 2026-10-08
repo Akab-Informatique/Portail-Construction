@@ -74,7 +74,7 @@ async function aiConfig(override?: StoredAi) {
   return { provider, apiKey, model: usableModel(env.AI_MODEL, provider) };
 }
 
-async function runAnalysis(kind: "invoice" | "quote", mime: Mime, base64: string, override?: StoredAi): Promise<{ extracted?: Extracted; error?: string }> {
+async function runAnalysis(kind: "invoice" | "quote" | "supplier", mime: Mime, base64: string, override?: StoredAi): Promise<{ extracted?: Extracted; error?: string }> {
   const { provider, apiKey, model } = await aiConfig(override);
   if (!apiKey) return { error: "ai.notConfigured" };
   try {
@@ -142,7 +142,7 @@ export default async function handler(req: Req, res: Res) {
     const bytes = Buffer.from(String(body.data ?? ""), "base64");
     const mime = sniff(bytes);
     if (!mime || bytes.length > MAX_FILE_BYTES) return res.status(400).json({ error: "billing.upload.badFile" });
-    const kind = body.kind === "invoice" ? "invoice" : "quote";
+    const kind = body.kind === "invoice" ? "invoice" : body.kind === "supplier" ? "supplier" : "quote";
     // Local development keeps its settings in the browser, so it sends them along; the live server never trusts this.
     const override = !hasDatabase() && body.ai && typeof body.ai === "object" ? (body.ai as StoredAi) : undefined;
     const result = await runAnalysis(kind, mime, bytes.toString("base64"), override);
@@ -181,7 +181,7 @@ export default async function handler(req: Req, res: Res) {
   }
 
   if (action === "upload") {
-    const kind = body.kind === "invoice" ? "invoice" : body.kind === "quote" ? "quote" : null;
+    const kind = body.kind === "invoice" ? "invoice" : body.kind === "quote" ? "quote" : body.kind === "supplier" ? "supplier" : null;
     const clientId = int(body.client_id);
     if (!kind || !clientId) return res.status(400).json({ error: "kind and client_id are required" });
     const bytes = Buffer.from(String(body.data ?? ""), "base64");
@@ -262,7 +262,7 @@ export default async function handler(req: Req, res: Res) {
     const bytes = Buffer.from(blob.data, "base64");
     const mime = sniff(bytes);
     if (!mime) return res.status(400).json({ error: "billing.upload.badFile" });
-    const result = await runAnalysis(row.kind === "invoice" ? "invoice" : "quote", mime, blob.data);
+    const result = await runAnalysis(row.kind === "invoice" ? "invoice" : row.kind === "supplier" ? "supplier" : "quote", mime, blob.data);
     return res.status(200).json(result);
   }
 

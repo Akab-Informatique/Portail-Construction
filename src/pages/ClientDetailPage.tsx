@@ -363,6 +363,8 @@ export function ClientDetailPage() {
           <ClientOverview
             projects={projects}
             billing={billing}
+            clientId={client.id}
+            userId={user?.id ?? 0}
             clientView={user?.user_type === "external" || user?.view_as === "client"}
             canSeePrivate={Boolean(user?.is_admin) && user?.view_as !== "client" && user?.view_as !== "staff"}
           />

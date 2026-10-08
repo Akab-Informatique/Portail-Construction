@@ -14,6 +14,8 @@ const PROJECT_TABLES = [
   schema.safety_incidents,
   schema.project_reports,
   schema.time_punches,
+  schema.project_costs,
+  schema.project_finance,
 ] as const;
 
 async function deleteBillingFilesOf(clientId: number) {

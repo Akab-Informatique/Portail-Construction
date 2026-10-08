@@ -99,6 +99,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS billing_file_blobs_file_idx ON billing_file_bl
 CREATE TABLE IF NOT EXISTS billing_requests (id SERIAL PRIMARY KEY, file_id INTEGER NOT NULL, client_id INTEGER NOT NULL, number TEXT NOT NULL, title TEXT NOT NULL, description TEXT, status TEXT NOT NULL DEFAULT 'open', requested_by INTEGER, requested_at TEXT, staff_seen INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
 CREATE INDEX IF NOT EXISTS billing_requests_file_idx ON billing_requests (file_id);
 CREATE TABLE IF NOT EXISTS project_finance (id SERIAL PRIMARY KEY, project_id INTEGER NOT NULL, target_margin_pct REAL, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
+ALTER TABLE project_finance ADD COLUMN IF NOT EXISTS planned_cost REAL;
+CREATE TABLE IF NOT EXISTS project_costs (id SERIAL PRIMARY KEY, project_id INTEGER NOT NULL, source TEXT NOT NULL DEFAULT 'quick', supplier TEXT, description TEXT, incurred_on TEXT, amount REAL NOT NULL DEFAULT 0, paid INTEGER NOT NULL DEFAULT 0, file_id INTEGER, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
+CREATE INDEX IF NOT EXISTS project_costs_project_idx ON project_costs (project_id);
 CREATE UNIQUE INDEX IF NOT EXISTS project_finance_project_idx ON project_finance (project_id);
 CREATE TABLE IF NOT EXISTS password_resets (id SERIAL PRIMARY KEY, token_hash TEXT NOT NULL, user_id INTEGER NOT NULL, expires_at TEXT NOT NULL, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
 CREATE INDEX IF NOT EXISTS password_resets_hash_idx ON password_resets (token_hash);

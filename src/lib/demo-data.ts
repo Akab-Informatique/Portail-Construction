@@ -512,7 +512,21 @@ async function ensureDemoContracts() {
     await db.insert(schema.billing_file_blobs).values({ file_id: row.id, data: pdf.data });
   }
   const targets = await db.select().from(schema.project_finance).where(eq(schema.project_finance.project_id, lobby.id));
-  if (targets.length === 0) await db.insert(schema.project_finance).values({ project_id: lobby.id, target_margin_pct: 30 });
+  if (targets.length === 0) {
+    await db.insert(schema.project_finance).values({ project_id: lobby.id, target_margin_pct: 30, planned_cost: 300000 });
+  } else if (targets[0].planned_cost === null) {
+    await db.update(schema.project_finance).set({ planned_cost: 300000 }).where(eq(schema.project_finance.id, targets[0].id));
+  }
+  // Private real costs: supplier invoices and one quick entry (before taxes).
+  const costs = await db.select({ id: schema.project_costs.id }).from(schema.project_costs).where(eq(schema.project_costs.project_id, lobby.id));
+  if (costs.length === 0) {
+    await db.insert(schema.project_costs).values([
+      { project_id: lobby.id, source: "invoice", supplier: "Béton Laurentides inc.", description: "Facture 4471 — dalle et nivellement", incurred_on: isoDate(-55), amount: 38000, paid: 1 },
+      { project_id: lobby.id, source: "invoice", supplier: "Éclairage Lux inc.", description: "Facture 2209 — luminaires et contrôles", incurred_on: isoDate(-32), amount: 105300, paid: 1 },
+      { project_id: lobby.id, source: "invoice", supplier: "Menuiserie Nordik", description: "Facture 880 — ébénisterie, acompte", incurred_on: isoDate(-9), amount: 40000, paid: 0 },
+      { project_id: lobby.id, source: "quick", supplier: null, description: "Main-d’œuvre de chantier à ce jour", incurred_on: isoDate(-2), amount: 29200, paid: 1 },
+    ]);
+  }
 }
 
 async function seedBillingFiles() {

@@ -403,12 +403,34 @@ export const billing_requests = pgTable("billing_requests", {
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
+/**
+ * PRIVATE to FRX staff: what a project really costs. Either a supplier invoice (optionally with its PDF, read by the AI)
+ * or a quick amount typed in. Amounts are before taxes.
+ */
+export const project_costs = pgTable("project_costs", {
+  id: serial("id").primaryKey(),
+  project_id: integer("project_id").notNull(),
+  /** "invoice" = a supplier invoice, "quick" = a single amount typed in. */
+  source: text("source").notNull().default("quick"),
+  supplier: text("supplier"),
+  description: text("description"),
+  incurred_on: text("incurred_on"),
+  amount: real("amount").notNull().default(0),
+  /** 1 once FRX has paid the supplier. */
+  paid: integer("paid").notNull().default(0),
+  /** The supplier invoice PDF (a private billing_files row of kind "supplier"). */
+  file_id: integer("file_id"),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
 /** PRIVATE to FRX staff (clients can never read it): the target margin of a project. */
 export const project_finance = pgTable("project_finance", {
   id: serial("id").primaryKey(),
   project_id: integer("project_id").notNull(),
   /** Margin FRX aims for on this project, in percent of the contract before taxes. */
   target_margin_pct: real("target_margin_pct"),
+  /** Quick single amount: what FRX expects the whole project to cost (before taxes). */
+  planned_cost: real("planned_cost"),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 

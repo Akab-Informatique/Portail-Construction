@@ -316,7 +316,8 @@ export type QuoteChange = {
 /** An invoice or quote uploaded as a file. A row with parent_id is an annex of that quote. */
 export type BillingFile = {
   id: number;
-  kind: "invoice" | "quote";
+  /** "supplier" = a supplier invoice kept as a private cost document (never shown to clients). */
+  kind: "invoice" | "quote" | "supplier";
   client_id: number;
   project_id: number | null;
   parent_id: number | null;
