@@ -13,19 +13,25 @@ const fieldClass =
 
 /** Hairline construction lines, same style as the FRX brochure: thin orange verticals, horizontals and shallow diagonals. */
 const LINES: [number, number, number, number][] = [
-  // verticals (paired, like the brochure)
-  [250, -50, 250, 950],
-  [274, -50, 274, 950],
-  [1326, -50, 1326, 950],
-  [1350, -50, 1350, 950],
-  // horizontals
-  [-50, 150, 1650, 150],
-  [-50, 770, 1650, 770],
-  // diagonals
-  [-50, 790, 1010, 404],
-  [180, 950, 1010, 648],
-  [640, -50, 1500, 500],
-  [1650, 430, 1180, 80],
+  // axis cluster, centre-left: vertical + 20° and 30° diagonals meeting at one point
+  [560, -50, 560, 480],
+  [-50, 552, 1100, 133],
+  [-50, -22, 900, 526],
+  // axis cluster, centre-right
+  [1040, 430, 1040, 950],
+  [600, 740, 1700, 340],
+  [800, 441, 1650, 932],
+  // a few accents
+  [-50, 700, 480, 700],
+  [1330, -50, 1330, 330],
+  [1650, 150, 1150, -30],
+  [-50, 900, 300, 774],
+  // more verticals and horizontals
+  [200, 420, 200, 950],
+  [1470, -50, 1470, 520],
+  [-50, 150, 330, 150],
+  [1250, 640, 1650, 640],
+  [1100, 860, 1650, 860],
 ];
 
 function LineSet({ stroke, width }: { stroke: string; width: number }) {
@@ -46,8 +52,8 @@ function Lines() {
       className="pointer-events-none absolute -inset-6"
       style={{ transform: "translate3d(calc(var(--px) * -14px), calc(var(--py) * -10px), 0)" }}
     >
-      <div className="absolute inset-0 opacity-[0.6]">
-        <LineSet stroke="#ffa62c" width={1.5} />
+      <div className="absolute inset-0 opacity-[0.38]">
+        <LineSet stroke="#ffa62c" width={1.25} />
       </div>
       <div
         className="absolute inset-0"
@@ -56,7 +62,7 @@ function Lines() {
           maskImage: "radial-gradient(circle 280px at var(--mx) var(--my), #000 0%, transparent 100%)",
         }}
       >
-        <LineSet stroke="#ffb94a" width={2.5} />
+        <LineSet stroke="#ffb94a" width={2} />
       </div>
     </div>
   );
@@ -104,6 +110,8 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const words = t("brand.slogan").split(" ");
+  const slogan = { last: words.pop() ?? "", lead: words.join(" ") };
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -201,10 +209,11 @@ export function LoginPage() {
           />
           {/* Brochure-style wedge: full height at the card's top-left, tapering to the top-right */}
           <p
-            className="relative -mb-px flex h-[96px] items-end bg-[#ffa62c] px-8 pb-2.5 font-display text-[22px] uppercase leading-none tracking-[0.22em] text-white [@media(max-height:800px)]:h-[84px]"
-            style={{ clipPath: "polygon(0 0, 100% 100%, 0 100%)" }}
+            className="relative -mb-px flex h-[140px] flex-col items-start justify-end bg-[#ffa62c] px-8 pb-3 font-display text-[30px] uppercase leading-[1.1] tracking-[0.22em] text-white [@media(max-height:800px)]:h-[130px]"
+            style={{ clipPath: "polygon(0 0, calc(100% - 250px) 0, 100% 91px, 100% 100%, 0 100%)" }}
           >
-            {t("brand.slogan")}.
+            <span className="[-webkit-text-stroke:1.2px_currentColor]">{slogan.lead}</span>
+            <span className="font-['Barlow_Condensed'] text-[32px] font-light tracking-[0.2em]">{slogan.last}.</span>
           </p>
           <div className="relative overflow-hidden rounded-md rounded-tl-none border border-white/[0.1] bg-[#0b0b0b]/90 p-8 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.9)] backdrop-blur-md sm:p-10 [@media(max-height:800px)]:p-7">
             <BorderBeam size={170} duration={9} borderWidth={2} colorFrom="#fbaa19" colorTo="#fff4d4" />
@@ -290,18 +299,21 @@ export function LoginPage() {
                   </p>
                 )}
 
-                <button
-                  type="submit"
-                  disabled={submitting || !ready}
-                  className="group mt-8 [@media(max-height:800px)]:mt-6 flex h-12 w-full items-center justify-between rounded-sm bg-[#fbaa19] px-5 font-display text-[16px] font-bold uppercase tracking-[0.18em] text-black shadow-[inset_0_-3px_0_rgba(0,0,0,0.2),0_0_30px_-6px_rgba(251,170,25,0.55)] transition-colors hover:bg-[#ffb935] active:translate-y-px disabled:opacity-60"
-                >
-                  <span>{needsSetup ? t("login.setup.submit") : t("login.enter")}</span>
-                  {submitting ? (
-                    <Loader2 className="size-5 animate-spin" />
-                  ) : (
-                    <ArrowRight className="size-5 transition-transform group-hover:translate-x-1" />
-                  )}
-                </button>
+                <div className="mt-8 flex justify-center drop-shadow-[0_0_14px_rgba(251,170,25,0.45)] [@media(max-height:800px)]:mt-6">
+                  <button
+                    type="submit"
+                    disabled={submitting || !ready}
+                    style={{ clipPath: "polygon(0 0, 100% 0, 100% 55%, 14% 100%, 0 100%)" }}
+                    className="group flex h-11 min-w-[210px] items-center justify-start gap-3 bg-[#fbaa19] pl-7 pr-14 font-display text-[20px] uppercase tracking-[0.22em] text-black transition-colors hover:bg-[#ffb935] active:translate-y-px disabled:opacity-60"
+                  >
+                    <span>{needsSetup ? t("login.setup.submit") : t("login.enter")}</span>
+                    {submitting ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
+                    )}
+                  </button>
+                </div>
               </form>
           </div>
           <p className="font-display text-[13px] font-medium uppercase tracking-[0.28em] relative mt-5 text-center text-[#6b6b68]">© {new Date().getFullYear()} FRX Construction</p>
