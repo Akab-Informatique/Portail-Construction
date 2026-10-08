@@ -653,6 +653,13 @@ export function AppShell() {
     setOpen(false);
   }, [location.pathname]);
 
+  // Tables with many columns (projects, billing) use the full width so they do not need a horizontal scrollbar.
+  const wideLayout =
+    location.pathname === "/projects" ||
+    location.pathname.startsWith("/finance") ||
+    location.pathname.startsWith("/accounting") ||
+    /^\/clients\/\d+\/billing/.test(location.pathname);
+
   const segments = location.pathname.split("/").filter(Boolean);
   const named = segments.filter((s) => Number.isNaN(Number(s)));
   const last = named[named.length - 1];
@@ -799,7 +806,7 @@ export function AppShell() {
         </header>
 
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
-          <div className={cn("mx-auto", location.pathname === "/projects" ? "max-w-none" : "max-w-6xl")}>
+          <div className={cn("mx-auto", wideLayout ? "max-w-none" : "max-w-6xl")}>
             {/* Keyed by path so a crash on one page clears when the user navigates away. */}
             <ErrorBoundary key={location.pathname} inline>
               <Suspense fallback={<PageSkeleton />}>

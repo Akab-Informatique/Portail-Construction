@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { eq } from "drizzle-orm";
-import { Eye, FileText, PenLine, Receipt, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Eye, FileText, PenLine, Receipt, X } from "lucide-react";
 import { db, dbReady, schema } from "../db";
 import { useAuth } from "@/lib/auth";
+import { quoteRows } from "@/lib/billing-tree";
 import { logActivity } from "@/lib/activity";
 import {
   BILLING_FILES_EVENT,
@@ -284,6 +285,15 @@ function FileList({
   onDecline: (file: BillingFile) => void;
 }) {
   const { t, locale } = useI18n();
+  /** Quote / final-version rows whose children are folded away. */
+  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+  const toggleFold = (id: number) =>
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   if (rows.length === 0) {
     return (
       <EmptyState
@@ -295,7 +305,8 @@ function FileList({
   }
 
   /** One row per document: a quote and its newer versions are listed together, oldest first. */
-  function renderRow(file: BillingFile, root: BillingFile, isVersion: boolean) {
+  function renderRow(file: BillingFile, root: BillingFile, level: number, hasChildren: boolean) {
+    const isVersion = level > 0;
     const status = revisionStatus(file, all);
     const isVoid = status === "void";
     const chain = kind === "quote" ? chainOf(root, all) : [];
@@ -307,9 +318,25 @@ function FileList({
 
     return (
       <tr key={file.id} className={isVersion ? "cursor-pointer bg-muted/20" : "cursor-pointer hover:bg-muted/30"} onClick={() => onOpen(root)}>
-        <td className={`px-4 py-3 font-medium tabular-nums ${isVersion ? "pl-8" : ""} ${muted}`}>
+        <td className={`whitespace-nowrap py-3 pr-4 font-medium tabular-nums ${muted}`} style={{ paddingLeft: 16 + level * 22 }}>
+          {hasChildren ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleFold(file.id);
+              }}
+              aria-expanded={!collapsed.has(file.id)}
+              aria-label={t("billing.mods.toggle")}
+              className="mr-1.5 inline-flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              {collapsed.has(file.id) ? <ChevronRight className="size-4" /> : <ChevronDown className="size-4" />}
+            </button>
+          ) : (
+            <span className="mr-1.5 inline-block size-5 align-middle" aria-hidden />
+          )}
           <span className={isVoid ? "line-through" : ""}>
-            {isVersion ? (file.is_addon === 1 ? "↳ + " : "↳ ") : ""}
+            {file.is_addon === 1 ? "+ " : ""}
             {file.number || `#${file.id}`}
           </span>
         </td>
@@ -339,7 +366,7 @@ function FileList({
           <StatusPill file={file} mode="client" status={status} />
         </td>
         <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className="ml-auto flex max-w-[18rem] flex-wrap justify-end gap-2">
             {pending ? (
               <>
                 <Button size="sm" variant="outline" disabled={busyId === file.id} onClick={() => onDecline(file)}>
@@ -364,7 +391,7 @@ function FileList({
 
   return (
     <div className="overflow-x-auto rounded-xl border bg-card">
-      <table className="w-full min-w-[720px] text-sm">
+      <table className="w-full text-sm">
         <thead className="border-b bg-muted/40 text-left text-[11px] uppercase tracking-wider text-muted-foreground">
           <tr>
             <th className="px-4 py-3 font-medium">{t("billing.number")}</th>
@@ -379,7 +406,9 @@ function FileList({
         </thead>
         <tbody className="divide-y">
           {rows.flatMap((row) =>
-            kind === "quote" ? chainOf(row, all).map((version, i) => renderRow(version, row, i > 0)) : [renderRow(row, row, false)],
+            kind === "quote"
+              ? quoteRows(row, all, collapsed).map((tr) => renderRow(tr.file, row, tr.level, tr.hasChildren))
+              : [renderRow(row, row, 0, false)],
           )}
         </tbody>
       </table>

@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -44,9 +45,22 @@ import {
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
-import type { Client, Project, User } from "@/lib/types";
+import type { BillingFile, Client, Project, User } from "@/lib/types";
+import { listPublishedForClient, quoteEffectiveTotal, currentRevision, revisionStatus, displayStatus, rootOf } from "@/lib/billing-files";
 import { assignProjectFolder, callSharePoint, loadAllFolders, type SpItem } from "@/lib/sharepoint";
 import { getSharePointSettings, sharepointReady } from "@/lib/settings";
+
+type UsageKey = "quoted" | "unpaid" | "paid" | "spent";
+const USAGE_KEY = "frx.budgetUsage";
+const USAGE_DEFAULT: Record<UsageKey, boolean> = { quoted: false, unpaid: true, paid: false, spent: true };
+
+function readIncluded(): Record<UsageKey, boolean> {
+  try {
+    return { ...USAGE_DEFAULT, ...(JSON.parse(localStorage.getItem(USAGE_KEY) ?? "{}") as Partial<Record<UsageKey, boolean>>) };
+  } catch {
+    return { ...USAGE_DEFAULT };
+  }
+}
 
 const projectFormEmpty = {
   name: "",
@@ -82,6 +96,12 @@ export function ClientDetailPage() {
   const [client, setClient] = useState<Client | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [people, setPeople] = useState<(User & { is_primary: number })[]>([]);
+  /** Invoices and quotes published for this client (consultation only). */
+  const [billing, setBilling] = useState<BillingFile[]>([]);
+  /** "all" or a project id: every figure on the dashboard follows this choice. */
+  const [projectFilter, setProjectFilter] = useState<string>("all");
+  /** Which budget lines are added up in "my calculation" (kept in this browser). */
+  const [included, setIncluded] = useState<Record<UsageKey, boolean>>(readIncluded);
   const [projectOpen, setProjectOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const [pForm, setPForm] = useState(projectFormEmpty);
@@ -122,6 +142,7 @@ export function ClientDetailPage() {
       setClient(rows[0] as Client);
       setProjects(jobs);
       setPeople(attached);
+      setBilling(await listPublishedForClient(id).catch(() => []));
       setLoading(false);
     } catch (err) {
       console.error("ClientDetailPage load failed", err);
@@ -307,8 +328,40 @@ export function ClientDetailPage() {
     );
   }
 
-  const budget = projects.reduce((s, p) => s + p.budget, 0);
-  const spent = projects.reduce((s, p) => s + p.spent, 0);
+  // Everything on the dashboard is the total of all projects, or of the one project chosen in the list.
+  const scopedProjects = projectFilter === "all" ? projects : projects.filter((p) => String(p.id) === projectFilter);
+  const scopedBilling = projectFilter === "all" ? billing : billing.filter((f) => String(rootOf(f, billing).project_id) === projectFilter);
+  const oneProject = projectFilter !== "all" ? scopedProjects[0] : undefined;
+  const budget = scopedProjects.reduce((s, p) => s + p.budget, 0);
+  const spent = scopedProjects.reduce((s, p) => s + p.spent, 0);
+  // Quotes count once, at the version in force plus accepted add-ons; rejected quotes do not count.
+  const quoteRoots = scopedBilling.filter((f) => f.kind === "quote" && !f.parent_id);
+  const quotedLive = quoteRoots.filter((q) => revisionStatus(currentRevision(q, billing), billing) !== "rejected");
+  const quotedAmount = quotedLive.reduce((sum, q) => sum + quoteEffectiveTotal(q, billing), 0);
+  const invoices = scopedBilling.filter((f) => f.kind === "invoice");
+  const invoicedAmount = invoices.reduce((sum, f) => sum + f.amount, 0);
+  const paidAmount = invoices.filter((f) => displayStatus(f) === "paid").reduce((sum, f) => sum + f.amount, 0);
+  const unpaidAmount = invoicedAmount - paidAmount;
+  // The four lines the budget can be measured with; the checked ones are added up in "my calculation".
+  const usageLines: { key: UsageKey; label: MessageKey; amount: number }[] = [
+    { key: "quoted", label: "clients.usage.quoted", amount: quotedAmount },
+    { key: "unpaid", label: "clients.usage.unpaid", amount: unpaidAmount },
+    { key: "paid", label: "clients.usage.paid", amount: paidAmount },
+    { key: "spent", label: "clients.usage.spent", amount: spent },
+  ];
+  const selectedTotal = usageLines.filter((l) => included[l.key]).reduce((sum, l) => sum + l.amount, 0);
+  const selectedPct = percent(selectedTotal, budget);
+  function toggleLine(key: UsageKey, on: boolean) {
+    setIncluded((current) => {
+      const next = { ...current, [key]: on };
+      try {
+        localStorage.setItem(USAGE_KEY, JSON.stringify(next));
+      } catch {
+        /* storage unavailable */
+      }
+      return next;
+    });
+  }
   const canCreateProject = can("clients", "create") || user?.user_type === "internal";
   const canInvite = can("users", "create") || user?.is_admin || user?.user_type === "internal";
 
@@ -355,17 +408,53 @@ export function ClientDetailPage() {
         </TabsList>
 
         <TabsContent value="dashboard" className="mt-5 space-y-5">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <Label htmlFor="dashboard-project" className="text-sm text-muted-foreground">
+              {t("clients.projectFilter.label")}
+            </Label>
+            <Select value={projectFilter} onValueChange={setProjectFilter}>
+              <SelectTrigger id="dashboard-project" className="w-full max-w-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("clients.projectFilter.all")}</SelectItem>
+                {projects.map((p) => (
+                  <SelectItem key={p.id} value={String(p.id)}>
+                    {p.project_number ? `${p.project_number} · ` : ""}
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
             <Stat
               label={t("clients.stat.projects")}
-              value={projects.length}
-              hint={t("clients.stat.activeHint", { n: projects.filter((p) => p.status === "active").length })}
+              value={scopedProjects.length}
+              hint={
+                oneProject
+                  ? oneProject.project_number
+                  : t("clients.stat.activeHint", { n: projects.filter((p) => p.status === "active").length })
+              }
             />
             <Stat
-              label={t("clients.stat.contract")}
+              label={oneProject ? t("clients.stat.projectBudget") : t("clients.stat.contract")}
               value={budget}
               isMoney
               hint={t("clients.stat.spentHint", { pct: percent(spent, budget) })}
+            />
+            <Stat
+              label={t("clients.stat.quoted")}
+              value={quotedAmount}
+              isMoney
+              hint={t("clients.stat.quotedHint", { n: quotedLive.length })}
+            />
+            <Stat
+              label={t("clients.stat.invoiced")}
+              value={invoicedAmount}
+              isMoney
+              hint={t("clients.stat.invoicedHint", { amount: money(paidAmount, locale) })}
             />
             <Stat
               label={t("clients.stat.spent")}
@@ -373,12 +462,54 @@ export function ClientDetailPage() {
               isMoney
               hint={t("clients.stat.remaining", { amount: money(Math.max(budget - spent, 0), locale) })}
             />
-            <Stat
-              label={t("clients.stat.external")}
-              value={people.length}
-              hint={t("clients.stat.primaryHint", { n: people.filter((p) => p.is_primary).length })}
-            />
           </div>
+
+          <Card className="py-0">
+            <CardHeader className="border-b px-5 py-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <CardTitle className="text-base">{t("clients.usage.title")}</CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  {oneProject ? t("clients.stat.projectBudget") : t("clients.usage.budget")}: <span className="font-medium text-foreground tabular-nums">{money(budget, locale)}</span>
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">{t("clients.usage.pick")}</p>
+            </CardHeader>
+            <CardContent className="grid gap-4 px-5 py-5">
+              {usageLines.map((line) => {
+                const pct = percent(line.amount, budget);
+                const label = t(line.label);
+                return (
+                  <label
+                    key={line.key}
+                    className="grid cursor-pointer items-center gap-x-4 gap-y-1 sm:grid-cols-[1.25rem_15rem_minmax(0,1fr)_auto_3.5rem]"
+                  >
+                    <Checkbox checked={included[line.key]} onCheckedChange={(v) => toggleLine(line.key, v === true)} aria-label={label} />
+                    <span className="text-sm font-medium">{label}</span>
+                    <div className="h-2.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={Math.min(pct, 100)} aria-valuemin={0} aria-valuemax={100} aria-label={label}>
+                      <div className={"h-full rounded-full " + (pct > 100 ? "bg-rose-500" : included[line.key] ? "bg-primary" : "bg-muted-foreground/40")} style={{ width: `${Math.min(pct, 100)}%` }} />
+                    </div>
+                    <span className="text-sm font-medium tabular-nums sm:text-right">{money(line.amount, locale)}</span>
+                    <span className={"text-sm tabular-nums sm:text-right " + (pct > 100 ? "font-semibold text-rose-600 dark:text-rose-400" : "text-muted-foreground")}>{pct} %</span>
+                  </label>
+                );
+              })}
+
+              <div className="grid items-center gap-x-4 gap-y-1 border-t pt-4 sm:grid-cols-[1.25rem_15rem_minmax(0,1fr)_auto_3.5rem]">
+                <span />
+                <span className="text-sm font-semibold">{t("clients.usage.selected")}</span>
+                <div className="h-3 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={Math.min(selectedPct, 100)} aria-valuemin={0} aria-valuemax={100} aria-label={t("clients.usage.selected")}>
+                  <div className={"h-full rounded-full " + (selectedPct > 100 ? "bg-rose-500" : "bg-primary")} style={{ width: `${Math.min(selectedPct, 100)}%` }} />
+                </div>
+                <span className="text-sm font-semibold tabular-nums sm:text-right">{money(selectedTotal, locale)}</span>
+                <span className={"text-sm font-semibold tabular-nums sm:text-right " + (selectedPct > 100 ? "text-rose-600 dark:text-rose-400" : "")}>{selectedPct} %</span>
+              </div>
+              <p className="text-right text-xs text-muted-foreground">
+                {selectedTotal > budget
+                  ? t("clients.usage.over", { amount: money(selectedTotal - budget, locale) })
+                  : t("clients.usage.left", { amount: money(budget - selectedTotal, locale) })}
+              </p>
+            </CardContent>
+          </Card>
 
           <div className="grid gap-5 lg:grid-cols-[1fr_0.7fr]">
             <Card className="py-0">
@@ -741,6 +872,7 @@ function Stat({
   hint: string;
   isMoney?: boolean;
 }) {
+  const { locale } = useI18n();
   return (
     <Card className="gap-2 py-5">
       <CardHeader className="px-5">
@@ -748,10 +880,13 @@ function Stat({
       </CardHeader>
       <CardContent className="px-5">
         <div className="font-display text-3xl font-semibold tabular-nums tracking-tight">
-          {isMoney ? (
+          {isMoney && value >= 100000 ? (
             <>
               $<NumberTicker value={Math.round(value / 1000)} className="font-display" />k
             </>
+          ) : isMoney ? (
+            // Smaller amounts are shown exactly, so 3 679 $ does not read as "4K".
+            money(value, locale)
           ) : (
             <NumberTicker value={value} className="font-display" />
           )}

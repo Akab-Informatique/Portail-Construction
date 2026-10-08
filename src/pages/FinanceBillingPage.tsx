@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import {
   BadgeCheck,
+  ChevronDown,
+  ChevronRight,
   Stamp,
   Eye,
   FileText,
@@ -13,6 +15,7 @@ import {
 } from "lucide-react";
 import { db, dbReady, schema } from "../db";
 import { useAuth } from "@/lib/auth";
+import { quoteRows } from "@/lib/billing-tree";
 import {
   BILLING_FILES_EVENT,
   addonsOf,
@@ -26,6 +29,7 @@ import {
   markBillingSeen,
   quoteEffectiveTotal,
   revisionStatus,
+  rootOf,
   saveFileDetails,
   setFileStatus,
   setFinalVersion,
@@ -68,6 +72,8 @@ export function FinanceBillingPage() {
   const [viewing, setViewing] = useState<BillingFile | null>(null);
   const [editing, setEditing] = useState<BillingFile | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+  /** Quote / final-version rows whose children are folded away. */
+  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
 
   const groupBilling = permissions.some((p) => p.module === "billing" && Number(p.can_view) === 1);
   const canView = Boolean(user?.is_admin || groupBilling);
@@ -132,6 +138,21 @@ export function FinanceBillingPage() {
   const liveQuotes = quotes.filter(published).filter((q) => revisionStatus(currentRevision(q, files), files) !== "rejected");
   // Version in force + accepted add-ons.
   const quotesTotal = liveQuotes.reduce((sum, q) => sum + quoteEffectiveTotal(q, files), 0);
+
+  // Add-ons on the quotes above: the accepted ones are inside the quote total; they also get their own box.
+  const addonsOfLive = liveQuotes.flatMap((q) => addonsOf(q, files)).filter(published);
+  const acceptedAddons = addonsOfLive.filter((a) => a.status === "accepted");
+  const pendingAddons = addonsOfLive.filter((a) => a.status === "sent");
+  const addonsTotal = acceptedAddons.reduce((sum, a) => sum + a.amount, 0);
+  const quotesBase = quotesTotal - addonsTotal;
+
+  /** How many distinct projects a set of documents belongs to (an add-on belongs to its quote's project). */
+  const projectCount = (docs: BillingFile[]) =>
+    new Set(docs.map((d) => d.project_id ?? rootOf(d, files).project_id).filter((id): id is number => id !== null)).size;
+  const projectsInvoiced = projectCount(invoices.filter(published));
+  const projectsOutstanding = projectCount(invoices.filter(published).filter((f) => displayStatus(f) !== "paid"));
+  const projectsQuotes = projectCount(liveQuotes);
+  const projectsAddons = projectCount(acceptedAddons);
   const openRequests = requests.filter((r) => r.status === "open" && (clientFilter === ALL || String(r.client_id) === clientFilter)).length;
 
   if (user?.user_type === "external") return <Navigate to="/" replace />;
@@ -165,6 +186,14 @@ export function FinanceBillingPage() {
     }
   }
 
+  const toggleFold = (id: number) =>
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
   const openUpload = (kind: "invoice" | "quote") => setUploadTarget({ kind });
   const openAnnex = (quote: BillingFile, addon = false) =>
     setUploadTarget({
@@ -176,7 +205,8 @@ export function FinanceBillingPage() {
     });
 
   /** One row per document. A quote and its newer versions are listed together, oldest first. */
-  function renderRow(file: BillingFile, isVersion: boolean) {
+  function renderRow(file: BillingFile, level: number, hasChildren: boolean) {
+    const isVersion = level > 0;
     const isQuote = file.kind === "quote";
     const chain = isQuote ? chainOf(file, files) : [];
     const current = isQuote ? currentRevision(file, files) : null;
@@ -191,9 +221,25 @@ export function FinanceBillingPage() {
 
     return (
       <tr key={file.id} className={isVersion ? "bg-muted/20" : "hover:bg-muted/30"}>
-        <td className={`px-3 py-3 font-medium tabular-nums ${isVersion ? "pl-8" : ""} ${muted}`}>
+        <td className={`whitespace-nowrap py-3 pr-3 font-medium tabular-nums ${muted}`} style={{ paddingLeft: 12 + level * 22 }}>
+          {hasChildren ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleFold(file.id);
+              }}
+              aria-expanded={!collapsed.has(file.id)}
+              aria-label={t("billing.mods.toggle")}
+              className="mr-1.5 inline-flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              {collapsed.has(file.id) ? <ChevronRight className="size-4" /> : <ChevronDown className="size-4" />}
+            </button>
+          ) : (
+            <span className="mr-1.5 inline-block size-5 align-middle" aria-hidden />
+          )}
           <span className={isVoid ? "line-through" : ""}>
-            {isVersion ? (isAddon ? "↳ + " : "↳ ") : ""}
+            {isAddon ? "+ " : ""}
             {file.number || `#${file.id}`}
           </span>
           {unseen ? <span className="ml-2 inline-block size-2 rounded-full bg-primary align-middle" title={t("billing.new")} /> : null}
@@ -233,7 +279,7 @@ export function FinanceBillingPage() {
           <StatusPill file={file} mode="staff" status={status} />
         </td>
         <td className="px-3 py-3">
-          <div className="flex justify-end gap-1.5">
+          <div className="ml-auto flex max-w-[19rem] flex-wrap justify-end gap-1.5">
             {isQuote && !isVersion && canManage ? (
               <Button size="sm" variant={open.length > 0 ? "default" : "outline"} onClick={() => openAnnex(file, finalExists)}>
                 <FileUp className="size-3.5" />
@@ -296,7 +342,7 @@ export function FinanceBillingPage() {
     }
     return (
       <div className="overflow-x-auto rounded-xl border bg-card">
-        <table className="w-full min-w-[980px] text-sm">
+        <table className="w-full text-sm">
           <thead className="border-b bg-muted/40 text-left text-[11px] uppercase tracking-wider text-muted-foreground">
             <tr>
               <th className="px-3 py-3 font-medium">{t("billing.number")}</th>
@@ -312,7 +358,9 @@ export function FinanceBillingPage() {
           </thead>
           <tbody className="divide-y">
             {rows.flatMap((row) =>
-              kind === "quote" ? chainOf(row, files).map((version, i) => renderRow(version, i > 0)) : [renderRow(row, false)],
+              kind === "quote"
+                ? quoteRows(row, files, collapsed).map((tr) => renderRow(tr.file, tr.level, tr.hasChildren))
+                : [renderRow(row, 0, false)],
             )}
           </tbody>
         </table>
@@ -342,18 +390,31 @@ export function FinanceBillingPage() {
         }
       />
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <Summary label={t("billing.stat.invoiced")} value={money(invoicedTotal, locale)} hint={t("billing.stat.invoiceCount", { n: invoices.filter(published).length })} />
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Summary
+          label={t("billing.stat.invoiced")}
+          value={money(invoicedTotal, locale)}
+          hint={t("billing.stat.invoiceCount", { n: invoices.filter(published).length })}
+          projects={projectsInvoiced}
+        />
         <Summary
           label={t("billing.stat.outstanding")}
           value={money(outstanding, locale)}
           hint={overdueTotal > 0 ? t("billing.stat.overdueHint", { amount: money(overdueTotal, locale) }) : t("billing.stat.noneOverdue")}
           tone={overdueTotal > 0 ? "alert" : undefined}
+          projects={projectsOutstanding}
         />
         <Summary
-          label={t("billing.stat.quotes")}
+          label={t("billing.stat.quotesAndAddons")}
           value={money(quotesTotal, locale)}
-          hint={t("billing.stat.quoteCount", { n: liveQuotes.length })}
+          hint={t("billing.stat.quotesBreakdown", { base: money(quotesBase, locale), addons: money(addonsTotal, locale) })}
+          projects={projectsQuotes}
+        />
+        <Summary
+          label={t("billing.stat.addons")}
+          value={money(addonsTotal, locale)}
+          hint={t("billing.stat.addonsHint", { n: acceptedAddons.length, p: pendingAddons.length })}
+          projects={projectsAddons}
         />
       </div>
 
@@ -435,12 +496,29 @@ export function FinanceBillingPage() {
   );
 }
 
-function Summary({ label, value, hint, tone }: { label: string; value: string; hint: string; tone?: "alert" }) {
+function Summary({
+  label,
+  value,
+  hint,
+  tone,
+  projects,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+  tone?: "alert";
+  /** Number of projects this figure is spread over (shown bottom right). */
+  projects: number;
+}) {
+  const { t } = useI18n();
   return (
     <Card className="gap-1 p-4">
       <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
       <p className={`font-display text-2xl font-semibold tabular-nums tracking-tight ${tone === "alert" ? "text-rose-600 dark:text-rose-400" : ""}`}>{value}</p>
-      <p className="text-xs text-muted-foreground">{hint}</p>
+      <div className="mt-1 flex items-end justify-between gap-3">
+        <p className="text-xs text-muted-foreground">{hint}</p>
+        <p className="shrink-0 whitespace-nowrap text-right text-xs font-medium text-muted-foreground">{t("billing.stat.projects", { n: projects })}</p>
+      </div>
     </Card>
   );
 }
