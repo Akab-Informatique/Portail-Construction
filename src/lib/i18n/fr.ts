@@ -1300,7 +1300,7 @@ export const fr: Record<MessageKey, string> = {
   "nav.workingOn": "Client actif",
   "nav.allProjects": "Tous les projets",
   "nav.allDocuments": "Fichiers de l’entreprise",
-  "nav.clientOverview": "Vue du client",
+  "nav.clientOverview": "Vue d’ensemble",
   "nav.allBilling": "Toute la facturation",
   "nav.search": "Aller à…",
   "nav.searchPlaceholder": "Chercher pages, clients, projets…",

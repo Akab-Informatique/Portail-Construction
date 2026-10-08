@@ -1299,7 +1299,7 @@ export const en = {
   "nav.workingOn": "Working on",
   "nav.allProjects": "All projects",
   "nav.allDocuments": "Company files",
-  "nav.clientOverview": "Client overview",
+  "nav.clientOverview": "Overview",
   "nav.allBilling": "All billing",
   "nav.search": "Jump to…",
   "nav.searchPlaceholder": "Search pages, clients, projects…",
