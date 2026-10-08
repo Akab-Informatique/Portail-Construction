@@ -28,11 +28,11 @@ const LINES: [number, number, number, number][] = [
   [1650, 430, 1180, 80],
 ];
 
-function LineSet({ stroke }: { stroke: string }) {
+function LineSet({ stroke, width }: { stroke: string; width: number }) {
   return (
     <svg className="absolute inset-0 size-full" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" fill="none">
       {LINES.map(([x1, y1, x2, y2], i) => (
-        <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={stroke} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+        <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={stroke} strokeWidth={width} vectorEffect="non-scaling-stroke" />
       ))}
     </svg>
   );
@@ -46,8 +46,8 @@ function Lines() {
       className="pointer-events-none absolute -inset-6"
       style={{ transform: "translate3d(calc(var(--px) * -14px), calc(var(--py) * -10px), 0)" }}
     >
-      <div className="absolute inset-0 opacity-[0.28]">
-        <LineSet stroke="#ffa62c" />
+      <div className="absolute inset-0 opacity-[0.6]">
+        <LineSet stroke="#ffa62c" width={1.5} />
       </div>
       <div
         className="absolute inset-0"
@@ -56,7 +56,7 @@ function Lines() {
           maskImage: "radial-gradient(circle 280px at var(--mx) var(--my), #000 0%, transparent 100%)",
         }}
       >
-        <LineSet stroke="#ffb94a" />
+        <LineSet stroke="#ffb94a" width={2.5} />
       </div>
     </div>
   );
@@ -193,23 +193,20 @@ export function LoginPage() {
       </header>
 
       <main className="relative z-10 flex flex-1 flex-col items-center justify-center px-5 pb-10 pt-2">
-        {/* Brochure-style wedge tag */}
-        <div className="mb-6 [@media(max-height:800px)]:mb-4">
-          <p
-            className="bg-[#ffa62c] px-8 pb-2 pt-5 font-display text-[22px] font-medium uppercase leading-none tracking-[0.28em] text-white"
-            style={{ clipPath: "polygon(0 28%, 100% 0, 100% 100%, 0 100%)" }}
-          >
-            {t("brand.slogan")}
-          </p>
-        </div>
-
         <div className="relative w-full max-w-[440px]">
           {/* Warm halo so the card reads as the lit centre of the site */}
           <div
             aria-hidden
             className="pointer-events-none absolute -inset-10 rounded-[40px] bg-[radial-gradient(closest-side,rgba(251,170,25,0.18),transparent)] blur-xl"
           />
-          <div className="relative overflow-hidden rounded-md border border-white/[0.1] bg-[#0b0b0b]/90 p-8 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.9)] backdrop-blur-md sm:p-10 [@media(max-height:800px)]:p-7">
+          {/* Brochure-style wedge: full height at the card's top-left, tapering to the top-right */}
+          <p
+            className="relative -mb-px flex h-[96px] items-end bg-[#ffa62c] px-8 pb-2.5 font-display text-[22px] uppercase leading-none tracking-[0.22em] text-white [@media(max-height:800px)]:h-[84px]"
+            style={{ clipPath: "polygon(0 0, 100% 100%, 0 100%)" }}
+          >
+            {t("brand.slogan")}.
+          </p>
+          <div className="relative overflow-hidden rounded-md rounded-tl-none border border-white/[0.1] bg-[#0b0b0b]/90 p-8 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.9)] backdrop-blur-md sm:p-10 [@media(max-height:800px)]:p-7">
             <BorderBeam size={170} duration={9} borderWidth={2} colorFrom="#fbaa19" colorTo="#fff4d4" />
             <BorderBeam size={110} duration={9} delay={4.5} borderWidth={2} colorFrom="#fff4d4" colorTo="#fbaa19" />
               <form onSubmit={onSubmit} className="relative">

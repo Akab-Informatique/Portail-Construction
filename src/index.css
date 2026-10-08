@@ -114,8 +114,8 @@
 }
 
 @theme inline {
-  --font-sans: "Barlow", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Barlow Condensed", "Barlow", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Montserrat", Arial, Helvetica, sans-serif;
+  --font-display: "Bebas Neue", Arial, Helvetica, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -204,6 +204,7 @@
   }
   h1, h2, .font-display {
     font-family: var(--font-display);
+    font-synthesis-weight: none; /* Bebas Neue has a single weight */
     letter-spacing: 0.01em;
     text-transform: uppercase;
   }
@@ -239,10 +240,10 @@
 
   /* Small technical label: mono, uppercase, spaced. */
   .frx-label {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    font-weight: 500;
-    letter-spacing: 0.14em;
+    font-family: var(--font-display);
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 0.2em;
     text-transform: uppercase;
   }
 
