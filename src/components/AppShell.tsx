@@ -1,4 +1,5 @@
 import { createContext, Suspense, useContext, useEffect, useMemo, useState } from "react";
+import { InstallAppButton } from "@/components/InstallAppButton";
 import { Logo } from "@/components/Logo";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
@@ -700,6 +701,7 @@ export function AppShell() {
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : null}
+            <InstallAppButton className="[&>button]:size-8" />
             <div className="flex items-center overflow-hidden rounded-sm border">
               {(["en", "fr"] as const).map((code) => (
                 <button

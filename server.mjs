@@ -17,6 +17,7 @@ const MIME = {
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
@@ -28,7 +29,7 @@ const MIME = {
   ".wasm": "application/wasm",
 };
 
-const COMPRESSIBLE = new Set([".html", ".js", ".css", ".json", ".svg", ".txt", ".wasm", ".map"]);
+const COMPRESSIBLE = new Set([".html", ".js", ".css", ".json", ".webmanifest", ".svg", ".txt", ".wasm", ".map"]);
 /** Compressed copies of static files, keyed by path + encoding. Files are immutable per build. */
 const compressedCache = new Map();
 

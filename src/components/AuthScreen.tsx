@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { BorderBeam } from "@/components/ui/border-beam";
+import { InstallAppButton } from "@/components/InstallAppButton";
 import { Logo } from "@/components/Logo";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -46,7 +47,7 @@ function Lines() {
       style={{ transform: "translate3d(calc(var(--px) * -14px), calc(var(--py) * -10px), 0)" }}
     >
       <div className="absolute inset-0 opacity-[0.38]">
-        <LineSet stroke="#ffa62c" width={1.25} />
+        <LineSet stroke="#fbaa19" width={1.25} />
       </div>
       <div
         className="absolute inset-0"
@@ -55,7 +56,7 @@ function Lines() {
           maskImage: "radial-gradient(circle 280px at var(--mx) var(--my), #000 0%, transparent 100%)",
         }}
       >
-        <LineSet stroke="#ffb94a" width={2} />
+        <LineSet stroke="#ffc247" width={2} />
       </div>
     </div>
   );
@@ -139,8 +140,10 @@ export function AuthScreen({ children }: { children: ReactNode }) {
       <div className="frx-beam relative z-10 h-1 w-full" aria-hidden />
 
       <header className="relative z-10 flex items-center justify-between px-6 py-5 sm:px-10 [@media(max-height:800px)]:py-3">
-        <Logo inverted className="h-16 sm:h-[88px]" />
-        <div className="flex overflow-hidden rounded-sm border border-[#2e2e2c] bg-black/60" role="group" aria-label="Language">
+        <Logo inverted className="h-11 sm:h-14" />
+        <div className="flex items-center gap-2">
+        <InstallAppButton tone="dark" />
+        <div className="flex overflow-hidden rounded-none border border-[#2e2e2c] bg-black/60" role="group" aria-label="Language">
           {(["en", "fr"] as const).map((code) => (
             <button
               key={code}
@@ -156,6 +159,7 @@ export function AuthScreen({ children }: { children: ReactNode }) {
             </button>
           ))}
         </div>
+        </div>
       </header>
 
       <main className="relative z-10 flex flex-1 flex-col items-center justify-center px-5 pb-10 pt-2">
@@ -163,7 +167,7 @@ export function AuthScreen({ children }: { children: ReactNode }) {
           {/* Warm halo so the card reads as the lit centre of the site */}
           <div
             aria-hidden
-            className="pointer-events-none absolute -inset-10 rounded-[40px] bg-[radial-gradient(closest-side,rgba(251,170,25,0.18),transparent)] blur-xl"
+            className="pointer-events-none absolute -inset-8 bg-[radial-gradient(closest-side,rgba(251,170,25,0.12),transparent)]"
           />
           {children}
           <p className="relative mt-5 text-center font-display text-[13px] uppercase tracking-[0.28em] text-[#6b6b68]">
@@ -182,12 +186,12 @@ export function AuthCard({ children }: { children: ReactNode }) {
   const last = words.pop() ?? "";
   const lead = words.join(" ");
   return (
-    <div className="relative overflow-hidden rounded-md border border-white/[0.1] bg-[#0b0b0b]/90 p-8 pt-0 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.9)] backdrop-blur-md sm:p-10 sm:pt-0 [@media(max-height:800px)]:p-7 [@media(max-height:800px)]:pt-0">
+    <div className="relative overflow-hidden rounded-none border border-[#3d3d39] bg-[#0b0b0b] p-8 pt-0 shadow-[0_30px_70px_-30px_rgba(0,0,0,0.95)] sm:p-10 sm:pt-0 [@media(max-height:800px)]:p-7 [@media(max-height:800px)]:pt-0">
       <BorderBeam size={170} duration={9} borderWidth={2} colorFrom="#fbaa19" colorTo="#fff4d4" />
       <BorderBeam size={110} duration={9} delay={4.5} borderWidth={2} colorFrom="#fff4d4" colorTo="#fbaa19" />
       {/* Wedge: flat top, 20° slanted underside (same angle as the background diagonals) */}
       <p
-        className="relative -mx-8 mb-7 flex h-[132px] flex-col items-start justify-end bg-[#ffa62c] px-8 pb-[34px] font-['Barlow_Condensed'] text-[34px] font-semibold uppercase leading-[1.1] tracking-[0.2em] text-white sm:-mx-10 sm:px-10 [@media(max-height:800px)]:-mx-7 [@media(max-height:800px)]:mb-5 [@media(max-height:800px)]:h-[116px] [@media(max-height:800px)]:px-7"
+        className="relative -mx-8 mb-7 flex h-[132px] flex-col items-start justify-end bg-[#fbaa19] px-8 pb-[34px] font-display text-[34px] font-normal uppercase leading-[1.1] tracking-[0.2em] text-white sm:-mx-10 sm:px-10 [@media(max-height:800px)]:-mx-7 [@media(max-height:800px)]:mb-5 [@media(max-height:800px)]:h-[116px] [@media(max-height:800px)]:px-7"
         style={{ clipPath: "polygon(0 0, 100% 0, 100% calc(100% - 91px), calc(100% - 250px) 100%, 0 100%)" }}
       >
         <span>{lead}</span>
@@ -199,7 +203,7 @@ export function AuthCard({ children }: { children: ReactNode }) {
 }
 
 export const authFieldClass =
-  "h-12 rounded-sm border-[#2e2e2c] bg-black/60 px-4 text-[15px] text-white placeholder:text-[#6b6b68] focus-visible:border-[#fbaa19] focus-visible:ring-[3px] focus-visible:ring-[#fbaa19]/25";
+  "h-12 rounded-none border-[#2e2e2c] bg-black/60 px-4 text-[15px] text-white placeholder:text-[#6b6b68] focus-visible:border-[#fbaa19] focus-visible:ring-[3px] focus-visible:ring-[#fbaa19]/25";
 
 /** Orange parallelogram-style action button used on the auth screens. */
 export function AuthButton({
