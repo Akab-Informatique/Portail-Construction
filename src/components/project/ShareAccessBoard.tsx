@@ -117,7 +117,6 @@ export function ShareAccessBoard() {
       <Card className="gap-3 p-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t("sp.folders")}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{t("sp.folderTreeHint")}</p>
         </div>
         <FolderTreePanel
           folders={nav}

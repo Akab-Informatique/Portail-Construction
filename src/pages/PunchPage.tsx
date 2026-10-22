@@ -111,7 +111,7 @@ export function PunchPage() {
   if (!isAdmin) {
     return (
       <div>
-        <PageHeader eyebrow={t("nav.section.field")} title={t("punch.title")} description={t("punch.desc")} />
+        <PageHeader eyebrow={t("nav.section.field")} title={t("punch.title")} />
         {clock}
       </div>
     );
@@ -119,7 +119,7 @@ export function PunchPage() {
 
   return (
     <div>
-      <PageHeader eyebrow={t("nav.section.field")} title={t("punch.title")} description={t("punch.adminDesc")} />
+      <PageHeader eyebrow={t("nav.section.field")} title={t("punch.title")} />
       <Tabs value={tab} onValueChange={setTab} className="gap-5">
         <TabsList>
           <TabsTrigger value="overview">
@@ -460,7 +460,6 @@ function PunchOverview({
 
   return (
     <div className="space-y-5">
-      <p className="text-sm text-muted-foreground">{t("punch.overview.desc")}</p>
       <div className="flex flex-wrap items-end gap-3">
         <div className="space-y-1.5">
           <Label>{t("punch.filter.week")}</Label>

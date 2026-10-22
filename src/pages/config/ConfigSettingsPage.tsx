@@ -280,7 +280,6 @@ export function ConfigSettingsPage() {
           <div className="flex items-center justify-between gap-3 border-b px-5 py-3.5">
             <div>
               <h2 className="font-display text-[26px] leading-none">{t(currentLabel)}</h2>
-              <p className="mt-1 text-xs text-muted-foreground">{t("settings.desc")}</p>
             </div>
             <Button type="button" variant="ghost" size="icon" className="hidden md:inline-flex" onClick={closeOverlay} aria-label={t("settings.close")}>
               <X className="size-4" />
@@ -292,7 +291,6 @@ export function ConfigSettingsPage() {
             <Card className="gap-4 p-5">
               <div>
                 <p className="text-sm font-medium">{t("settings.company")}</p>
-                <p className="text-xs text-muted-foreground">{t("settings.companyHint")}</p>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label={t("settings.legalName")}>
@@ -335,7 +333,6 @@ export function ConfigSettingsPage() {
             <Card className="gap-4 p-5">
               <div>
                 <p className="text-sm font-medium">{t("settings.smtp")}</p>
-                <p className="text-xs text-muted-foreground">{t("settings.smtpHint")}</p>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label={t("settings.host")}>
@@ -394,7 +391,6 @@ export function ConfigSettingsPage() {
             <Card className="gap-4 p-5">
               <div>
                 <p className="text-sm font-medium">{t("settings.templates.title")}</p>
-                <p className="text-xs text-muted-foreground">{t("settings.templates.hint")}</p>
               </div>
               <div className="grid gap-6 lg:grid-cols-2">
                 {TEMPLATE_KEYS.map(({ key, label, hint }) => (
@@ -440,7 +436,6 @@ export function ConfigSettingsPage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium">{t("settings.qb.title")}</p>
-                  <p className="text-xs text-muted-foreground">{t("settings.qb.hint")}</p>
                 </div>
                 <span className="rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                   {qb.connected ? t("settings.qb.connected") : t("settings.qb.disconnected")}
@@ -490,7 +485,6 @@ export function ConfigSettingsPage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium">{t("settings.sp.title")}</p>
-                  <p className="text-xs text-muted-foreground">{t("settings.sp.hint")}</p>
                 </div>
                 <span className="rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                   {sp.connected ? t("settings.sp.connected") : t("settings.sp.disconnected")}
@@ -564,7 +558,6 @@ export function ConfigSettingsPage() {
             <Card className="gap-4 p-5">
               <div>
                 <p className="text-sm font-medium">{t("settings.ai.title")}</p>
-                <p className="text-xs text-muted-foreground">{t("settings.ai.hint")}</p>
               </div>
               <div className="flex items-center justify-between rounded-md border px-3 py-2.5">
                 <p className="text-sm font-medium">{t("settings.ai.enabled")}</p>

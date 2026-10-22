@@ -134,7 +134,6 @@ export function ClientsPage() {
       <PageHeader
         eyebrow="Accounts"
         title="Clients"
-        description="Companies you build for. Open a client to add projects and invite their people."
         actions={
           canCreate ? (
             <Button onClick={() => setOpen(true)}>

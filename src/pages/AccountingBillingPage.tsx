@@ -489,7 +489,6 @@ export function AccountingBillingPage() {
       <PageHeader
         eyebrow={t("nav.accounting")}
         title={t("billing.accounting.title")}
-        description={t("billing.accounting.desc")}
         actions={
           canManage ? (
             <>
@@ -673,7 +672,7 @@ export function AccountingBillingPage() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("qb.title")}</DialogTitle>
-            <DialogDescription>{t("qb.hint")}</DialogDescription>
+            <DialogDescription className="sr-only">{t("qb.hint")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">

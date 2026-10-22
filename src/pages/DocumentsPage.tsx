@@ -20,7 +20,6 @@ export function DocumentsPage() {
     <div className="space-y-6">
       <PageHeader
         title={t("nav.documents")}
-        description={forClient ? t("sp.assignFolderHint") : t("sp.accessPanelHint")}
       />
       {canManage ? (
         <Tabs

@@ -123,7 +123,6 @@ export function ProjectReportsSection({
     <div className="space-y-8">
       <div>
         <h2 className="font-display text-lg font-semibold tracking-tight">{t("reports.title")}</h2>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{t("reports.hint")}</p>
         {notice ? <p className="mt-2 text-sm text-muted-foreground">{notice}</p> : null}
       </div>
 
@@ -138,7 +137,6 @@ export function ProjectReportsSection({
                     {t("reports.standard")}
                   </p>
                   <h3 className="mt-1 font-display text-base font-semibold">{t(std.titleKey as never)}</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">{t(std.descKey as never)}</p>
                 </div>
                 <Presentation className="size-4 text-muted-foreground" />
               </div>
@@ -166,7 +164,6 @@ export function ProjectReportsSection({
             {t("reports.custom")}
           </p>
           <h3 className="mt-1 font-display text-base font-semibold">{t("reports.customTitle")}</h3>
-          <p className="mt-1 text-sm text-muted-foreground">{t("reports.customHint")}</p>
         </div>
         {canCreate ? (
           <div className="grid gap-4 lg:grid-cols-[1fr_220px]">

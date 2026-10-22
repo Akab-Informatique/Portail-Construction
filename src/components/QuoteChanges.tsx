@@ -134,7 +134,6 @@ export function QuoteChangesSection({
     <section className="space-y-4 border-t pt-5" aria-label={t("qc.section.title")}>
       <div>
         <h3 className="font-display text-xl leading-none">{t("qc.section.title")}</h3>
-        <p className="mt-1 text-xs text-muted-foreground">{t("qc.section.subtitle")}</p>
       </div>
 
       {flash ? (
@@ -426,7 +425,7 @@ export function RequestDialog({
             <MessageSquarePlus className="size-4" />
             {t("qc.request.title")}
           </DialogTitle>
-          <DialogDescription>{t("qc.request.desc", { number })}</DialogDescription>
+          <DialogDescription className="sr-only">{t("qc.request.desc", { number })}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
           <div className="space-y-1.5">
@@ -510,7 +509,7 @@ function AnnexEditorDialog({
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{t("qc.editor.title", { number: quote.number })}</DialogTitle>
-          <DialogDescription>{t("qc.editor.desc")}</DialogDescription>
+          <DialogDescription className="sr-only">{t("qc.editor.desc")}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
           {change?.origin === "client" && change.description ? (

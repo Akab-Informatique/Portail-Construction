@@ -33,49 +33,41 @@ export type ReportKind = "status" | "cost" | "closeout" | "safety" | "labour" | 
 export const STANDARD_REPORTS: {
   id: Exclude<ReportKind, "custom">;
   titleKey: string;
-  descKey: string;
   sections: ReportSectionId[];
 }[] = [
   {
     id: "status",
     titleKey: "reports.std.status",
-    descKey: "reports.std.statusDesc",
     sections: ["snapshot", "schedule", "rfis", "punch", "logs"],
   },
   {
     id: "cost",
     titleKey: "reports.std.cost",
-    descKey: "reports.std.costDesc",
     sections: ["snapshot", "budget", "changes"],
   },
   {
     id: "closeout",
     titleKey: "reports.std.closeout",
-    descKey: "reports.std.closeoutDesc",
     sections: ["snapshot", "punch", "rfis", "changes", "team"],
   },
   {
     id: "safety",
     titleKey: "reports.std.safety",
-    descKey: "reports.std.safetyDesc",
     sections: ["snapshot", "safety", "logs"],
   },
   {
     id: "labour",
     titleKey: "reports.std.labour",
-    descKey: "reports.std.labourDesc",
     sections: ["snapshot", "labour", "team", "logs"],
   },
   {
     id: "portfolio",
     titleKey: "reports.std.portfolio",
-    descKey: "reports.std.portfolioDesc",
     sections: ["portfolio", "snapshot", "budget"],
   },
   {
     id: "full",
     titleKey: "reports.std.full",
-    descKey: "reports.std.fullDesc",
     sections: ["snapshot", "schedule", "budget", "rfis", "changes", "punch", "safety", "logs", "team", "labour", "portfolio"],
   },
 ];

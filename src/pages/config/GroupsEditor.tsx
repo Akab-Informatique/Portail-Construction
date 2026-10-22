@@ -227,7 +227,6 @@ export function GroupsEditor({
                     }}
                   />
                 </div>
-                <p className="text-xs text-muted-foreground">{t("config.groups.additiveHint")}</p>
               </Card>
 
               <div className="overflow-x-auto rounded-xl border bg-card">

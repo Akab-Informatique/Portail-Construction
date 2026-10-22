@@ -80,7 +80,6 @@ export function ProfilePage() {
       <PageHeader
         eyebrow={t("profile.eyebrow")}
         title={t("profile.title")}
-        description={t("profile.desc")}
         actions={
           <div className="flex items-center gap-3">
             <UserAvatar name={user.name} hint={user.avatar_initials} size="lg" />
@@ -130,7 +129,6 @@ export function ProfilePage() {
               <CardTitle className="text-base">{t("profile.language")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 px-5 py-5">
-              <p className="text-sm text-muted-foreground">{t("profile.languageHint")}</p>
               <div className="grid grid-cols-2 gap-2">
                 {(["en", "fr"] as const).map((code) => (
                   <button
@@ -158,7 +156,6 @@ export function ProfilePage() {
               <CardTitle className="text-base">{t("profile.theme")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 px-5 py-5">
-              <p className="text-sm text-muted-foreground">{t("profile.themeHint")}</p>
               <div className="grid grid-cols-2 gap-2">
                 {(["light", "dark"] as const).map((mode) => (
                   <button
@@ -183,7 +180,6 @@ export function ProfilePage() {
               <CardTitle className="text-base">{t("profile.tutorial")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 px-5 py-5">
-              <p className="text-sm text-muted-foreground">{t("profile.tutorialHint")}</p>
               <label className="flex items-center justify-between gap-3 rounded-md border px-3 py-2.5">
                 <span className="text-sm font-medium">{t("profile.tutorialToggle")}</span>
                 <Switch

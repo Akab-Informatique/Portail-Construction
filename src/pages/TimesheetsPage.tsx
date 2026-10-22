@@ -161,7 +161,7 @@ export function TimesheetsPage() {
 
   return (
     <div>
-      <PageHeader eyebrow={t("nav.tools")} title={t("timesheet.title")} description={t("timesheet.desc")} />
+      <PageHeader eyebrow={t("nav.tools")} title={t("timesheet.title")} />
 
       <div className="mb-5 flex flex-wrap items-end gap-3">
         <div className="space-y-1.5">
@@ -274,7 +274,7 @@ export function TimesheetsPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{t("timesheet.exportTitle")}</DialogTitle>
-            <DialogDescription>{t("timesheet.exportHint")}</DialogDescription>
+            <DialogDescription className="sr-only">{t("timesheet.exportHint")}</DialogDescription>
           </DialogHeader>
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">

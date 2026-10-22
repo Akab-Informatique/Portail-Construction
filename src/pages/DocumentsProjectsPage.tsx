@@ -108,7 +108,6 @@ export function DocumentsProjectsPage() {
     <div className="space-y-6">
       <PageHeader
         title={t("sp.projectsTitle")}
-        description={t("sp.projectsHint")}
         actions={
           canCreate ? (
             <Button

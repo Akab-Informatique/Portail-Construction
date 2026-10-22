@@ -227,7 +227,6 @@ export function ScheduleSection({
       <Card className="mb-5 gap-3 overflow-hidden p-4">
         <div>
           <p className="text-sm font-medium">{t("project.gantt.title")}</p>
-          <p className="text-xs text-muted-foreground">{t("project.gantt.hint")}</p>
         </div>
         {dated.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">{t("project.gantt.empty")}</p>

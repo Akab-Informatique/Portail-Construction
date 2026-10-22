@@ -125,7 +125,6 @@ export function TeamPage() {
       <PageHeader
         eyebrow="Directory"
         title="People"
-        description="Internal employees and external client users. Open anyone to set module-level access."
         actions={
           (user?.is_admin || can("users", "create")) && (
             <Button onClick={() => setOpen(true)}>

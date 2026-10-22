@@ -303,7 +303,6 @@ export function BillingFileDialog({
               <section className="space-y-4 border-t pt-5" aria-label={t("billing.version.title")}>
                 <div>
                   <h3 className="font-display text-xl leading-none">{t("billing.version.title")}</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">{finalOne ? t("billing.mods.subtitleFinal") : t("billing.mods.subtitle")}</p>
                 </div>
 
                 <div className="overflow-hidden rounded-md border">{[...versions].reverse().map((v) => row(v, "version"))}</div>
@@ -312,7 +311,6 @@ export function BillingFileDialog({
                   <>
                     <div>
                       <h3 className="font-display text-xl leading-none">{t("billing.addon.title")}</h3>
-                      <p className="mt-1 text-xs text-muted-foreground">{t("billing.addon.subtitle")}</p>
                     </div>
                     {addons.length === 0 ? (
                       <p className="rounded-md border border-dashed px-4 py-4 text-sm text-muted-foreground">{t("billing.addon.none")}</p>

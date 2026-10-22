@@ -144,7 +144,6 @@ export function ConfigInternalUsersPage({ embedded = false }: { embedded?: boole
         <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-sm font-medium">{t("config.internal.title")}</p>
-            <p className="text-xs text-muted-foreground">{t("config.internal.desc")}</p>
           </div>
           <Button onClick={openCreate}>
             <Plus className="size-4" />
@@ -155,7 +154,6 @@ export function ConfigInternalUsersPage({ embedded = false }: { embedded?: boole
         <PageHeader
           eyebrow={t("config.eyebrow")}
           title={t("config.internal.title")}
-          description={t("config.internal.desc")}
           actions={
             <Button onClick={openCreate}>
               <Plus className="size-4" />

@@ -261,7 +261,6 @@ export function ConfigUserPage() {
       <form onSubmit={saveProfile} className="mb-6 rounded-xl border bg-card p-5">
         <div className="mb-4">
           <p className="text-sm font-medium">{t("people.profile")}</p>
-          <p className="text-xs text-muted-foreground">{t("people.profileHint")}</p>
         </div>
         {profileError ? <p className="mb-3 text-sm text-destructive">{profileError}</p> : null}
         {profileSaved ? <p className="mb-3 text-sm text-primary">{t("people.saved")}</p> : null}
@@ -386,7 +385,6 @@ export function ConfigUserPage() {
             ) : (
               <div>
                 <p className="text-sm font-medium">{t("config.user.linkedClients")}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{t("config.user.linkedClientsHint")}</p>
                 {linkedCompanies.length === 0 ? (
                   <p className="mt-3 text-sm text-muted-foreground">{t("config.user.noLinkedClients")}</p>
                 ) : (

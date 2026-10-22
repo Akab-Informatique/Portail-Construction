@@ -373,7 +373,6 @@ export function FinanceBillingPage() {
       <PageHeader
         eyebrow={t("nav.section.finance")}
         title={t("billing.mgmt.title")}
-        description={t("billing.mgmt.desc")}
         actions={
           canManage ? (
             <div className="flex flex-wrap gap-2">

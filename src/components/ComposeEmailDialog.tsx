@@ -52,7 +52,7 @@ export function ComposeEmailDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{t("mail.compose.title")}</DialogTitle>
-          <DialogDescription>{t("mail.compose.hint")}</DialogDescription>
+          <DialogDescription className="sr-only">{t("mail.compose.hint")}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
           <div className="space-y-1.5">

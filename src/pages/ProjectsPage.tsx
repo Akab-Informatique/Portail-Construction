@@ -323,7 +323,6 @@ export function ProjectsPage() {
       <PageHeader
         eyebrow={t("projects.eyebrow")}
         title={title}
-        description={t("projects.boardHint")}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {columns.length > 0 && (

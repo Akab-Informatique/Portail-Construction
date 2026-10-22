@@ -101,7 +101,6 @@ export function PunchRuleEditor({ project, onSave }: { project: Project; onSave:
           {t("punch.title")}
         </p>
         <h2 className="mt-1.5 font-display text-2xl font-bold">{t("punch.geo.title")}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">{t("punch.geo.desc")}</p>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label={t("punch.geo.title")}>

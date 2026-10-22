@@ -161,7 +161,7 @@ export function ReportsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title={t("reports.hub.title")} description={t("reports.hub.hint")} />
+      <PageHeader title={t("reports.hub.title")} />
       {jobs.length === 0 ? (
         <EmptyState icon={<Presentation className="size-5" />} title={t("reports.hub.empty")} description={t("reports.hub.hint")} />
       ) : (
@@ -190,7 +190,6 @@ export function ReportsPage() {
                     {t("reports.standard")}
                   </p>
                   <h2 className="mt-1 font-display text-lg font-semibold tracking-tight">{t(kind.titleKey as never)}</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">{t(kind.descKey as never)}</p>
                 </div>
                 <Button
                   onClick={() => void exportKind(kind)}

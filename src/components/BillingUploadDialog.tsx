@@ -254,7 +254,7 @@ export function BillingUploadDialog({
             <FileUp className="size-4" />
             {title0}
           </DialogTitle>
-          <DialogDescription>{t("billing.upload.desc")}</DialogDescription>
+          <DialogDescription className="sr-only">{t("billing.upload.desc")}</DialogDescription>
         </DialogHeader>
 
         {phase !== "review" ? (

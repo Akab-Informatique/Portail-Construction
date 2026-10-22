@@ -677,7 +677,6 @@ export function SharePointLibrary({
               </>
             ) : null}
           </div>
-          <p className="text-xs text-muted-foreground">{t("sp.browseHint")}</p>
         </Card>
         {error ? <p className="mb-3 text-sm text-destructive">{error}</p> : null}
         {manager ? (

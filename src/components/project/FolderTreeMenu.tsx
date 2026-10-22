@@ -31,7 +31,6 @@ export function FolderTreeMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-80 p-2">
-        <p className="mb-2 px-1 text-xs text-muted-foreground">{t("sp.folderTreeHint")}</p>
         <FolderTreePanel
           folders={folders}
           driveId={driveId}

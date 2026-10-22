@@ -231,7 +231,6 @@ export function DashboardPage() {
       <PageHeader
         eyebrow={t("dash.eyebrow")}
         title={`${greeting}, ${user?.name.split(" ")[0]}`}
-        description={editing ? t("dash.customizeHint") : user?.user_type === "external" ? t("dash.desc.external") : t("dash.desc.internal")}
         actions={
           <div className="flex flex-wrap gap-2">
             {editing ? (

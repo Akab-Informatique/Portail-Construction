@@ -140,7 +140,7 @@ export function ProjectCostDialog({
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{mode === "invoice" ? t("cost.invoiceTitle") : t("cost.quickTitle")}</DialogTitle>
-          <DialogDescription>{mode === "invoice" ? t("cost.invoiceDesc") : t("cost.quickDesc")}</DialogDescription>
+          <DialogDescription className="sr-only">{mode === "invoice" ? t("cost.invoiceDesc") : t("cost.quickDesc")}</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4">

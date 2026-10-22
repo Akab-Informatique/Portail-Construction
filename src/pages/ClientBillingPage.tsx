@@ -162,7 +162,6 @@ export function ClientBillingPage() {
       <PageHeader
         eyebrow={workspaceClient.company_name}
         title={t("billing.title")}
-        description={t("billing.desc", { company: workspaceClient.company_name })}
       />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">

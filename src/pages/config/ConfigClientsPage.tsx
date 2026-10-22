@@ -251,7 +251,6 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
         <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-sm font-medium">{t("config.clients.title")}</p>
-            <p className="text-xs text-muted-foreground">{t("config.clients.desc")}</p>
           </div>
           <Button onClick={openCreate}>
             <Plus className="size-4" />
@@ -262,7 +261,6 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
         <PageHeader
           eyebrow={t("config.eyebrow")}
           title={t("config.clients.title")}
-          description={t("config.clients.desc")}
           actions={
             <Button onClick={openCreate}>
               <Plus className="size-4" />
