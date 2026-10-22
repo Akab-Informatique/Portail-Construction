@@ -1,8 +1,7 @@
 import { nextProjectColor } from "@/lib/project-colors";
-import { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Building2, ChevronDown, ChevronRight, FolderKanban, Plus, Search } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { ChevronsDownUp, ChevronsUpDown, Plus, Search } from "lucide-react";
 import { db, schema } from "../db";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -18,9 +17,9 @@ import {
   type ProjectFormValues,
 } from "@/components/ProjectFormFields";
 import { PageHeader } from "@/components/PageHeader";
-import { StatusBadge } from "@/components/StatusBadge";
+import { ClientDrawer } from "@/components/ProjectCabinet";
+import type { TaskLite } from "@/lib/project-progress";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -43,7 +42,20 @@ export function DocumentsProjectsPage() {
   const [busy, setBusy] = useState(false);
   const folders = useSharePointFolders(open);
   const canCreate = Boolean(user?.is_admin || user?.user_type === "internal") && user?.view_as !== "client";
-  const [collapsed, setCollapsed] = useState<Record<number, boolean>>({});
+  // Drawers: the first client starts open; a search opens every drawer that has a match.
+  const [openDrawers, setOpenDrawers] = useState<Record<number, boolean>>({});
+  const [tasks, setTasks] = useState<TaskLite[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    db.select({ project_id: schema.project_tasks.project_id, status: schema.project_tasks.status })
+      .from(schema.project_tasks)
+      .then((rows) => !cancelled && setTasks(rows as TaskLite[]))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [projects.length]);
 
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -131,66 +143,31 @@ export function DocumentsProjectsPage() {
       {groups.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted-foreground">{t("sp.projectsEmpty")}</p>
       ) : (
-        <div className="space-y-3">
-          {groups.map(({ client, jobs }: { client: Client; jobs: Project[] }) => {
-            const isOpen = !collapsed[client.id];
-            return (
-              <Card key={client.id} className="gap-0 overflow-hidden p-0">
-                <div className="flex items-center gap-1 border-b pr-2">
-                  <button
-                    type="button"
-                    className="flex min-w-0 flex-1 items-center gap-2 px-3 py-3 text-left hover:bg-muted/40"
-                    onClick={() => setCollapsed((prev) => ({ ...prev, [client.id]: !prev[client.id] }))}
-                    aria-expanded={isOpen}
-                  >
-                    <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", !isOpen && "-rotate-90")} />
-                    <Building2 className="size-4 shrink-0 text-muted-foreground" />
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{client.company_name}</p>
-                      <p className="text-xs text-muted-foreground">{t("sp.projectCount", { n: jobs.length })}</p>
-                    </div>
-                  </button>
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link to={`/clients/${client.id}`}>
-                      {t("dash.viewAll")}
-                      <ChevronRight className="size-4" />
-                    </Link>
-                  </Button>
-                </div>
-                {isOpen ? (
-                  jobs.length === 0 ? (
-                    <p className="px-4 py-6 text-sm text-muted-foreground">{t("nav.noProjectsYet")}</p>
-                  ) : (
-                    <ul className="divide-y">
-                      {jobs.map((job) => (
-                        <li key={job.id}>
-                          <Link
-                            to={projectSectionPath(job.id, "documents")}
-                            className="flex items-center gap-3 py-3 pr-4 pl-10 transition-colors hover:bg-muted/50"
-                          >
-                            <FolderKanban className="size-4 shrink-0 text-muted-foreground" />
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="truncate font-medium">{job.name}</p>
-                                <StatusBadge value={job.status} />
-                              </div>
-                              <p className="truncate text-xs text-muted-foreground">
-                                {job.project_number}
-                                {job.city ? ` · ${job.city}` : ""}
-                              </p>
-                            </div>
-                            <span className="hidden text-xs text-muted-foreground sm:inline">{t("sp.openDocs")}</span>
-                            <ChevronRight className="size-4 text-muted-foreground" />
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  )
-                ) : null}
-              </Card>
-            );
-          })}
-        </div>
+        <>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setOpenDrawers(Object.fromEntries(groups.map((g) => [g.client.id, true])))}>
+              <ChevronsUpDown className="size-4" />
+              {t("cab.expandAll")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setOpenDrawers(Object.fromEntries(groups.map((g) => [g.client.id, false])))}>
+              <ChevronsDownUp className="size-4" />
+              {t("cab.collapseAll")}
+            </Button>
+          </div>
+          <div className="space-y-4">
+            {groups.map(({ client, jobs }: { client: Client; jobs: Project[] }, i) => (
+              <ClientDrawer
+                key={client.id}
+                client={client}
+                jobs={jobs}
+                tasks={tasks}
+                open={openDrawers[client.id] ?? (query.trim() ? true : i === 0)}
+                onToggle={() => setOpenDrawers((prev) => ({ ...prev, [client.id]: !(prev[client.id] ?? (query.trim() ? true : i === 0)) }))}
+                noProjects={t("nav.noProjectsYet")}
+              />
+            ))}
+          </div>
+        </>
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
