@@ -150,11 +150,7 @@ export function DashboardPage() {
       );
       return (
         <Card className="gap-4 p-5">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium">{t("dash.calendarFilter")}</p>
-              <p className="text-xs text-muted-foreground">{t("dash.ganttHint")}</p>
-            </div>
+          <div className="flex flex-wrap items-end justify-end gap-3">
             <Select value={calendarFilter} onValueChange={setCalendarFilter}>
               <SelectTrigger className="w-64">
                 <SelectValue />

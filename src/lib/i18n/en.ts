@@ -97,10 +97,8 @@ export const en = {
   "dash.widget.calendar": "Project calendar",
   "dash.widget.gantt": "Project timeline",
   "dash.calendar": "Project calendar",
-  "dash.calendarFilter": "Show projects",
   "dash.calendarAll": "All projects in view",
   "dash.gantt": "Project timeline",
-  "dash.ganttHint": "Start and finish dates across the jobs you can see.",
   "dash.noClients": "No clients in view yet.",
   "dash.modulesHint": "Jump to the tools you use most.",
 

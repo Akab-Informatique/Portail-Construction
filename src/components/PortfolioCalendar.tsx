@@ -256,7 +256,6 @@ export function PortfolioGantt({ projects }: { projects: Project[] }) {
     <Card className="gap-3 overflow-hidden p-4">
       <div>
         <p className="text-sm font-medium">{t("dash.gantt")}</p>
-        <p className="text-xs text-muted-foreground">{t("dash.ganttHint")}</p>
       </div>
       {dated.length === 0 ? (
         <p className="py-8 text-center text-sm text-muted-foreground">{t("project.gantt.empty")}</p>
