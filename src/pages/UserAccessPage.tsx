@@ -296,8 +296,8 @@ export function UserAccessPage() {
                   return (
                     <tr key={m.id} className="hover:bg-muted/30">
                       <td className="px-4 py-3">
-                        <p className="font-medium">{t(`module.${m.id}` as "module.dashboard")}</p>
-                        <p className="text-xs text-muted-foreground">{t(`module.${m.id}.desc` as "module.dashboard.desc")}</p>
+                        <p className={m.parent ? "pl-4 font-medium" : "font-medium"}>{m.labelKey ? t(m.labelKey as "module.dashboard") : t(`module.${m.id}` as "module.dashboard")}</p>
+                        {m.group !== "menu" ? <p className="text-xs text-muted-foreground">{t(`module.${m.id}.desc` as "module.dashboard.desc")}</p> : null}
                       </td>
                       {(["can_view", "can_create", "can_edit", "can_delete"] as const).map((k) => (
                         <td key={k} className="px-3 py-3">

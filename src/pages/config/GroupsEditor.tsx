@@ -1,9 +1,9 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Fragment, FormEvent, useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { eq } from "drizzle-orm";
 import { db, dbReady, schema } from "../../db";
 import { useAuth } from "@/lib/auth";
-import { MODULES } from "@/lib/constants";
+import { MENU_MODULES, OTHER_MODULES } from "@/lib/constants";
 import { writeGroupFlags } from "@/lib/access";
 import { logActivity } from "@/lib/activity";
 import { EmptyState } from "@/components/EmptyState";
@@ -241,7 +241,7 @@ export function GroupsEditor({
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {MODULES.map((m) => {
+                    {[...MENU_MODULES.map((m) => ({ m, heading: m.id === "app_overview" ? "people.group.menu" : null })), ...OTHER_MODULES.map((m) => ({ m, heading: m.id === OTHER_MODULES[0].id ? "people.group.project" : null }))].map(({ m, heading }) => {
                       const flags = fromRow(selectedPerms.find((p) => p.module === m.id));
                       const set = (key: keyof Flags, value: boolean) => {
                         const next = { ...flags, [key]: value };
@@ -253,13 +253,24 @@ export function GroupsEditor({
                         }
                         void toggleFlag(m.id, next);
                       };
+                      const isSection = m.group === "menu" && !m.parent;
                       return (
-                        <tr key={m.id} className="hover:bg-muted/30">
-                          <td className="px-4 py-3">
-                            <p className="font-medium">{t(`module.${m.id}` as MessageKey)}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {t(`module.${m.id}.desc` as MessageKey)}
+                        <Fragment key={m.id}>
+                        {heading ? (
+                          <tr className="bg-muted/30">
+                            <td colSpan={5} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                              {t(heading as MessageKey)}
+                            </td>
+                          </tr>
+                        ) : null}
+                        <tr className={isSection ? "bg-muted/15 hover:bg-muted/30" : "hover:bg-muted/30"}>
+                          <td className={m.parent ? "py-3 pr-4 pl-10" : "px-4 py-3"}>
+                            <p className={isSection ? "font-semibold" : "font-medium"}>
+                              {m.labelKey ? t(m.labelKey as MessageKey) : t(`module.${m.id}` as MessageKey)}
                             </p>
+                            {m.group !== "menu" ? (
+                              <p className="text-xs text-muted-foreground">{t(`module.${m.id}.desc` as MessageKey)}</p>
+                            ) : null}
                           </td>
                           {(["can_view", "can_create", "can_edit", "can_delete"] as const).map((k) => (
                             <td key={k} className="px-3 py-3">
@@ -271,6 +282,7 @@ export function GroupsEditor({
                             </td>
                           ))}
                         </tr>
+                        </Fragment>
                       );
                     })}
                   </tbody>

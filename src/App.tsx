@@ -7,6 +7,7 @@ import { ClockProvider } from "@/lib/clock";
 import { LoginPage } from "@/pages/LoginPage";
 import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
 import { lazyPage } from "@/lib/lazy-page";
+import { RequireModule } from "@/components/RequireModule";
 
 const DashboardPage = lazyPage(() => import("@/pages/DashboardPage"), "DashboardPage");
 const ClientsPage = lazyPage(() => import("@/pages/ClientsPage"), "ClientsPage");
@@ -60,16 +61,16 @@ export default function App() {
             </WorkspaceProvider>
           }
         >
-          <Route index element={<DashboardPage />} />
-          <Route path="documents" element={<DocumentsPage />} />
-          <Route path="documents/projects" element={<DocumentsProjectsPage />} />
+          <Route index element={<RequireModule module="app_dashboard"><DashboardPage /></RequireModule>} />
+          <Route path="documents" element={<RequireModule module="app_client_documents"><DocumentsPage /></RequireModule>} />
+          <Route path="documents/projects" element={<RequireModule module="app_all_projects"><DocumentsProjectsPage /></RequireModule>} />
           <Route path="clients" element={<ClientsPage />} />
-          <Route path="clients/:clientId" element={<ClientDetailPage />} />
-          <Route path="clients/:clientId/billing" element={<ClientBillingPage />} />
+          <Route path="clients/:clientId" element={<RequireModule module="app_client_overview"><ClientDetailPage /></RequireModule>} />
+          <Route path="clients/:clientId/billing" element={<RequireModule module="app_client_billing"><ClientBillingPage /></RequireModule>} />
           <Route path="accounting/billing" element={<AccountingBillingPage />} />
-          <Route path="finance/billing" element={<FinanceBillingPage />} />
-          <Route path="projects" element={<ProjectsPage />} />
-          <Route path="reports" element={<ReportsPage />} />
+          <Route path="finance/billing" element={<RequireModule module="app_billing_mgmt"><FinanceBillingPage /></RequireModule>} />
+          <Route path="projects" element={<RequireModule module="app_client_projects"><ProjectsPage /></RequireModule>} />
+          <Route path="reports" element={<RequireModule module="app_reports"><ReportsPage /></RequireModule>} />
           <Route path="projects/:projectId" element={<ProjectDetailPage />} />
           <Route path="projects/:projectId/:section" element={<ProjectDetailPage />} />
           <Route path="team" element={<TeamPage />} />
@@ -80,8 +81,8 @@ export default function App() {
           <Route path="config/users/:userId" element={<ConfigUserPage />} />
           <Route path="config/settings" element={<Navigate to="/settings" replace />} />
           <Route path="settings" element={<ConfigSettingsPage />} />
-          <Route path="tools/punch" element={<PunchPage />} />
-          <Route path="tools/timesheets" element={<TimesheetsPage />} />
+          <Route path="tools/punch" element={<RequireModule module="app_punch"><PunchPage /></RequireModule>} />
+          <Route path="tools/timesheets" element={<RequireModule module="app_timesheets"><TimesheetsPage /></RequireModule>} />
           <Route path="profile" element={<ProfilePage />} />
         </Route>
       </Route>

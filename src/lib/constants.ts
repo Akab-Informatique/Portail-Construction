@@ -1,11 +1,18 @@
 import type { ModuleId } from "./types";
 
-export const MODULES: {
+export type ModuleDef = {
   id: ModuleId;
   label: string;
   scope: "project" | "global";
   description: string;
-}[] = [
+  /** Sidebar modules: "menu" sections and items, set apart from the in-project modules. */
+  group?: "menu";
+  /** An item inside a menu section. The section's view right opens the door, the item's own rights do the rest. */
+  parent?: ModuleId;
+  labelKey?: string;
+};
+
+export const MODULES: ModuleDef[] = [
   { id: "dashboard", label: "Dashboard", scope: "project", description: "Project overview and KPIs" },
   { id: "calendar", label: "Calendar", scope: "project", description: "Milestones, inspections, deliveries" },
   { id: "budget", label: "Budget", scope: "project", description: "Cost codes and committed spend" },
@@ -20,9 +27,27 @@ export const MODULES: {
   { id: "reports", label: "Reports", scope: "project", description: "Booklets, summaries, and custom reports" },
   { id: "clients", label: "Clients", scope: "global", description: "Client accounts and companies" },
   { id: "users", label: "Users", scope: "global", description: "Employees and client users" },
+  // Sidebar. Each section groups its items; every section and every item has its own rights.
+  { id: "app_overview", label: "Overview", scope: "global", description: "", group: "menu", labelKey: "nav.section.overview" },
+  { id: "app_dashboard", label: "Dashboard", scope: "global", description: "", group: "menu", parent: "app_overview", labelKey: "nav.dashboard" },
+  { id: "app_all_projects", label: "All projects", scope: "global", description: "", group: "menu", parent: "app_overview", labelKey: "nav.allProjects" },
+  { id: "app_reports", label: "Reports", scope: "global", description: "", group: "menu", parent: "app_overview", labelKey: "nav.reports" },
+  { id: "app_client", label: "Client", scope: "global", description: "", group: "menu", labelKey: "nav.section.client" },
+  { id: "app_client_overview", label: "Overview", scope: "global", description: "", group: "menu", parent: "app_client", labelKey: "nav.clientOverview" },
+  { id: "app_client_projects", label: "Projects", scope: "global", description: "", group: "menu", parent: "app_client", labelKey: "nav.projects" },
+  { id: "app_client_documents", label: "Documentation", scope: "global", description: "", group: "menu", parent: "app_client", labelKey: "nav.documents" },
+  { id: "app_client_billing", label: "Billings", scope: "global", description: "", group: "menu", parent: "app_client", labelKey: "nav.billing" },
+  { id: "app_field", label: "Field", scope: "global", description: "", group: "menu", labelKey: "nav.section.field" },
+  { id: "app_punch", label: "Punch", scope: "global", description: "", group: "menu", parent: "app_field", labelKey: "nav.punch" },
+  { id: "app_timesheets", label: "Timesheets", scope: "global", description: "", group: "menu", parent: "app_field", labelKey: "nav.timesheets" },
+  { id: "app_finance", label: "Finance", scope: "global", description: "", group: "menu", labelKey: "nav.section.finance" },
+  { id: "app_billing_mgmt", label: "Billing management", scope: "global", description: "", group: "menu", parent: "app_finance", labelKey: "nav.billingMgmt" },
 ];
 
-export const PROJECT_MODULES = MODULES.filter((m) => m.scope === "project");
+export const MENU_MODULES = MODULES.filter((m) => m.group === "menu");
+export const OTHER_MODULES = MODULES.filter((m) => m.group !== "menu");
+
+export const PROJECT_MODULES = MODULES.filter((m) => m.scope === "project" && m.group !== "menu");
 
 export const PROJECT_STATUSES = [
   { value: "planning", label: "Planning" },

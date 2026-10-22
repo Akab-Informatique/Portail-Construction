@@ -284,7 +284,21 @@ export type ModuleId =
   | "reports"
   | "clients"
   | "users"
-  | "billing";
+  | "billing"
+  | "app_overview"
+  | "app_dashboard"
+  | "app_all_projects"
+  | "app_reports"
+  | "app_client"
+  | "app_client_overview"
+  | "app_client_projects"
+  | "app_client_documents"
+  | "app_client_billing"
+  | "app_field"
+  | "app_punch"
+  | "app_timesheets"
+  | "app_finance"
+  | "app_billing_mgmt";
 
 export type QuoteChangeStatus = "requested" | "proposed" | "approved" | "rejected" | "cancelled";
 

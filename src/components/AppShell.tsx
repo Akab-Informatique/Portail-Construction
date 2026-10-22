@@ -60,7 +60,8 @@ import { PageSkeleton } from "@/components/Skeleton";
 import { MenuTour } from "@/components/MenuTour";
 import { cn } from "@/lib/utils";
 import type { MessageKey } from "@/lib/i18n/en";
-import type { ViewAsMode } from "@/lib/types";
+import type { ModuleId, ViewAsMode } from "@/lib/types";
+import { canUseMenuModule } from "@/lib/app-modules";
 
 const COLLAPSED_KEY = "frx.sidebar.collapsed";
 
@@ -72,6 +73,8 @@ export type NavItem = {
   end?: boolean;
   count?: number;
   tour?: string;
+  /** The sidebar module whose rights decide who sees this item. */
+  module?: ModuleId;
 };
 
 export type NavSection = {
@@ -84,10 +87,6 @@ export type NavSection = {
   /** Rendered between the label and the items (client switcher). */
   lead?: "clientPicker" | "clientName";
 };
-
-function hasGroupBilling(permissions: { module: string; can_view: number }[]) {
-  return permissions.some((p) => p.module === "billing" && Number(p.can_view) === 1);
-}
 
 /**
  * The main menu, ordered the way work flows: overview → the client you are
@@ -128,6 +127,7 @@ export function useNavModel(): NavSection[] {
   const { t } = useI18n();
   const { user, can, permissions } = useAuth();
   const { selectedClient, clientProjects, clients } = useWorkspace();
+  const allowed = (id: ModuleId) => canUseMenuModule(user, can, id);
 
   return useMemo(() => {
     const isClient = user?.user_type === "external";
@@ -140,6 +140,7 @@ export function useNavModel(): NavSection[] {
             label: isClient ? t("nav.companyOverview") : t("nav.clientOverview"),
             icon: Building2,
             end: true,
+            module: "app_client_overview",
           },
           {
             id: "clientProjects",
@@ -148,11 +149,10 @@ export function useNavModel(): NavSection[] {
             icon: FolderKanban,
             end: true,
             count: clientProjects.length,
+            module: "app_client_projects",
           },
-          { id: "clientDocuments", to: "/documents", label: t("nav.documents"), icon: FileText, end: true, tour: "documents" },
-          ...(isClient || isAdmin || can("billing", "view")
-            ? [{ id: "clientBilling", to: `/clients/${selectedClient.id}/billing`, label: t("nav.billing"), icon: Receipt }]
-            : []),
+          { id: "clientDocuments", to: "/documents", label: t("nav.documents"), icon: FileText, end: true, tour: "documents", module: "app_client_documents" },
+          { id: "clientBilling", to: `/clients/${selectedClient.id}/billing`, label: t("nav.billing"), icon: Receipt, module: "app_client_billing" },
         ]
       : [];
 
@@ -179,9 +179,9 @@ export function useNavModel(): NavSection[] {
         id: "overview",
         label: t("nav.section.overview"),
         items: [
-          { id: "dashboard", to: "/", label: t("nav.dashboard"), icon: LayoutDashboard, end: true, tour: "dashboard" },
-          { id: "allProjects", to: "/documents/projects", label: t("nav.allProjects"), icon: LayoutGrid, tour: "projectsDocs" },
-          ...(isAdmin ? [{ id: "reports", to: "/reports", label: t("nav.reports"), icon: Presentation, end: true, tour: "reports" }] : []),
+          { id: "dashboard", to: "/", label: t("nav.dashboard"), icon: LayoutDashboard, end: true, tour: "dashboard", module: "app_dashboard" },
+          { id: "allProjects", to: "/documents/projects", label: t("nav.allProjects"), icon: LayoutGrid, tour: "projectsDocs", module: "app_all_projects" },
+          { id: "reports", to: "/reports", label: t("nav.reports"), icon: Presentation, end: true, tour: "reports", module: "app_reports" },
         ],
       },
       {
@@ -197,28 +197,34 @@ export function useNavModel(): NavSection[] {
         label: t("nav.section.field"),
         tour: "tools",
         items: [
-          { id: "punch", to: "/tools/punch", label: t("nav.punch"), icon: Timer },
-          { id: "timesheets", to: "/tools/timesheets", label: t("nav.timesheets"), icon: Wrench },
+          { id: "punch", to: "/tools/punch", label: t("nav.punch"), icon: Timer, module: "app_punch" },
+          { id: "timesheets", to: "/tools/timesheets", label: t("nav.timesheets"), icon: Wrench, module: "app_timesheets" },
         ],
       },
-    ];
-    if (isAdmin || hasGroupBilling(permissions)) {
-      sections.push({
+      {
         id: "finance",
         label: t("nav.section.finance"),
         tour: "accounting",
-        items: [{ id: "billingMgmt", to: "/finance/billing", label: t("nav.billingMgmt"), icon: ReceiptText }],
+        items: [{ id: "billingMgmt", to: "/finance/billing", label: t("nav.billingMgmt"), icon: ReceiptText, module: "app_billing_mgmt" }],
+      },
+    ];
+    // Work in progress: the invoice/quote builder lives here until it is ready.
+    if (isAdmin && showDev) {
+      sections.push({
+        id: "development",
+        label: t("nav.section.development"),
+        items: [{ id: "allBilling", to: "/accounting/billing", label: t("nav.allBilling"), icon: Wallet }],
       });
-      // Work in progress: the invoice/quote builder lives here until it is ready.
-      if (showDev) {
-        sections.push({
-          id: "development",
-          label: t("nav.section.development"),
-          items: [{ id: "allBilling", to: "/accounting/billing", label: t("nav.allBilling"), icon: Wallet }],
-        });
-      }
     }
-    return sections;
+    // Rights: a section shows when its own right is on and at least one of its items is allowed.
+    const sectionModule: Record<string, ModuleId> = { overview: "app_overview", client: "app_client", field: "app_field", finance: "app_finance" };
+    return sections
+      .map((section) => ({ ...section, items: section.items.filter((item) => !item.module || allowed(item.module)) }))
+      .filter((section) => {
+        const own = sectionModule[section.id];
+        if (own && !canUseMenuModule(user, can, own)) return false;
+        return section.id === "client" || section.items.length > 0;
+      });
   }, [t, user, can, permissions, selectedClient, clientProjects.length, clients.length, showDev]);
 }
 
