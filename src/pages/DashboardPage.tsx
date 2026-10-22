@@ -14,15 +14,13 @@ import { db, dbReady, schema } from "../db";
 import { useAuth } from "@/lib/auth";
 import { withProjectMoney } from "@/lib/project-money";
 import { PageHeader } from "@/components/PageHeader";
-import { StatusBadge } from "@/components/StatusBadge";
 import { PageSkeleton } from "@/components/Skeleton";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PortfolioCalendar, marksFromPortfolio } from "@/components/PortfolioCalendar";
 import { PortfolioGantt } from "@/components/PortfolioGantt";
-import { ensureProjectColors, projectColor } from "@/lib/project-colors";
-import { projectAchievement } from "@/lib/project-progress";
+import { ensureProjectColors } from "@/lib/project-colors";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
 import type { Client, Project } from "@/lib/types";
@@ -176,71 +174,6 @@ export function DashboardPage() {
     }
 
     if (id === "gantt") return <PortfolioGantt projects={projects} clients={clients} tasks={tasks} />;
-
-    if (id === "projects") {
-      return (
-        <Card className="py-0">
-          <CardHeader className="border-b px-5 py-4">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">{t("dash.projects")}</CardTitle>
-              <Button variant="ghost" size="sm" asChild>
-                <Link to="/projects">{t("dash.viewAll")}</Link>
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="px-0 py-0">
-            {projects.length === 0 ? (
-              <p className="px-5 py-10 text-center text-sm text-muted-foreground">{t("dash.noProjects")}</p>
-            ) : (
-              <ul className="space-y-2 p-3">
-                {projects.slice(0, 6).map((p) => {
-                  const client = clients.find((c) => c.id === p.client_id);
-                  const c = projectColor(p);
-                  const { percent: achieved } = projectAchievement(p, tasks);
-                  return (
-                    <li key={p.id}>
-                      <Link
-                        to={`/projects/${p.id}`}
-                        className="group flex items-center gap-4 rounded-lg border px-4 py-3 transition-all hover:-translate-y-0.5 hover:shadow-lg"
-                        style={{
-                          background: `linear-gradient(90deg, color-mix(in srgb, ${c} 14%, transparent), color-mix(in srgb, ${c} 4%, transparent) 70%)`,
-                          borderColor: `color-mix(in srgb, ${c} 30%, var(--border))`,
-                          boxShadow: `inset 4px 0 0 ${c}`,
-                        }}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <p className="truncate font-medium">{p.name}</p>
-                            <StatusBadge value={p.status} />
-                          </div>
-                          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                            {p.project_number} · {client?.company_name ?? "—"} · {p.city}
-                          </p>
-                        </div>
-                        <div className="hidden w-40 sm:block">
-                          <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
-                            <span>{t("gantt.achievement")}</span>
-                            <span className="font-semibold tabular-nums" style={{ color: c }}>
-                              {achieved}%
-                            </span>
-                          </div>
-                          <div className="h-2 overflow-hidden rounded-full" style={{ background: `color-mix(in srgb, ${c} 18%, transparent)` }}>
-                            <div
-                              className="h-full rounded-full"
-                              style={{ width: `${achieved}%`, background: `linear-gradient(180deg, color-mix(in srgb, ${c} 75%, white), ${c})`, boxShadow: "inset 0 1px 0 rgba(255,255,255,0.5)" }}
-                            />
-                          </div>
-                        </div>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-      );
-    }
 
     return null;
   }

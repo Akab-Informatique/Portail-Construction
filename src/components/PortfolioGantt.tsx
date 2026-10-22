@@ -16,7 +16,6 @@ const at = (iso: string) => new Date(`${iso}T00:00:00`).getTime();
 const addDays = (iso: string, n: number) => new Date(at(iso) + n * DAY).toISOString().slice(0, 10);
 const daysBetween = (a: string, b: string) => Math.round((at(b) - at(a)) / DAY);
 const LABEL_W = 270;
-const ZOOM_PX = 9;
 
 /**
  * Portfolio timeline: one bar per project in its own color, with dates, duration and
@@ -25,7 +24,6 @@ const ZOOM_PX = 9;
 export function PortfolioGantt({ projects, clients = [], tasks = [] }: { projects: Project[]; clients?: Client[]; tasks?: TaskLite[] }) {
   const { t, locale } = useI18n();
   const today = todayISO();
-  const [zoom, setZoom] = useState(false);
   const [openId, setOpenId] = useState<number | null>(null);
 
   const rows = useMemo(
@@ -63,28 +61,16 @@ export function PortfolioGantt({ projects, clients = [], tasks = [] }: { project
     if (iso < min) continue;
     months.push({ label: d.toLocaleDateString(locale, { month: "short", year: "2-digit" }), left: pct(iso) });
   }
-  const monthStep = Math.max(1, Math.ceil(months.length / (zoom ? 40 : 8)));
+  const monthStep = Math.max(1, Math.ceil(months.length / 8));
   const shownMonths = months.filter((_, i) => i % monthStep === 0);
   const todayLeft = pct(today);
 
   return (
     <Card className="gap-3 overflow-hidden p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-medium">{t("dash.gantt")}</p>
-        <div className="flex items-center gap-1 rounded-md border bg-muted/40 p-0.5">
-          {[
-            [false, t("gantt.zoomFit")],
-            [true, t("gantt.zoomDetail")],
-          ].map(([value, label]) => (
-            <Button key={String(label)} type="button" size="sm" variant={zoom === value ? "default" : "ghost"} className="h-7 px-3 text-xs" onClick={() => setZoom(Boolean(value))}>
-              {label as string}
-            </Button>
-          ))}
-        </div>
-      </div>
+      <p className="text-sm font-medium">{t("dash.gantt")}</p>
 
       <div className="overflow-x-auto">
-        <div style={{ minWidth: zoom ? LABEL_W + span * ZOOM_PX : 760 }}>
+        <div style={{ minWidth: 760 }}>
           {/* header */}
           <div className="grid items-end border-b pb-1.5" style={{ gridTemplateColumns: `${LABEL_W}px minmax(0,1fr) 92px` }}>
             <span className="px-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t("nav.projects")}</span>
