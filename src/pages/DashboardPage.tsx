@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PortfolioCalendar, marksFromPortfolio } from "@/components/PortfolioCalendar";
+import { DailySummary } from "@/components/DailySummary";
 import { PortfolioGantt } from "@/components/PortfolioGantt";
 import { ensureProjectColors } from "@/lib/project-colors";
 import { useI18n } from "@/lib/i18n";
@@ -203,6 +204,18 @@ export function DashboardPage() {
             </Button>
           </div>
         }
+      />
+      <DailySummary
+        userId={user?.id}
+        projects={projects}
+        clients={clients}
+        tasks={tasks}
+        dated={[
+          ...events.map((e) => ({ project_id: e.project_id, title: e.title, date: e.event_date })),
+          ...tasks.filter((x) => x.end_date && x.status !== "completed").map((x) => ({ project_id: x.project_id, title: x.title, date: x.end_date! })),
+          ...rfiItems.filter((x) => x.due_date).map((x) => ({ project_id: x.project_id, title: x.title, date: x.due_date! })),
+          ...punchItems.filter((x) => x.due_date).map((x) => ({ project_id: x.project_id, title: x.title, date: x.due_date! })),
+        ]}
       />
       <div className="grid gap-6">
         {widgets.map((widget, index) => (

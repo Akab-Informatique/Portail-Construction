@@ -224,3 +224,55 @@ export async function analyzeDocument(input: {
     clearTimeout(timer);
   }
 }
+
+const SUMMARY_SYSTEM = `You write the short daily briefing shown at the top of a construction company's project dashboard.
+You receive JSON facts about the projects, their achievement (percent of tasks done), schedule and upcoming deadlines.
+Write 3 to 4 short sentences, 75 words at most, in a warm and direct tone, in the requested language.
+Say how the projects are doing overall, name what is late or needs attention first, then the next deadlines worth knowing about.
+Use only the facts given: never invent a project, a number or a date. Do not mention money. Plain text only: no markdown, no lists, no greeting.`;
+
+/** Turns the dashboard's facts into a few readable sentences. */
+export async function writeSummary(input: {
+  provider: AiProvider;
+  apiKey: string;
+  model?: string;
+  language: "fr" | "en";
+  facts: unknown;
+}): Promise<string> {
+  const model = input.model || DEFAULT_MODELS[input.provider];
+  const prompt = `Language: ${input.language === "fr" ? "French (Quebec)" : "English"}\nFacts:\n${JSON.stringify(input.facts)}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 45_000);
+  try {
+    if (input.provider === "anthropic") {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        signal: controller.signal,
+        headers: { "content-type": "application/json", "x-api-key": input.apiKey, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({ model, max_tokens: 400, system: SUMMARY_SYSTEM, messages: [{ role: "user", content: prompt }] }),
+      });
+      const payload = (await res.json().catch(() => ({}))) as { content?: { type: string; text?: string }[]; error?: { message?: string } };
+      if (!res.ok) throw new Error(payload.error?.message || `AI request failed (${res.status})`);
+      const text = payload.content?.map((c) => (c.type === "text" ? c.text ?? "" : "")).join("").trim();
+      if (!text) throw new Error("The AI did not return any text.");
+      return text;
+    }
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: { "content-type": "application/json", "x-goog-api-key": input.apiKey },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SUMMARY_SYSTEM }] },
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.4, maxOutputTokens: 600 },
+      }),
+    });
+    const payload = (await res.json().catch(() => ({}))) as { candidates?: { content?: { parts?: { text?: string }[] } }[]; error?: { message?: string } };
+    if (!res.ok) throw new Error(payload.error?.message || `AI request failed (${res.status})`);
+    const text = payload.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("").trim();
+    if (!text) throw new Error("The AI did not return any text.");
+    return text;
+  } finally {
+    clearTimeout(timer);
+  }
+}

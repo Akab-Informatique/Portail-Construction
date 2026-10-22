@@ -7,7 +7,7 @@ import {
   requireApiUser,
   serverQuery,
 } from "./db.ts";
-import { analyzeDocument, DEFAULT_MODELS, testConnection, type AiProvider, type Extracted } from "./_lib/billing-ai.ts";
+import { analyzeDocument, DEFAULT_MODELS, testConnection, writeSummary, type AiProvider, type Extracted } from "./_lib/billing-ai.ts";
 
 /** Largest file accepted (decoded). The request body limit is 12 MB of base64. */
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
@@ -147,6 +147,28 @@ export default async function handler(req: Req, res: Res) {
     const override = !hasDatabase() && body.ai && typeof body.ai === "object" ? (body.ai as StoredAi) : undefined;
     const result = await runAnalysis(kind, mime, bytes.toString("base64"), override);
     return res.status(200).json(result);
+  }
+
+  // Daily dashboard briefing: any signed-in user, written only from the facts their own dashboard sends.
+  if (action === "summary") {
+    let override: StoredAi | undefined;
+    if (hasDatabase()) {
+      const who = await requireApiUser(req);
+      if (!who) return res.status(401).json({ error: "Unauthorized" });
+    } else {
+      override = body.ai && typeof body.ai === "object" ? (body.ai as StoredAi) : undefined;
+    }
+    const facts = body.facts;
+    if (!facts || typeof facts !== "object" || JSON.stringify(facts).length > 12000) return res.status(400).json({ error: "Invalid facts" });
+    const { provider, apiKey, model } = await aiConfig(override);
+    if (!apiKey) return res.status(200).json({ error: "ai.notConfigured" });
+    try {
+      const text = await writeSummary({ provider, apiKey, model, language: body.language === "en" ? "en" : "fr", facts });
+      return res.status(200).json({ text });
+    } catch (err) {
+      console.error("daily summary failed", err);
+      return res.status(200).json({ error: err instanceof Error ? err.message : "ai.failed" });
+    }
   }
 
   // Admin check for the AI connection test (any provider/key typed in Setup).
