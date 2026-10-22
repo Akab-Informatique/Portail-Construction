@@ -6,6 +6,7 @@ import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/StatusBadge";
+import { projectColor } from "@/lib/project-colors";
 import { cn } from "@/lib/utils";
 import type { Project } from "@/lib/types";
 
@@ -16,6 +17,7 @@ export type CalendarMark = {
   kind: string;
   projectId: number;
   projectName: string;
+  color: string;
 };
 
 export function marksFromPortfolio(
@@ -25,81 +27,70 @@ export function marksFromPortfolio(
   rfis: { id: number; due_date: string | null; number: string; title: string; project_id: number }[],
   punch: { id: number; due_date: string | null; title: string; project_id: number }[],
 ): CalendarMark[] {
-  const names = new Map(projects.map((p) => [p.id, p.name]));
+  const byId = new Map(projects.map((p) => [p.id, p]));
+  const info = (id: number) => ({ projectName: byId.get(id)?.name ?? "", color: byId.get(id) ? projectColor(byId.get(id)!) : projectColor({}) });
   const list: CalendarMark[] = [];
   events.forEach((e) => {
-    list.push({
-      id: `e-${e.id}`,
-      date: e.event_date,
-      title: e.title,
-      kind: e.event_type,
-      projectId: e.project_id,
-      projectName: names.get(e.project_id) ?? "",
-    });
+    list.push({ id: `e-${e.id}`, date: e.event_date, title: e.title, kind: e.event_type, projectId: e.project_id, ...info(e.project_id) });
   });
   tasks.forEach((task) => {
     if (!task.end_date) return;
-    list.push({
-      id: `t-${task.id}`,
-      date: task.end_date,
-      title: task.title,
-      kind: "task",
-      projectId: task.project_id,
-      projectName: names.get(task.project_id) ?? "",
-    });
+    list.push({ id: `t-${task.id}`, date: task.end_date, title: task.title, kind: "task", projectId: task.project_id, ...info(task.project_id) });
   });
   rfis.forEach((r) => {
     if (!r.due_date) return;
-    list.push({
-      id: `r-${r.id}`,
-      date: r.due_date,
-      title: `${r.number} · ${r.title}`,
-      kind: "rfi",
-      projectId: r.project_id,
-      projectName: names.get(r.project_id) ?? "",
-    });
+    list.push({ id: `r-${r.id}`, date: r.due_date, title: `${r.number} · ${r.title}`, kind: "rfi", projectId: r.project_id, ...info(r.project_id) });
   });
   punch.forEach((p) => {
     if (!p.due_date) return;
-    list.push({
-      id: `p-${p.id}`,
-      date: p.due_date,
-      title: p.title,
-      kind: "punch",
-      projectId: p.project_id,
-      projectName: names.get(p.project_id) ?? "",
-    });
+    list.push({ id: `p-${p.id}`, date: p.due_date, title: p.title, kind: "punch", projectId: p.project_id, ...info(p.project_id) });
   });
   projects.forEach((p) => {
-    if (p.start_date) {
-      list.push({
-        id: `ps-${p.id}`,
-        date: p.start_date,
-        title: p.name,
-        kind: "start",
-        projectId: p.id,
-        projectName: p.name,
-      });
-    }
-    if (p.end_date) {
-      list.push({
-        id: `pe-${p.id}`,
-        date: p.end_date,
-        title: p.name,
-        kind: "milestone",
-        projectId: p.id,
-        projectName: p.name,
-      });
-    }
+    if (p.start_date) list.push({ id: `ps-${p.id}`, date: p.start_date, title: p.name, kind: "start", projectId: p.id, ...info(p.id) });
+    if (p.end_date) list.push({ id: `pe-${p.id}`, date: p.end_date, title: p.name, kind: "milestone", projectId: p.id, ...info(p.id) });
   });
   return list.sort((a, b) => a.date.localeCompare(b.date));
 }
 
+const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const LANE = 20;
+const BAR_TOP = 22;
+
+type Segment = { project: Project; s: number; e: number; lane: number; startsHere: boolean; endsHere: boolean };
+
+/** One continuous bar per project per week, stacked in lanes so they never overlap. */
+function weekSegments(projects: Project[], days: string[]): { segments: Segment[]; lanes: number } {
+  const first = days[0];
+  const last = days[6];
+  const raw: Omit<Segment, "lane">[] = [];
+  for (const project of projects) {
+    let a = project.start_date || project.end_date;
+    let b = project.end_date || project.start_date;
+    if (!a || !b) continue;
+    if (b < a) [a, b] = [b, a];
+    if (b < first || a > last) continue;
+    const s = a <= first ? 0 : days.indexOf(a);
+    const e = b >= last ? 6 : days.indexOf(b);
+    raw.push({ project, s, e, startsHere: a >= first, endsHere: b <= last });
+  }
+  raw.sort((x, y) => x.s - y.s || y.e - x.e || x.project.id - y.project.id);
+  const laneEnds: number[] = [];
+  const segments = raw.map((seg) => {
+    let lane = laneEnds.findIndex((end) => end < seg.s);
+    if (lane === -1) lane = laneEnds.length;
+    laneEnds[lane] = seg.e;
+    return { ...seg, lane };
+  });
+  return { segments, lanes: laneEnds.length };
+}
+
 export function PortfolioCalendar({
   marks,
+  projects = [],
   title,
 }: {
   marks: CalendarMark[];
+  projects?: Project[];
   title?: string;
 }) {
   const { t, locale } = useI18n();
@@ -111,16 +102,21 @@ export function PortfolioCalendar({
 
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
-  const firstDow = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells: (number | null)[] = [
-    ...Array.from({ length: firstDow }, () => null),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
-  ];
-  const iso = (day: number) => `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   const today = todayISO();
+
+  // Whole weeks, so a bar can run straight through the month edges.
+  const weeks = useMemo(() => {
+    const lead = new Date(year, month, 1).getDay();
+    const count = Math.ceil((lead + new Date(year, month + 1, 0).getDate()) / 7);
+    return Array.from({ length: count }, (_, w) =>
+      Array.from({ length: 7 }, (_, d) => isoOf(new Date(year, month, 1 - lead + w * 7 + d))),
+    );
+  }, [year, month]);
+
+  const chipMarks = useMemo(() => marks.filter((m) => m.kind !== "start" && m.kind !== "milestone"), [marks]);
   const dayItems = marks.filter((item) => item.date === selected);
   const upcoming = marks.filter((item) => item.date >= today).slice(0, 8);
+  const legend = projects.filter((p) => p.start_date || p.end_date);
 
   return (
     <div>
@@ -150,43 +146,96 @@ export function PortfolioCalendar({
         </div>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(240px,0.8fr)]">
+      {legend.length > 0 ? (
+        <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1.5">
+          {legend.map((p) => (
+            <Link key={p.id} to={`/projects/${p.id}`} className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground">
+              <span className="size-2.5 rounded-full shadow-[0_0_0_2px_rgba(255,255,255,0.5)]" style={{ background: projectColor(p) }} />
+              {p.name}
+            </Link>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.6fr)_minmax(240px,0.8fr)]">
         <div>
-          <div className="mb-1 grid grid-cols-7 text-center text-[11px] font-medium text-muted-foreground">
+          <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[11px] font-medium text-muted-foreground">
             {(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const).map((d) => (
               <div key={d} className="py-1">
                 {t(`cal.${d}`)}
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-1">
-            {cells.map((day, i) => {
-              if (!day) return <div key={i} className="min-h-16" />;
-              const key = iso(day);
-              const dayMarks = marks.filter((item) => item.date === key);
-              const isSel = key === selected;
-              const isToday = key === today;
+          <div className="space-y-1">
+            {weeks.map((days) => {
+              const { segments, lanes } = weekSegments(projects, days);
               return (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => setSelected(key)}
-                  className={cn(
-                    "min-h-16 rounded-md border p-1 text-left transition-colors",
-                    isSel ? "border-primary bg-primary/8" : "bg-card hover:bg-muted/40",
-                    isToday && !isSel && "border-primary/40",
-                  )}
-                >
-                  <div className={cn("text-[11px] tabular-nums", isToday ? "font-semibold text-primary" : "text-muted-foreground")}>
-                    {day}
+                <div key={days[0]} className="relative">
+                  <div className="grid grid-cols-7 gap-1">
+                    {days.map((key) => {
+                      const dayMarks = chipMarks.filter((item) => item.date === key);
+                      const inMonth = Number(key.slice(5, 7)) - 1 === month;
+                      const isSel = key === selected;
+                      const isToday = key === today;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => setSelected(key)}
+                          style={{ minHeight: BAR_TOP + lanes * LANE + 40 }}
+                          className={cn(
+                            "frx-cell flex flex-col items-stretch justify-start rounded-md border p-1 text-left transition-all",
+                            isSel ? "border-primary bg-primary/10 shadow-[0_6px_18px_-8px_var(--primary)]" : "hover:-translate-y-px",
+                            isToday && !isSel && "border-primary/50",
+                            !inMonth && "opacity-45",
+                          )}
+                        >
+                          <div className={cn("text-[11px] tabular-nums", isToday ? "font-bold text-primary" : "text-muted-foreground")}>{Number(key.slice(8))}</div>
+                          <div style={{ marginTop: lanes * LANE + 2 }}>
+                            {dayMarks.slice(0, 1).map((e) => (
+                              <div
+                                key={e.id}
+                                className="truncate rounded px-1 text-[10px] font-medium"
+                                style={{ background: `color-mix(in srgb, ${e.color} 18%, transparent)`, color: e.color, boxShadow: `inset 2px 0 0 ${e.color}` }}
+                              >
+                                {e.title}
+                              </div>
+                            ))}
+                            {dayMarks.length > 1 ? <div className="mt-0.5 text-[10px] text-muted-foreground">+{dayMarks.length - 1}</div> : null}
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
-                  {dayMarks.slice(0, 2).map((e) => (
-                    <div key={e.id} className="mt-0.5 truncate rounded bg-primary/12 px-1 text-[10px] text-primary">
-                      {e.title}
+                  {segments.length > 0 ? (
+                    <div className="pointer-events-none absolute inset-x-0 grid grid-cols-7 gap-x-1" style={{ top: BAR_TOP, gridAutoRows: `${LANE - 3}px`, rowGap: 3 }}>
+                      {segments.map((seg) => {
+                        const c = projectColor(seg.project);
+                        return (
+                          <Link
+                            key={seg.project.id}
+                            to={`/projects/${seg.project.id}`}
+                            title={`${seg.project.name} · ${formatDate(seg.project.start_date || seg.project.end_date!, locale)} → ${formatDate(seg.project.end_date || seg.project.start_date!, locale)}`}
+                            className={cn(
+                              "pointer-events-auto flex items-center truncate px-2 text-[10px] font-semibold text-white transition-[filter,transform] hover:z-10 hover:brightness-110",
+                              seg.startsHere ? "rounded-l-full" : "rounded-l-none",
+                              seg.endsHere ? "rounded-r-full" : "rounded-r-none",
+                            )}
+                            style={{
+                              gridColumn: `${seg.s + 1} / ${seg.e + 2}`,
+                              gridRow: seg.lane + 1,
+                              background: `linear-gradient(180deg, color-mix(in srgb, ${c} 78%, white), ${c} 55%, color-mix(in srgb, ${c} 85%, black))`,
+                              boxShadow: `inset 0 1px 0 rgba(255,255,255,0.45), 0 3px 8px -3px ${c}`,
+                              textShadow: "0 1px 1px rgba(0,0,0,0.35)",
+                            }}
+                          >
+                            <span className="truncate">{seg.project.name}</span>
+                          </Link>
+                        );
+                      })}
                     </div>
-                  ))}
-                  {dayMarks.length > 2 ? <div className="mt-0.5 text-[10px] text-muted-foreground">+{dayMarks.length - 2}</div> : null}
-                </button>
+                  ) : null}
+                </div>
               );
             })}
           </div>
@@ -201,9 +250,12 @@ export function PortfolioCalendar({
                 {dayItems.map((item) => (
                   <li key={item.id}>
                     <Link to={`/projects/${item.projectId}`} className="flex items-start justify-between gap-2 text-sm hover:text-primary">
-                      <span className="min-w-0">
-                        <span className="block font-medium">{item.title}</span>
-                        <span className="block text-xs text-muted-foreground">{item.projectName}</span>
+                      <span className="flex min-w-0 items-start gap-2">
+                        <span className="mt-1.5 size-2 shrink-0 rounded-full" style={{ background: item.color }} />
+                        <span className="min-w-0">
+                          <span className="block font-medium">{item.title}</span>
+                          <span className="block text-xs text-muted-foreground">{item.projectName}</span>
+                        </span>
                       </span>
                       <StatusBadge value={item.kind} />
                     </Link>
@@ -217,11 +269,14 @@ export function PortfolioCalendar({
             <ul className="space-y-2">
               {upcoming.map((item) => (
                 <li key={item.id} className="flex items-center justify-between gap-2 text-sm">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{item.title}</p>
-                    <p className="text-xs tabular-nums text-muted-foreground">
-                      {formatDate(item.date, locale)} · {item.projectName}
-                    </p>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="size-2 shrink-0 rounded-full" style={{ background: item.color }} />
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{item.title}</p>
+                      <p className="text-xs tabular-nums text-muted-foreground">
+                        {formatDate(item.date, locale)} · {item.projectName}
+                      </p>
+                    </div>
                   </div>
                   <StatusBadge value={item.kind} />
                 </li>
@@ -233,68 +288,4 @@ export function PortfolioCalendar({
       </div>
     </div>
   );
-}
-
-export function PortfolioGantt({ projects }: { projects: Project[] }) {
-  const { t, locale } = useI18n();
-  const today = todayISO();
-  const dated = useMemo(
-    () => projects.filter((p) => p.start_date || p.end_date),
-    [projects],
-  );
-  const min = dated.reduce((acc, p) => {
-    const d = p.start_date || p.end_date || acc;
-    return d < acc ? d : acc;
-  }, today);
-  const max = dated.reduce((acc, p) => {
-    const d = p.end_date || p.start_date || acc;
-    return d > acc ? d : acc;
-  }, today);
-  const span = Math.max(daysBetween(min, max), 14);
-
-  return (
-    <Card className="gap-3 overflow-hidden p-4">
-      <div>
-        <p className="text-sm font-medium">{t("dash.gantt")}</p>
-      </div>
-      {dated.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">{t("project.gantt.empty")}</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <div className="min-w-[720px] space-y-2">
-            {dated.map((project) => {
-              const start = project.start_date || project.end_date || min;
-              const end = project.end_date || project.start_date || start;
-              const offset =
-                ((new Date(`${start}T00:00:00`).getTime() - new Date(`${min}T00:00:00`).getTime()) / 86400000 / span) * 100;
-              const width = (daysBetween(start, end) / span) * 100;
-              const late = Boolean(project.end_date && project.end_date < today && project.status !== "complete");
-              return (
-                <Link
-                  key={project.id}
-                  to={`/projects/${project.id}`}
-                  className="grid grid-cols-[180px_minmax(0,1fr)] items-center gap-3"
-                >
-                  <p className="truncate text-sm">{project.name}</p>
-                  <div className="relative h-8 rounded-md bg-muted/50">
-                    <div
-                      className={cn("absolute top-1.5 h-5 rounded-sm", late ? "bg-destructive/80" : "bg-primary/80")}
-                      style={{ left: `${Math.max(offset, 0)}%`, width: `${Math.min(Math.max(width, 4), 100)}%` }}
-                      title={`${formatDate(start, locale)} → ${formatDate(end, locale)}`}
-                    />
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </Card>
-  );
-}
-
-function daysBetween(a: string, b: string) {
-  const start = new Date(`${a}T00:00:00`).getTime();
-  const end = new Date(`${b}T00:00:00`).getTime();
-  return Math.max(1, Math.round((end - start) / 86400000) + 1);
 }

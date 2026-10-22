@@ -59,8 +59,21 @@
   --copper: #fbaa19;
 
   /* Drafting-paper grid behind page content. */
-  --grid-line: rgba(0, 0, 0, 0.03);
-  --grid-line-strong: rgba(0, 0, 0, 0.055);
+  --grid-line: rgba(0, 0, 0, 0.02);
+  --grid-line-strong: rgba(0, 0, 0, 0.035);
+
+  /* Glass panels */
+  --glass-edge: rgba(255, 255, 255, 0.75);
+  --glass-hi: rgba(255, 255, 255, 0.7);
+  --glass-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95), inset 0 -1px 0 rgba(0, 0, 0, 0.05),
+    0 1px 2px rgba(20, 20, 20, 0.06), 0 12px 26px -12px rgba(20, 20, 20, 0.24), 0 32px 52px -32px rgba(20, 20, 20, 0.28);
+  --glass-shadow-hover:
+    inset 0 1px 0 rgba(255, 255, 255, 1), inset 0 -1px 0 rgba(0, 0, 0, 0.05),
+    0 2px 4px rgba(20, 20, 20, 0.08), 0 18px 34px -12px rgba(20, 20, 20, 0.3), 0 40px 64px -32px rgba(20, 20, 20, 0.32);
+  --blob-a: rgba(251, 170, 25, 0.26);
+  --blob-b: rgba(70, 130, 255, 0.16);
+  --blob-c: rgba(190, 90, 255, 0.1);
 }
 
 .dark {
@@ -109,8 +122,20 @@
   --info: #d1d3d4;
   --copper: #fbaa19;
 
-  --grid-line: rgba(255, 255, 255, 0.035);
-  --grid-line-strong: rgba(255, 255, 255, 0.06);
+  --grid-line: rgba(255, 255, 255, 0.02);
+  --grid-line-strong: rgba(255, 255, 255, 0.035);
+
+  --glass-edge: rgba(255, 255, 255, 0.11);
+  --glass-hi: rgba(255, 255, 255, 0.1);
+  --glass-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.13), inset 0 -1px 0 rgba(0, 0, 0, 0.45),
+    0 1px 2px rgba(0, 0, 0, 0.5), 0 16px 30px -14px rgba(0, 0, 0, 0.8), 0 36px 60px -32px rgba(0, 0, 0, 0.7);
+  --glass-shadow-hover:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18), inset 0 -1px 0 rgba(0, 0, 0, 0.45),
+    0 2px 4px rgba(0, 0, 0, 0.55), 0 22px 38px -14px rgba(0, 0, 0, 0.85), 0 44px 70px -32px rgba(0, 0, 0, 0.75);
+  --blob-a: rgba(251, 170, 25, 0.14);
+  --blob-b: rgba(70, 130, 255, 0.16);
+  --blob-c: rgba(190, 90, 255, 0.12);
 }
 
 @theme inline {
@@ -229,13 +254,47 @@
   /* Faint drafting grid: 8px minor, 40px major lines. */
   .frx-paper {
     background-color: var(--background);
+    background-attachment: fixed, fixed, fixed, scroll, scroll, scroll, scroll;
     background-image:
+      radial-gradient(60% 50% at 95% 0%, var(--blob-a), transparent 70%),
+      radial-gradient(55% 55% at 0% 100%, var(--blob-b), transparent 70%),
+      radial-gradient(40% 40% at 55% 45%, var(--blob-c), transparent 70%),
       linear-gradient(var(--grid-line-strong) 1px, transparent 1px),
       linear-gradient(90deg, var(--grid-line-strong) 1px, transparent 1px),
       linear-gradient(var(--grid-line) 1px, transparent 1px),
       linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
-    background-size: 40px 40px, 40px 40px, 8px 8px, 8px 8px;
+    background-size: auto, auto, auto, 40px 40px, 40px 40px, 8px 8px, 8px 8px;
     background-position: -1px -1px;
+  }
+
+  /* Frosted glass panel: translucent, blurred, lit from the top left, floating on layered shadows. */
+  .frx-glass {
+    border-radius: var(--radius-xl);
+    background:
+      radial-gradient(120% 90% at 0% 0%, var(--glass-hi), transparent 55%),
+      linear-gradient(150deg, color-mix(in srgb, var(--card) 80%, transparent), color-mix(in srgb, var(--card) 58%, transparent));
+    -webkit-backdrop-filter: blur(18px) saturate(1.5);
+    backdrop-filter: blur(18px) saturate(1.5);
+    box-shadow: var(--glass-shadow);
+  }
+  .frx-glass-strong {
+    border-radius: var(--radius-xl);
+    background:
+      radial-gradient(120% 90% at 0% 0%, var(--glass-hi), transparent 55%),
+      linear-gradient(150deg, color-mix(in srgb, var(--popover) 92%, transparent), color-mix(in srgb, var(--popover) 80%, transparent));
+    -webkit-backdrop-filter: blur(26px) saturate(1.6);
+    backdrop-filter: blur(26px) saturate(1.6);
+    box-shadow: var(--glass-shadow-hover);
+  }
+  a.frx-glass:hover,
+  button.frx-glass:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--glass-shadow-hover);
+  }
+  .frx-cell {
+    background: linear-gradient(160deg, color-mix(in srgb, var(--card) 78%, transparent), color-mix(in srgb, var(--card) 50%, transparent));
+    box-shadow: inset 0 1px 0 var(--glass-hi), 0 2px 6px -3px rgba(0, 0, 0, 0.18);
+    border-color: var(--glass-edge);
   }
 
   /* Small technical label: mono, uppercase, spaced. */

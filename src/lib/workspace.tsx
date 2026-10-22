@@ -13,6 +13,7 @@ import { CLIENT_KEY } from "./constants";
 import { useAuth } from "./auth";
 import { withProjectMoney } from "./project-money";
 import { loadBoardColumns } from "./board";
+import { ensureProjectColors } from "./project-colors";
 import { getAccessibleClientIds } from "./access";
 import type { BoardColumn, Client, Project } from "./types";
 
@@ -65,6 +66,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       ]);
       let allClients = clientRows as Client[];
       let allProjects = projectRows as Project[];
+      // Staff keep every running project on its own color (older projects get one here).
+      if (user && (user.is_admin === 1 || user.user_type === "internal")) {
+        allProjects = await ensureProjectColors(allProjects).catch(() => allProjects);
+      }
       if (allowed) {
         const ids = new Set(allowed);
         allClients = allClients.filter((c) => ids.has(c.id));

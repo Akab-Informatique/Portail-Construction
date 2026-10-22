@@ -62,6 +62,7 @@ export const projects = pgTable("projects", {
   geo_lng: real("geo_lng"),
   geo_radius_m: integer("geo_radius_m"),
   require_geofence: integer("require_geofence").notNull().default(0),
+  color: text("color"),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -1,3 +1,4 @@
+import { nextProjectColor } from "@/lib/project-colors";
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Building2, ChevronDown, ChevronRight, FolderKanban, Plus, Search } from "lucide-react";
@@ -70,7 +71,7 @@ export function DocumentsProjectsPage() {
     if (!form.name.trim() || !clientId) return;
     setBusy(true);
     try {
-      const [row] = await db.insert(schema.projects).values(projectInsertValues(form, Number(clientId))).returning();
+      const [row] = await db.insert(schema.projects).values({ ...projectInsertValues(form, Number(clientId)), color: await nextProjectColor() }).returning();
       if (user) {
         await db.insert(schema.project_members).values({
           project_id: row.id,

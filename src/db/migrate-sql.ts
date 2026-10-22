@@ -74,6 +74,7 @@ ALTER TABLE projects ADD COLUMN IF NOT EXISTS geo_lng REAL;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS geo_radius_m INTEGER;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS require_geofence INTEGER;
 UPDATE projects SET require_geofence = 0 WHERE require_geofence IS NULL;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS color TEXT;
 CREATE TABLE IF NOT EXISTS sessions (id SERIAL PRIMARY KEY, token TEXT NOT NULL, user_id INTEGER NOT NULL, expires_at TEXT NOT NULL, view_as TEXT NOT NULL DEFAULT 'admin', created_at TIMESTAMP DEFAULT NOW() NOT NULL);
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS view_as TEXT;
 UPDATE sessions SET view_as = 'admin' WHERE view_as IS NULL;

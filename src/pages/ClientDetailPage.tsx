@@ -1,3 +1,4 @@
+import { nextProjectColor } from "@/lib/project-colors";
 import { FormEvent, useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { eq } from "drizzle-orm";
@@ -189,6 +190,7 @@ export function ClientDetailPage() {
         budget: Number(pForm.budget) || 0,
         spent: 0,
         sort_order: Date.now() % 100000,
+        color: await nextProjectColor(),
       })
       .returning();
     if (user) {

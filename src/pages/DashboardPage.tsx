@@ -19,8 +19,10 @@ import { PageSkeleton } from "@/components/Skeleton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PortfolioCalendar, PortfolioGantt, marksFromPortfolio } from "@/components/PortfolioCalendar";
-import { money, percent } from "@/lib/format";
+import { PortfolioCalendar, marksFromPortfolio } from "@/components/PortfolioCalendar";
+import { PortfolioGantt } from "@/components/PortfolioGantt";
+import { ensureProjectColors, projectColor } from "@/lib/project-colors";
+import { projectAchievement } from "@/lib/project-progress";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
 import type { Client, Project } from "@/lib/types";
@@ -34,7 +36,7 @@ import {
 } from "@/lib/dashboard-layout";
 
 type CalEvent = { id: number; event_date: string; title: string; event_type: string; project_id: number };
-type CalTask = { id: number; end_date: string | null; title: string; project_id: number };
+type CalTask = { id: number; end_date: string | null; title: string; project_id: number; status: string };
 type CalRfi = { id: number; due_date: string | null; number: string; title: string; project_id: number };
 type CalPunch = { id: number; due_date: string | null; title: string; project_id: number };
 
@@ -67,7 +69,10 @@ export function DashboardPage() {
           getAccessibleClientIds(user),
         ]);
         const allClients = clientRows as Client[];
-        const allProjects = projectRows as Project[];
+        let allProjects = projectRows as Project[];
+        if (user && (user.is_admin === 1 || user.user_type === "internal")) {
+          allProjects = await ensureProjectColors(allProjects).catch(() => allProjects);
+        }
         const visibleClients = allowed ? allClients.filter((c) => allowed.includes(c.id)) : allClients;
         const visibleProjects = allowed ? allProjects.filter((p) => allowed.includes(p.client_id)) : allProjects;
         const projectIds = visibleProjects.map((p) => p.id);
@@ -165,12 +170,12 @@ export function DashboardPage() {
               </SelectContent>
             </Select>
           </div>
-          <PortfolioCalendar marks={marks} />
+          <PortfolioCalendar marks={marks} projects={filteredProjects} />
         </Card>
       );
     }
 
-    if (id === "gantt") return <PortfolioGantt projects={projects} />;
+    if (id === "gantt") return <PortfolioGantt projects={projects} clients={clients} tasks={tasks} />;
 
     if (id === "projects") {
       return (
@@ -187,13 +192,22 @@ export function DashboardPage() {
             {projects.length === 0 ? (
               <p className="px-5 py-10 text-center text-sm text-muted-foreground">{t("dash.noProjects")}</p>
             ) : (
-              <ul className="divide-y">
+              <ul className="space-y-2 p-3">
                 {projects.slice(0, 6).map((p) => {
                   const client = clients.find((c) => c.id === p.client_id);
-                  const used = percent(p.spent, p.budget);
+                  const c = projectColor(p);
+                  const { percent: achieved } = projectAchievement(p, tasks);
                   return (
                     <li key={p.id}>
-                      <Link to={`/projects/${p.id}`} className="flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-muted/50">
+                      <Link
+                        to={`/projects/${p.id}`}
+                        className="group flex items-center gap-4 rounded-lg border px-4 py-3 transition-all hover:-translate-y-0.5 hover:shadow-lg"
+                        style={{
+                          background: `linear-gradient(90deg, color-mix(in srgb, ${c} 14%, transparent), color-mix(in srgb, ${c} 4%, transparent) 70%)`,
+                          borderColor: `color-mix(in srgb, ${c} 30%, var(--border))`,
+                          boxShadow: `inset 4px 0 0 ${c}`,
+                        }}
+                      >
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <p className="truncate font-medium">{p.name}</p>
@@ -203,13 +217,18 @@ export function DashboardPage() {
                             {p.project_number} · {client?.company_name ?? "—"} · {p.city}
                           </p>
                         </div>
-                        <div className="hidden w-36 sm:block">
-                          <div className="mb-1 flex justify-between text-[11px] text-muted-foreground">
-                            <span className="tabular-nums">{money(p.spent)}</span>
-                            <span>{used}%</span>
+                        <div className="hidden w-40 sm:block">
+                          <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
+                            <span>{t("gantt.achievement")}</span>
+                            <span className="font-semibold tabular-nums" style={{ color: c }}>
+                              {achieved}%
+                            </span>
                           </div>
-                          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                            <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(used, 100)}%` }} />
+                          <div className="h-2 overflow-hidden rounded-full" style={{ background: `color-mix(in srgb, ${c} 18%, transparent)` }}>
+                            <div
+                              className="h-full rounded-full"
+                              style={{ width: `${achieved}%`, background: `linear-gradient(180deg, color-mix(in srgb, ${c} 75%, white), ${c})`, boxShadow: "inset 0 1px 0 rgba(255,255,255,0.5)" }}
+                            />
                           </div>
                         </div>
                       </Link>

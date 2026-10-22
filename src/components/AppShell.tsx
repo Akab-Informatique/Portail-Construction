@@ -683,7 +683,7 @@ export function AppShell() {
 
       <aside
         className={cn(
-          "sticky top-0 hidden h-screen shrink-0 border-r border-white/[0.07] bg-sidebar text-sidebar-foreground transition-[width] duration-200 lg:block",
+          "sticky top-0 hidden h-screen shrink-0 border-r border-white/[0.07] bg-[linear-gradient(180deg,#171717_0%,#050505_45%,#000_100%)] text-sidebar-foreground shadow-[inset_-1px_0_0_rgba(255,255,255,0.06),12px_0_40px_-18px_rgba(0,0,0,0.6)] transition-[width] duration-200 lg:block",
           collapsed ? "w-[68px]" : "w-64",
         )}
       >

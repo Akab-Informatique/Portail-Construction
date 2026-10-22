@@ -1,3 +1,4 @@
+import { nextProjectColor } from "@/lib/project-colors";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronDown, FolderKanban, GripVertical, MapPin, MoreHorizontal, Plus } from "lucide-react";
@@ -270,7 +271,7 @@ export function ProjectsPage() {
     try {
       const [row] = await db
         .insert(schema.projects)
-        .values(projectInsertValues(pForm, Number(newClientId)))
+        .values({ ...projectInsertValues(pForm, Number(newClientId)), color: await nextProjectColor() })
         .returning();
       if (user) {
         await db.insert(schema.project_members).values({

@@ -10,11 +10,11 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground shadow-[inset_0_-2px_0_rgba(0,0,0,0.18)] hover:bg-[#ffb935] active:translate-y-px active:shadow-none",
+          "bg-gradient-to-b from-[#ffc547] to-[#f59f0a] text-primary-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.6),inset_0_-2px_0_rgba(0,0,0,0.18),0_8px_16px_-8px_rgba(245,159,10,0.9)] hover:-translate-y-px hover:brightness-105 active:translate-y-px active:shadow-none",
         destructive:
           "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40",
         outline:
-          "border bg-card hover:border-foreground/30 hover:bg-card dark:border-input dark:bg-input/30 dark:hover:border-primary/50",
+          "border border-[color:var(--glass-edge)] bg-card/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_4px_10px_-6px_rgba(0,0,0,0.3)] backdrop-blur-md hover:-translate-y-px hover:border-foreground/30 hover:bg-card/80 dark:bg-input/30 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_4px_10px_-6px_rgba(0,0,0,0.7)] dark:hover:border-primary/50",
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost:
