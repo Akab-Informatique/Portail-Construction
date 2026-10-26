@@ -470,7 +470,7 @@ async function ensureDefaultGroupsInner() {
     can_edit: 1,
     can_delete: 0,
   });
-  for (const module of ["app_overview", "app_dashboard", "app_all_projects", "app_client", "app_client_projects", "app_client_documents", "app_field", "app_punch", "app_timesheets"] as const) {
+  for (const module of ["app_overview", "app_dashboard", "app_all_projects", "app_client", "app_client_projects", "app_client_documents", "app_punch", "app_timesheets"] as const) {
     await ensureModulePermission(internalDefault.id, { module, can_view: 1, can_create: 1, can_edit: 1, can_delete: 0 });
   }
   for (const module of ["app_finance", "app_billing_mgmt"] as const) {

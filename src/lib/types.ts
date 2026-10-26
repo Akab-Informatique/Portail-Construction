@@ -292,7 +292,6 @@ export type ModuleId =
   | "app_client"
   | "app_client_projects"
   | "app_client_documents"
-  | "app_field"
   | "app_punch"
   | "app_timesheets"
   | "app_finance"

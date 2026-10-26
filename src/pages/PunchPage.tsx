@@ -111,7 +111,7 @@ export function PunchPage() {
   if (!isAdmin) {
     return (
       <div>
-        <PageHeader eyebrow={t("nav.section.field")} title={t("punch.title")} />
+        <PageHeader eyebrow={t("nav.section.client")} title={t("punch.title")} />
         {clock}
       </div>
     );
@@ -119,7 +119,7 @@ export function PunchPage() {
 
   return (
     <div>
-      <PageHeader eyebrow={t("nav.section.field")} title={t("punch.title")} />
+      <PageHeader eyebrow={t("nav.section.client")} title={t("punch.title")} />
       <Tabs value={tab} onValueChange={setTab} className="gap-5">
         <TabsList>
           <TabsTrigger value="overview">

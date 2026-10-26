@@ -162,14 +162,10 @@ export function useNavModel(): NavSection[] {
         id: "client",
         label: t("nav.section.client"),
         tour: "operations",
-        items: clientItems,
-      },
-      {
-        id: "field",
-        label: t("nav.section.field"),
-        tour: "tools",
+        // Job site: projects and documents, then time on site (staff only).
         items: [
-          { id: "punch", to: "/tools/punch", label: t("nav.punch"), icon: Timer, module: "app_punch" },
+          ...clientItems,
+          { id: "punch", to: "/tools/punch", label: t("nav.punch"), icon: Timer, tour: "tools", module: "app_punch" },
           { id: "timesheets", to: "/tools/timesheets", label: t("nav.timesheets"), icon: Wrench, module: "app_timesheets" },
         ],
       },
@@ -189,7 +185,7 @@ export function useNavModel(): NavSection[] {
       });
     }
     // Rights: a section shows when its own right is on and at least one of its items is allowed.
-    const sectionModule: Record<string, ModuleId> = { overview: "app_overview", client: "app_client", field: "app_field", finance: "app_finance" };
+    const sectionModule: Record<string, ModuleId> = { overview: "app_overview", client: "app_client", finance: "app_finance" };
     return sections
       .map((section) => ({ ...section, items: section.items.filter((item) => !item.module || allowed(item.module)) }))
       .filter((section) => {
@@ -525,7 +521,7 @@ const CRUMB: Record<string, MessageKey> = {
   settings: "nav.setup",
   punch: "nav.punch",
   timesheets: "nav.timesheets",
-  tools: "nav.section.field",
+  tools: "nav.section.client",
   documents: "nav.documents",
   reports: "nav.reports",
 };
