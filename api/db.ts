@@ -30,7 +30,7 @@ const PRIVATE_TABLES = ["sessions", "app_settings", "password_resets", "billing_
  * Tables only FRX staff may read or write: real project costs and the target margin. Clients get no privilege on them at
  * all, so the database itself refuses them even if someone talks to the API directly.
  */
-const STAFF_ONLY_TABLES = ["project_finance", "project_costs", "budget_items"];
+const STAFF_ONLY_TABLES = ["project_finance", "project_costs", "budget_items", "expenses"];
 /** Tables only effective admins may write. */
 const ADMIN_TABLES = [
   "users",
@@ -150,8 +150,15 @@ function rowScopes(): Record<string, string> {
   for (const t of OWN_ROWS) scopes[t] = `(${ALL_CLIENTS} OR user_id = ${ME})`;
   // Punches are created only by the server's punch action; staff read their own.
   scopes.time_punches = `(user_id = ${ME})`;
+  // Expenses: each person reads their own; administrators see all (frx_admin_all).
+  scopes.expenses = `(user_id = ${ME})`;
   return scopes;
 }
+
+/** Writes narrower than reads: nobody can approve their own expense, only add, change or remove it while submitted. */
+const WRITE_SCOPES: Record<string, string> = {
+  expenses: `(user_id = ${ME} AND status = 'submitted')`,
+};
 
 function policy(table: string, name: string, rest: string) {
   return [`DROP POLICY IF EXISTS ${name} ON ${table}`, `CREATE POLICY ${name} ON ${table} ${rest}`];
@@ -211,7 +218,8 @@ async function ensureApiRoles() {
     statements.push(...policy(table, "frx_scope_read", `FOR SELECT TO ${ROLE_USER}, ${ROLE_CLIENT} USING (${scope})`));
     if (table === "users") continue;
     for (const cmd of ["INSERT", "UPDATE", "DELETE"]) {
-      const clause = cmd === "INSERT" ? `WITH CHECK (${scope})` : cmd === "DELETE" ? `USING (${scope})` : `USING (${scope}) WITH CHECK (${scope})`;
+      const writeScope = WRITE_SCOPES[table] ?? scope;
+      const clause = cmd === "INSERT" ? `WITH CHECK (${writeScope})` : cmd === "DELETE" ? `USING (${writeScope})` : `USING (${writeScope}) WITH CHECK (${writeScope})`;
       statements.push(...policy(table, `frx_scope_${cmd.toLowerCase()}`, `FOR ${cmd} TO ${ROLE_USER} ${clause}`));
     }
   }

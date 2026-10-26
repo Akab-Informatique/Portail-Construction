@@ -116,6 +116,8 @@ CREATE INDEX IF NOT EXISTS access_group_permissions_group_idx ON access_group_pe
 CREATE INDEX IF NOT EXISTS access_group_clients_group_idx ON access_group_clients (group_id);
 CREATE INDEX IF NOT EXISTS projects_client_idx ON projects (client_id);
 CREATE INDEX IF NOT EXISTS billing_documents_client_idx ON billing_documents (client_id);
+CREATE TABLE IF NOT EXISTS expenses (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL, project_id INTEGER, expense_date TEXT NOT NULL, category TEXT NOT NULL, vendor TEXT, description TEXT, amount REAL NOT NULL, status TEXT NOT NULL, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
+CREATE INDEX IF NOT EXISTS expenses_user_idx ON expenses (user_id, expense_date DESC);
 CREATE INDEX IF NOT EXISTS time_punches_user_time_idx ON time_punches (user_id, punched_at DESC);
 CREATE INDEX IF NOT EXISTS time_punches_project_idx ON time_punches (project_id);
 CREATE INDEX IF NOT EXISTS activities_project_idx ON activities (project_id);

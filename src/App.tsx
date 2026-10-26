@@ -23,6 +23,7 @@ const AccountingBillingPage = lazyPage(() => import("@/pages/AccountingBillingPa
 const ConfigSettingsPage = lazyPage(() => import("@/pages/config/ConfigSettingsPage"), "ConfigSettingsPage");
 const PunchPage = lazyPage(() => import("@/pages/PunchPage"), "PunchPage");
 const TimesheetsPage = lazyPage(() => import("@/pages/TimesheetsPage"), "TimesheetsPage");
+const ExpensesPage = lazyPage(() => import("@/pages/ExpensesPage"), "ExpensesPage");
 const DocumentsPage = lazyPage(() => import("@/pages/DocumentsPage"), "DocumentsPage");
 const DocumentsProjectsPage = lazyPage(() => import("@/pages/DocumentsProjectsPage"), "DocumentsProjectsPage");
 const ReportsPage = lazyPage(() => import("@/pages/ReportsPage"), "ReportsPage");
@@ -81,6 +82,7 @@ export default function App() {
           <Route path="settings" element={<ConfigSettingsPage />} />
           <Route path="tools/punch" element={<TimeOnSitePage module="app_punch"><PunchPage /></TimeOnSitePage>} />
           <Route path="tools/timesheets" element={<TimeOnSitePage module="app_timesheets"><TimesheetsPage /></TimeOnSitePage>} />
+          <Route path="tools/expenses" element={<TimeOnSitePage module="app_expenses"><ExpensesPage /></TimeOnSitePage>} />
           <Route path="profile" element={<ProfilePage />} />
         </Route>
       </Route>

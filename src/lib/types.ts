@@ -294,6 +294,7 @@ export type ModuleId =
   | "app_client_documents"
   | "app_punch"
   | "app_timesheets"
+  | "app_expenses"
   | "app_finance"
   | "app_billing_mgmt";
 

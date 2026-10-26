@@ -37,6 +37,7 @@ export const MODULES: ModuleDef[] = [
   { id: "app_client_projects", label: "Projects", scope: "global", description: "", group: "menu", parent: "app_client", labelKey: "nav.projects" },
   { id: "app_punch", label: "Punch", scope: "global", description: "", group: "menu", parent: "app_client", labelKey: "nav.punch" },
   { id: "app_timesheets", label: "Timesheets", scope: "global", description: "", group: "menu", parent: "app_client", labelKey: "nav.timesheets" },
+  { id: "app_expenses", label: "Expenses", scope: "global", description: "", group: "menu", parent: "app_client", labelKey: "nav.expenses" },
   { id: "app_finance", label: "Finance", scope: "global", description: "", group: "menu", labelKey: "nav.section.finance" },
   { id: "app_billing_mgmt", label: "Billing management", scope: "global", description: "", group: "menu", parent: "app_finance", labelKey: "nav.billingMgmt" },
 ];

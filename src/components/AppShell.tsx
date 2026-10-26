@@ -167,11 +167,11 @@ export function useNavModel(): NavSection[] {
           clientItems[0],
           { id: "allProjects", to: "/documents/projects", label: t("nav.allProjects"), icon: LayoutGrid, end: true, tour: "projectsDocs", module: "app_all_projects" },
           // Punch and timesheets: one entry, two tabs; opens the first tab the user may see.
-          ...(allowed("app_punch") || allowed("app_timesheets")
+          ...(allowed("app_timesheets") || allowed("app_expenses") || allowed("app_punch")
             ? [
                 {
                   id: "timeOnSite",
-                  to: allowed("app_punch") ? "/tools/punch" : "/tools/timesheets",
+                  to: allowed("app_timesheets") ? "/tools/timesheets" : allowed("app_expenses") ? "/tools/expenses" : "/tools/punch",
                   label: t("nav.timeOnSite"),
                   icon: Timer,
                   tour: "tools",

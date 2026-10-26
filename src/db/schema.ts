@@ -465,3 +465,17 @@ export const time_punches = pgTable("time_punches", {
   note: text("note"),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
+
+/** Employee expenses. Staff see and edit only their own while submitted; an administrator approves and reimburses. */
+export const expenses = pgTable("expenses", {
+  id: serial("id").primaryKey(),
+  user_id: integer("user_id").notNull(),
+  project_id: integer("project_id"),
+  expense_date: text("expense_date").notNull(),
+  category: text("category").notNull(),
+  vendor: text("vendor"),
+  description: text("description"),
+  amount: real("amount").notNull(),
+  status: text("status").notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
