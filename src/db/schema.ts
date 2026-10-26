@@ -107,6 +107,16 @@ export const project_tasks = pgTable("project_tasks", {
   status: text("status").notNull(),
   priority: text("priority").notNull(),
   assigned_to: integer("assigned_to"),
+  /** The phase this task sits under (a row with kind "phase"). null = top level. */
+  parent_id: integer("parent_id"),
+  /** Order among its siblings in the breakdown. */
+  sort_order: integer("sort_order").notNull().default(0),
+  /** "phase" (a heading row), "task", or "break" (a pause such as the holidays). */
+  kind: text("kind").notNull().default("task"),
+  /** Free text for who is responsible (a trade, a company, "to come"). Falls back to the assigned person. */
+  responsible: text("responsible"),
+  /** Manual % progress; null = worked out from the checklist and the status. */
+  progress: integer("progress"),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 

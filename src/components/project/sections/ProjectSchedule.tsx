@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { asc, eq } from "drizzle-orm";
-import { CalendarDays, CheckCircle2, Circle, GanttChartSquare, ListChecks, MessageSquare, Paperclip, Plus, Search } from "lucide-react";
+import { CalendarDays, CheckCircle2, Circle, GanttChartSquare, ListChecks, MessageSquare, Paperclip, Plus, Rows3, Search } from "lucide-react";
 import { db, schema } from "../../../db";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -13,6 +13,7 @@ import { countAttachments } from "@/lib/project-files";
 import { logActivity } from "@/lib/activity";
 import { PortfolioCalendar, marksFromPortfolio } from "@/components/PortfolioCalendar";
 import { TaskDrawer, type Task } from "@/components/project/TaskDrawer";
+import { ScheduleBreakdown } from "@/components/project/ScheduleBreakdown";
 import { StatusBadge } from "@/components/StatusBadge";
 import { UserAvatar } from "@/components/UserAvatar";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,7 @@ import { cn } from "@/lib/utils";
 import type { SectionProps } from "./types";
 
 type CalEvent = typeof schema.calendar_events.$inferSelect;
-type View = "tasks" | "calendar" | "gantt";
+type View = "tasks" | "wbs" | "calendar" | "gantt";
 const DAY = 86400000;
 const at = (iso: string) => new Date(`${iso}T00:00:00`).getTime();
 const days = (a: string, b: string) => Math.round((at(b) - at(a)) / DAY);
@@ -39,7 +40,8 @@ export function ProjectSchedule({ project, people }: SectionProps) {
   const { t, locale } = useI18n();
   const { user } = useAuth();
   const [params, setParams] = useSearchParams();
-  const view: View = params.get("view") === "calendar" ? "calendar" : params.get("view") === "gantt" ? "gantt" : "tasks";
+  const rawView = params.get("view");
+  const view: View = rawView === "calendar" || rawView === "gantt" || rawView === "wbs" ? rawView : "tasks";
   const color = projectColor(project);
 
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -51,6 +53,7 @@ export function ProjectSchedule({ project, people }: SectionProps) {
   const [filter, setFilter] = useState<"all" | "open" | "completed">("open");
   const [query, setQuery] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [addPreset, setAddPreset] = useState<{ kind: "task" | "phase" | "break"; parentId: number | null }>({ kind: "task", parentId: null });
   const [eventOpen, setEventOpen] = useState(false);
 
   const load = useCallback(async () => {
@@ -82,11 +85,14 @@ export function ProjectSchedule({ project, people }: SectionProps) {
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     return tasks.filter((x) => {
+      if (x.kind === "phase") return false;
       if (filter === "open" && x.status === "completed") return false;
       if (filter === "completed" && x.status !== "completed") return false;
       return !q || x.title.toLowerCase().includes(q);
     });
   }, [tasks, filter, query]);
+  const phases = tasks.filter((x) => x.kind === "phase").sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
+  const phaseName = (id: number | null) => phases.find((p) => p.id === id)?.title ?? "";
   const openTask = tasks.find((x) => x.id === openId) ?? null;
   const who = (id: number | null) => people.find((p) => p.id === id)?.name ?? "";
   const today = todayISO();
@@ -98,6 +104,7 @@ export function ProjectSchedule({ project, people }: SectionProps) {
 
   const tabs: { id: View; label: string; icon: typeof ListChecks }[] = [
     { id: "tasks", label: t("sch.tasks"), icon: ListChecks },
+    { id: "wbs", label: t("sch.wbs"), icon: Rows3 },
     { id: "calendar", label: t("sch.calendar"), icon: CalendarDays },
     { id: "gantt", label: t("sch.gantt"), icon: GanttChartSquare },
   ];
@@ -120,13 +127,33 @@ export function ProjectSchedule({ project, people }: SectionProps) {
           ))}
         </div>
         <div className="flex items-center gap-2">
-          {view === "calendar" ? (
+          {view === "wbs" ? (
+        <ScheduleBreakdown
+          project={project}
+          tasks={tasks}
+          check={checkCount}
+          people={people}
+          onOpen={setOpenId}
+          onAdd={(kind, parentId) => {
+            setAddPreset({ kind, parentId });
+            setAddOpen(true);
+          }}
+          onChanged={() => void load()}
+        />
+      ) : null}
+
+      {view === "calendar" ? (
             <Button variant="outline" onClick={() => setEventOpen(true)}>
               <Plus className="size-4" />
               {t("sch.addEvent")}
             </Button>
           ) : null}
-          <Button onClick={() => setAddOpen(true)}>
+          <Button
+            onClick={() => {
+              setAddPreset({ kind: "task", parentId: null });
+              setAddOpen(true);
+            }}
+          >
             <Plus className="size-4" />
             {t("sch.addTask")}
           </Button>
@@ -186,6 +213,7 @@ export function ProjectSchedule({ project, people }: SectionProps) {
                               {task.start_date ? formatDate(task.start_date, locale) : "…"} → {task.end_date ? formatDate(task.end_date, locale) : "…"}
                             </span>
                           ) : null}
+                          {phaseName(task.parent_id) ? <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">{phaseName(task.parent_id)}</span> : null}
                           {c ? (
                             <span className="inline-flex items-center gap-1 tabular-nums">
                               <ListChecks className="size-3.5" />
@@ -230,18 +258,22 @@ export function ProjectSchedule({ project, people }: SectionProps) {
 
       {view === "gantt" ? <TaskGantt tasks={tasks} color={color} checkCount={checkCount} onOpen={setOpenId} /> : null}
 
-      <TaskDrawer project={project} task={openTask} people={people} open={openTask !== null} onClose={() => setOpenId(null)} onChanged={() => void load()} />
+      <TaskDrawer project={project} task={openTask} people={people} phases={phases} open={openTask !== null} onClose={() => setOpenId(null)} onChanged={() => void load()} />
 
       <AddTaskDialog
         open={addOpen}
         people={people}
+        phases={phases}
+        preset={addPreset}
         onClose={() => setAddOpen(false)}
         onSave={async (v) => {
-          const [row] = await db.insert(schema.project_tasks).values({ ...v, project_id: project.id }).returning();
+          const sameLevel = tasks.filter((x) => (v.kind === "phase" ? x.kind === "phase" : x.parent_id === v.parent_id && x.kind !== "phase"));
+          const sort_order = sameLevel.reduce((m, x) => Math.max(m, x.sort_order), -1) + 1;
+          const [row] = await db.insert(schema.project_tasks).values({ ...v, sort_order, project_id: project.id }).returning();
           await logActivity({ action: "added task", details: v.title, projectId: project.id, userId: user?.id });
           setAddOpen(false);
           await load();
-          setOpenId(row.id);
+          if (v.kind !== "phase") setOpenId(row.id);
         }}
       />
       <AddEventDialog
@@ -321,20 +353,34 @@ function TaskGantt({ tasks, color, checkCount, onOpen }: { tasks: Task[]; color:
 function AddTaskDialog({
   open,
   people,
+  phases,
+  preset,
   onClose,
   onSave,
 }: {
   open: boolean;
   people: SectionProps["people"];
+  phases: Task[];
+  preset: { kind: "task" | "phase" | "break"; parentId: number | null };
   onClose: () => void;
-  onSave: (v: { title: string; description: string | null; start_date: string | null; end_date: string | null; status: string; priority: string; assigned_to: number | null }) => Promise<void>;
+  onSave: (v: {
+    title: string;
+    description: string | null;
+    start_date: string | null;
+    end_date: string | null;
+    status: string;
+    priority: string;
+    assigned_to: number | null;
+    kind: string;
+    parent_id: number | null;
+  }) => Promise<void>;
 }) {
   const { t } = useI18n();
-  const blank = { title: "", description: "", start_date: todayISO(), end_date: "", priority: "medium", assigned_to: "none" };
+  const blank = { title: "", description: "", start_date: todayISO(), end_date: "", priority: "medium", assigned_to: "none", kind: "task", parent: "none" };
   const [f, setF] = useState(blank);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    if (open) setF({ ...blank, start_date: todayISO() });
+    if (open) setF({ ...blank, start_date: todayISO(), kind: preset.kind, parent: preset.parentId ? String(preset.parentId) : "none" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   return (
@@ -344,6 +390,33 @@ function AddTaskDialog({
           <DialogTitle>{t("sch.addTask")}</DialogTitle>
         </DialogHeader>
         <div className="grid gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>{t("wbs.kind")}</Label>
+              <Select value={f.kind} onValueChange={(v) => setF({ ...f, kind: v })}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="task">{t("wbs.kind.task")}</SelectItem>
+                  <SelectItem value="phase">{t("wbs.kind.phase")}</SelectItem>
+                  <SelectItem value="break">{t("wbs.kind.break")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {f.kind !== "phase" ? (
+              <div className="space-y-1.5">
+                <Label>{t("wbs.phase")}</Label>
+                <Select value={f.parent} onValueChange={(v) => setF({ ...f, parent: v })}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">{t("wbs.noPhase")}</SelectItem>
+                    {phases.map((p) => (
+                      <SelectItem key={p.id} value={String(p.id)}>{p.title}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+          </div>
           <div className="space-y-1.5">
             <Label htmlFor="tk-title">{t("sch.taskTitle")}</Label>
             <Input id="tk-title" autoFocus value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
@@ -401,6 +474,8 @@ function AddTaskDialog({
                   status: "not_started",
                   priority: f.priority,
                   assigned_to: f.assigned_to === "none" ? null : Number(f.assigned_to),
+                  kind: f.kind,
+                  parent_id: f.kind === "phase" || f.parent === "none" ? null : Number(f.parent),
                 });
               } finally {
                 setBusy(false);

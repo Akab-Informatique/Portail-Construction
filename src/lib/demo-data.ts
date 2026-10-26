@@ -42,6 +42,7 @@ async function seedDemoDataInner() {
     await seedBillingFiles();
     await ensureDemoCabinet();
     await ensureDemoEmployee();
+    await ensureDemoBreakdown();
     return;
   }
 
@@ -398,6 +399,7 @@ async function seedDemoDataInner() {
   await seedBillingFiles();
   await ensureDemoCabinet();
   await ensureDemoEmployee();
+  await ensureDemoBreakdown();
   console.info("[demo] Fake local demo data created (dev only, never synced to production).");
 }
 
@@ -794,5 +796,72 @@ async function ensureDemoEmployee() {
   }
   for (const id of keep) {
     if (!mine.some((row) => row.project_id === id)) await db.insert(schema.project_members).values({ project_id: id, user_id: marc.id, role: "Project Manager" });
+  }
+}
+
+/**
+ * A phase-by-phase schedule for the lobby job, so the Breakdown view and its PDF have something to show.
+ * Safe to run on an existing local database: it only adds it once.
+ */
+async function ensureDemoBreakdown() {
+  const [lobby] = await db.select().from(schema.projects).where(eq(schema.projects.project_number, "FRX-2601"));
+  if (!lobby) return;
+  const existing = await db.select().from(schema.project_tasks).where(eq(schema.project_tasks.project_id, lobby.id));
+  if (existing.some((t) => t.kind === "phase")) return;
+  // Weeks start on the first Monday after today minus a few weeks, so the sheet looks current.
+  const monday = new Date();
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7) - 21);
+  const at = (week: number, day = 0) => {
+    const d = new Date(monday);
+    d.setDate(d.getDate() + (week - 1) * 7 + day);
+    return d.toISOString().slice(0, 10);
+  };
+  const plan: { title: string; from: number; to: number; responsible: string; progress: number; note?: string; kids: [string, number, number, string?][] }[] = [
+    { title: "Mobilisation / Préparation de chantier", from: 1, to: 1, responsible: "FRX", progress: 100, kids: [["Installation de chantier", 1, 1], ["Clôtures, signalisation et mesures de sécurité", 1, 1], ["Protection des ouvrages existants", 1, 1]] },
+    { title: "Démolition", from: 2, to: 3, responsible: "FRX", progress: 100, kids: [["Déconnexion / sécurisation des services existants", 2, 2], ["Démolition des finis et cloisons existantes", 2, 3], ["Tri, chargement et disposition des matériaux", 3, 3]] },
+    { title: "Mécanique et électricité - brut", from: 4, to: 6, responsible: "Sous-traitants", progress: 60, note: "Coordination avec le gypse", kids: [["Plomberie, ventilation et chauffage", 4, 6], ["Électricité et systèmes de sécurité", 4, 6], ["Coordination des percements", 4, 4]] },
+    { title: "Systèmes intérieurs - colombages / gypse", from: 6, to: 8, responsible: "À venir", progress: 25, kids: [["Implantation et ossature des cloisons", 6, 7], ["Fermeture des cloisons", 7, 8], ["Joints et plafonds suspendus", 8, 8]] },
+    { title: "PAUSE - Congé des Fêtes", from: 9, to: 10, responsible: "", progress: 0, kids: [] },
+    { title: "Finition intérieure", from: 11, to: 14, responsible: "À venir", progress: 0, note: "Phase 2 - après pause des Fêtes", kids: [["Peinture, plafonds et revêtements", 11, 13], ["Portes, cadres et quincaillerie", 12, 13], ["Ébénisterie, comptoirs et accessoires", 13, 14]] },
+    { title: "Mise en service / déficiences / nettoyage", from: 15, to: 16, responsible: "FRX", progress: 0, kids: [["Mise en service des systèmes", 15, 15], ["Liste de déficiences et nettoyage final", 15, 16], ["Remise des documents de fin de chantier", 16, 16]] },
+  ];
+  let order = 0;
+  for (const phase of plan) {
+    const isBreak = phase.title.startsWith("PAUSE");
+    const [row] = await db
+      .insert(schema.project_tasks)
+      .values({
+        project_id: lobby.id,
+        title: phase.title,
+        description: phase.note ?? null,
+        start_date: at(phase.from),
+        end_date: at(phase.to, 4),
+        status: phase.progress >= 100 ? "completed" : phase.progress > 0 ? "in_progress" : "not_started",
+        priority: "medium",
+        assigned_to: null,
+        kind: isBreak ? "break" : "phase",
+        sort_order: order++,
+        responsible: phase.responsible || null,
+        progress: phase.progress,
+      })
+      .returning();
+    let k = 0;
+    for (const [title, from, to] of phase.kids) {
+      await db.insert(schema.project_tasks).values({
+        project_id: lobby.id,
+        title,
+        description: null,
+        start_date: at(from),
+        end_date: at(to, 4),
+        status: phase.progress >= 100 ? "completed" : "not_started",
+        priority: "medium",
+        assigned_to: null,
+        parent_id: row.id,
+        kind: "task",
+        sort_order: k++,
+        responsible: null,
+        progress: phase.progress >= 100 ? 100 : null,
+      });
+    }
   }
 }

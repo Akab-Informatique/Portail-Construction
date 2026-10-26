@@ -29,6 +29,7 @@ export function TaskDrawer({
   project,
   task,
   people,
+  phases = [],
   open,
   onClose,
   onChanged,
@@ -36,6 +37,7 @@ export function TaskDrawer({
   project: Project;
   task: Task | null;
   people: User[];
+  phases?: Task[];
   open: boolean;
   onClose: () => void;
   onChanged: () => void;
@@ -146,6 +148,40 @@ export function TaskDrawer({
             <div className="space-y-1.5">
               <Label>{t("sch.end")}</Label>
               <Input type="date" defaultValue={task.end_date ?? ""} key={`e-${task.id}-${task.end_date}`} onBlur={(e) => e.target.value !== (task.end_date ?? "") && void patch({ end_date: e.target.value || null })} />
+            </div>
+            {task.kind !== "phase" ? (
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>{t("wbs.phase")}</Label>
+                <Select value={task.parent_id ? String(task.parent_id) : "none"} onValueChange={(v) => void patch({ parent_id: v === "none" ? null : Number(v) })}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">{t("wbs.noPhase")}</SelectItem>
+                    {phases.map((p) => (
+                      <SelectItem key={p.id} value={String(p.id)}>{p.title}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+            <div className="space-y-1.5">
+              <Label>{t("wbs.col.responsible")}</Label>
+              <Input key={`r-${task.id}`} defaultValue={task.responsible ?? ""} onBlur={(e) => e.target.value.trim() !== (task.responsible ?? "") && void patch({ responsible: e.target.value.trim() || null })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("wbs.col.progress")} (%)</Label>
+              <Input
+                key={`p-${task.id}-${task.progress}`}
+                type="number"
+                min={0}
+                max={100}
+                placeholder={t("wbs.auto")}
+                defaultValue={task.progress ?? ""}
+                onBlur={(e) => {
+                  const raw = e.target.value.trim();
+                  const next = raw === "" ? null : Math.max(0, Math.min(100, Number(raw)));
+                  if (next !== task.progress) void patch({ progress: next });
+                }}
+              />
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label>{t("sch.assignee")}</Label>
