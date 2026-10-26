@@ -28,7 +28,6 @@ import {
   FlaskConical,
   ReceiptText,
   Wallet,
-  Wrench,
 } from "lucide-react";
 import { UserAvatar } from "./UserAvatar";
 import { Button } from "./ui/button";
@@ -72,6 +71,8 @@ export type NavItem = {
   tour?: string;
   /** The sidebar module whose rights decide who sees this item. */
   module?: ModuleId;
+  /** Highlight the item for every URL under this prefix (one item, several tabbed pages). */
+  activePrefix?: string;
 };
 
 export type NavSection = {
@@ -165,8 +166,19 @@ export function useNavModel(): NavSection[] {
         // Job site: projects and documents, then time on site (staff only).
         items: [
           ...clientItems,
-          { id: "punch", to: "/tools/punch", label: t("nav.punch"), icon: Timer, tour: "tools", module: "app_punch" },
-          { id: "timesheets", to: "/tools/timesheets", label: t("nav.timesheets"), icon: Wrench, module: "app_timesheets" },
+          // Punch and timesheets: one entry, two tabs; opens the first tab the user may see.
+          ...(allowed("app_punch") || allowed("app_timesheets")
+            ? [
+                {
+                  id: "timeOnSite",
+                  to: allowed("app_punch") ? "/tools/punch" : "/tools/timesheets",
+                  label: t("nav.timeOnSite"),
+                  icon: Timer,
+                  tour: "tools",
+                  activePrefix: "/tools/",
+                },
+              ]
+            : []),
         ],
       },
       {
@@ -211,7 +223,9 @@ function itemClass(active: boolean, collapsed: boolean) {
 
 function SidebarLink({ item }: { item: NavItem }) {
   const { collapsed, onNavigate } = useContext(SidebarContext);
+  const location = useLocation();
   const Icon = item.icon;
+  const prefixActive = item.activePrefix ? location.pathname.startsWith(item.activePrefix) : null;
   return (
     <NavLink
       to={item.to}
@@ -220,11 +234,11 @@ function SidebarLink({ item }: { item: NavItem }) {
       data-tour={item.tour}
       title={collapsed ? item.label : undefined}
       aria-label={collapsed ? item.label : undefined}
-      className={({ isActive }) => itemClass(isActive, collapsed)}
+      className={({ isActive }) => itemClass(prefixActive ?? isActive, collapsed)}
     >
       {({ isActive }) => (
         <>
-          <Icon className={cn("size-[17px] shrink-0", isActive ? "text-primary" : "opacity-75 group-hover:opacity-100")} />
+          <Icon className={cn("size-[17px] shrink-0", (prefixActive ?? isActive) ? "text-primary" : "opacity-75 group-hover:opacity-100")} />
           {!collapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
           {!collapsed && item.count !== undefined ? (
             <span className="font-mono text-[11px] tabular-nums text-white/40">{String(item.count).padStart(2, "0")}</span>

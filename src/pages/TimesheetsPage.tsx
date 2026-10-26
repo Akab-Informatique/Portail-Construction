@@ -8,7 +8,6 @@ import { addDaysISO, formatDuration, loadAllPunches, loadUserPunches, pairPunche
 import { downloadBlob } from "@/lib/download";
 import type { TimePunch, User } from "@/lib/types";
 import { db, dbReady, schema } from "../db";
-import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { PageSkeleton } from "@/components/Skeleton";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -161,7 +160,6 @@ export function TimesheetsPage() {
 
   return (
     <div>
-      <PageHeader eyebrow={t("nav.tools")} title={t("timesheet.title")} />
 
       <div className="mb-5 flex flex-wrap items-end gap-3">
         <div className="space-y-1.5">

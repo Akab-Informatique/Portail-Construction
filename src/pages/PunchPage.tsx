@@ -26,7 +26,6 @@ import { PunchRuleBanner } from "@/components/PunchRule";
 import { PunchFailureDialog } from "@/components/PunchFailureDialog";
 import type { Client, Project, TimePunch, User } from "@/lib/types";
 import { db, dbReady, schema } from "../db";
-import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { PageSkeleton } from "@/components/Skeleton";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -111,7 +110,7 @@ export function PunchPage() {
   if (!isAdmin) {
     return (
       <div>
-        <PageHeader eyebrow={t("nav.section.client")} title={t("punch.title")} />
+        
         {clock}
       </div>
     );
@@ -119,7 +118,7 @@ export function PunchPage() {
 
   return (
     <div>
-      <PageHeader eyebrow={t("nav.section.client")} title={t("punch.title")} />
+      
       <Tabs value={tab} onValueChange={setTab} className="gap-5">
         <TabsList>
           <TabsTrigger value="overview">

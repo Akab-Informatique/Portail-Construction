@@ -927,7 +927,7 @@ export const fr: Record<MessageKey, string> = {
   "timesheet.day": "Jour",
   "timesheet.hours": "Heures",
   "timesheet.empty": "Aucune heure cette semaine",
-  "timesheet.emptyDesc": "Les pointages d’Outils → Pointage apparaissent ici une fois le quart fermé.",
+  "timesheet.emptyDesc": "Les quarts de l’onglet Pointage apparaissent ici une fois fermés.",
   "timesheet.restricted": "Accès restreint",
   "timesheet.restrictedDesc": "Les feuilles de temps sont réservées au personnel interne.",
   "timesheet.export": "Exporter",
@@ -1403,4 +1403,5 @@ export const fr: Record<MessageKey, string> = {
   "a11y.language": "Langue",
   "rebuild.title": "Page en reconstruction",
   "rebuild.desc": "Cette section est en cours de refonte. Sa nouvelle structure arrive bientôt.",
+  "nav.timeOnSite": "Temps de chantier",
 };

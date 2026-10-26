@@ -925,7 +925,7 @@ export const en = {
   "timesheet.day": "Day",
   "timesheet.hours": "Hours",
   "timesheet.empty": "No hours this week",
-  "timesheet.emptyDesc": "Punches from Tools → Punch appear here once a shift is closed.",
+  "timesheet.emptyDesc": "Shifts from the Punch tab appear here once they are closed.",
   "timesheet.restricted": "Restricted",
   "timesheet.restrictedDesc": "Timesheets are for internal staff.",
   "timesheet.export": "Export",
@@ -1402,6 +1402,7 @@ export const en = {
   "a11y.language": "Language",
   "rebuild.title": "Page being rebuilt",
   "rebuild.desc": "This section is being redesigned. Its new structure is coming soon.",
+  "nav.timeOnSite": "Time on site",
 } as const;
 
 export type MessageKey = keyof typeof en;

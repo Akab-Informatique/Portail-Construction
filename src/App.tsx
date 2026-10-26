@@ -7,6 +7,8 @@ import { ClockProvider } from "@/lib/clock";
 import { LoginPage } from "@/pages/LoginPage";
 import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
 import { lazyPage } from "@/lib/lazy-page";
+// Small tab frame around the punch/timesheet pages (those stay lazy-loaded).
+import { TimeOnSitePage } from "@/pages/TimeOnSitePage";
 import { RequireModule } from "@/components/RequireModule";
 
 const DashboardPage = lazyPage(() => import("@/pages/DashboardPage"), "DashboardPage");
@@ -77,8 +79,8 @@ export default function App() {
           <Route path="config/users/:userId" element={<ConfigUserPage />} />
           <Route path="config/settings" element={<Navigate to="/settings" replace />} />
           <Route path="settings" element={<ConfigSettingsPage />} />
-          <Route path="tools/punch" element={<RequireModule module="app_punch"><PunchPage /></RequireModule>} />
-          <Route path="tools/timesheets" element={<RequireModule module="app_timesheets"><TimesheetsPage /></RequireModule>} />
+          <Route path="tools/punch" element={<TimeOnSitePage module="app_punch"><PunchPage /></TimeOnSitePage>} />
+          <Route path="tools/timesheets" element={<TimeOnSitePage module="app_timesheets"><TimesheetsPage /></TimeOnSitePage>} />
           <Route path="profile" element={<ProfilePage />} />
         </Route>
       </Route>
