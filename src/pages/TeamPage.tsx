@@ -94,7 +94,7 @@ export function TeamPage() {
       avatar_initials: initials(form.name.trim()),
       locale: "en",
       theme: "light",
-      all_clients: form.user_type === "internal" ? 1 : 0,
+      all_clients: 0,
     });
     await logActivity({
       action: "created user",

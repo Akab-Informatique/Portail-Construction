@@ -109,7 +109,7 @@ async function upsertUser(values: {
       avatar_initials: initials(values.name),
       locale: values.locale,
       theme: "light",
-      all_clients: values.all_clients ?? (values.user_type === "internal" ? 1 : 0),
+      all_clients: values.all_clients ?? (values.user_type === "internal" && values.is_admin ? 1 : 0),
       must_change_password: 0,
       tutorial_done: 0,
     })

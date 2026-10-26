@@ -33,7 +33,7 @@ import type { Client, Project } from "@/lib/types";
 export function DocumentsProjectsPage() {
   const { t } = useI18n();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const { clients, projects, selectedClientId, refresh } = useWorkspace();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -41,7 +41,8 @@ export function DocumentsProjectsPage() {
   const [clientId, setClientId] = useState<number | "">(selectedClientId ?? "");
   const [busy, setBusy] = useState(false);
   const folders = useSharePointFolders(open);
-  const canCreate = Boolean(user?.is_admin || user?.user_type === "internal") && user?.view_as !== "client";
+  // Creating projects is an administrator thing, or a right given on the All projects module.
+  const canCreate = Boolean(user?.is_admin || can("app_all_projects", "create")) && user?.view_as !== "client";
   // The chosen drawer lives in the address (?client=) so Back and shared links land on it.
   const [params, setParams] = useSearchParams();
   const [tasks, setTasks] = useState<TaskLite[]>([]);

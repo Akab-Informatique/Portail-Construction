@@ -14,7 +14,7 @@ import { useAuth } from "./auth";
 import { withProjectMoney } from "./project-money";
 import { loadBoardColumns } from "./board";
 import { ensureProjectColors } from "./project-colors";
-import { getAccessibleClientIds } from "./access";
+import { getAccessibleClientIds, getAccessibleProjectIds } from "./access";
 import type { BoardColumn, Client, Project } from "./types";
 
 type WorkspaceContextValue = {
@@ -58,11 +58,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     try {
       await dbReady;
-      const [clientRows, projectRows, allColumns, allowed] = await Promise.all([
+      const [clientRows, projectRows, allColumns, allowed, allowedProjects] = await Promise.all([
         db.select().from(schema.clients),
         db.select().from(schema.projects),
         loadBoardColumns(),
         getAccessibleClientIds(user, scopeClientId),
+        getAccessibleProjectIds(user),
       ]);
       let allClients = clientRows as Client[];
       let allProjects = projectRows as Project[];
@@ -74,6 +75,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         const ids = new Set(allowed);
         allClients = allClients.filter((c) => ids.has(c.id));
         allProjects = allProjects.filter((p) => ids.has(p.client_id));
+      }
+      if (allowedProjects) {
+        const mine = new Set(allowedProjects);
+        allProjects = allProjects.filter((p) => mine.has(p.id));
       }
 
       setClients(allClients);

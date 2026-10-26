@@ -76,6 +76,8 @@ export function SharePointLibrary({
   const { t, locale, tr } = useI18n();
   const { clients } = useWorkspace();
   const manager = canManageLibrary(user);
+  // An employee: no company shares involved, they read the folders of the projects they are assigned to.
+  const staff = Boolean(user && user.user_type === "internal" && !user.is_admin && user.view_as !== "client");
   const [settings, setSettings] = useState<SharePointSettings | null>(null);
   const [folders, setFolders] = useState<SharePointFolder[]>([]);
   const [shares, setShares] = useState<SharePointShare[]>([]);
@@ -104,6 +106,10 @@ export function SharePointLibrary({
     : null;
 
   const visible = useMemo(() => {
+    if (staff) {
+      const mine = new Set(scopeProjectIds ?? []);
+      return folders.filter((f) => (projectId !== 0 ? f.project_id === projectId : mine.has(f.project_id)));
+    }
     const list = foldersVisibleTo(folders, shares, user, client?.id ?? null);
     if (projectId !== 0) return list;
     if (manager && scopeProjectIds && scopeProjectIds.length > 0 && client) {
@@ -112,7 +118,7 @@ export function SharePointLibrary({
       return scoped.length > 0 ? scoped : list;
     }
     return list;
-  }, [folders, shares, user, client, projectId, scopeProjectIds, manager]);
+  }, [folders, shares, user, client, projectId, scopeProjectIds, manager, staff]);
   const showRoot = Boolean(
     libraryRoot &&
       projectId === 0 &&
@@ -124,15 +130,15 @@ export function SharePointLibrary({
     projectId !== 0 ? visible : showRoot && libraryRoot ? [libraryRoot, ...visible] : showRootForClient && libraryRoot ? [libraryRoot, ...visible] : visible;
   const active = navFolders.find((f) => f.id === activeId) ?? navFolders[0] ?? null;
   const folderShare = active && active.id && client ? shareFor(shares, active.id, client.id, "") : null;
-  const canUpload = Boolean(manager || (canCreate && folderShare?.can_upload && active && active.id !== 0));
+  const canUpload = Boolean(manager || (staff && canCreate && active && active.id !== 0) || (canCreate && folderShare?.can_upload && active && active.id !== 0));
   const canEditFolder = Boolean(manager || folderShare?.can_edit);
   const crumbs = [{ id: "", name: active?.name ?? t("project.nav.documents") }, ...trail];
 
   const visibleItems = useMemo(() => {
     if (!active) return [];
-    if (manager || active.id === 0) return items;
+    if (manager || staff || active.id === 0) return items;
     return items.filter((item) => itemVisibleTo(shares, active.id, item.id, user, client?.id ?? null));
-  }, [items, active, manager, shares, user, client]);
+  }, [items, active, manager, staff, shares, user, client]);
 
   const filteredClients = useMemo(() => {
     const q = clientQuery.trim().toLowerCase();

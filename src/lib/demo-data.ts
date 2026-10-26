@@ -41,6 +41,7 @@ async function seedDemoDataInner() {
     await seedQuoteChanges();
     await seedBillingFiles();
     await ensureDemoCabinet();
+    await ensureDemoEmployee();
     return;
   }
 
@@ -396,6 +397,7 @@ async function seedDemoDataInner() {
   await seedQuoteChanges();
   await seedBillingFiles();
   await ensureDemoCabinet();
+  await ensureDemoEmployee();
   console.info("[demo] Fake local demo data created (dev only, never synced to production).");
 }
 
@@ -772,5 +774,25 @@ async function ensureDemoCabinet() {
         });
       }
     }
+  }
+}
+
+/**
+ * Marc is the demo employee: he only sees the projects he is assigned to (two of them), like a real employee.
+ * Safe to run on an existing local database.
+ */
+async function ensureDemoEmployee() {
+  const [marc] = await db.select().from(schema.users).where(eq(schema.users.email, "marc@frxconstruction.ca"));
+  if (!marc) return;
+  if (marc.all_clients === 0) return;
+  await db.update(schema.users).set({ all_clients: 0 }).where(eq(schema.users.id, marc.id));
+  const projects = await db.select().from(schema.projects);
+  const keep = new Set(projects.filter((p) => p.project_number === "FRX-2601" || p.project_number === "FRX-2603").map((p) => p.id));
+  const mine = await db.select().from(schema.project_members).where(eq(schema.project_members.user_id, marc.id));
+  for (const row of mine) {
+    if (!keep.has(row.project_id)) await db.delete(schema.project_members).where(eq(schema.project_members.id, row.id));
+  }
+  for (const id of keep) {
+    if (!mine.some((row) => row.project_id === id)) await db.insert(schema.project_members).values({ project_id: id, user_id: marc.id, role: "Project Manager" });
   }
 }

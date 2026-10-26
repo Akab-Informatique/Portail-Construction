@@ -108,13 +108,45 @@ export async function getAccessibleClientIds(
     if (!live) return [];
     if (live.all_clients !== 0) return null;
 
-    const assigned = await db
-      .select()
-      .from(schema.user_clients)
-      .where(eq(schema.user_clients.user_id, user.id));
-    return assigned.map((row) => row.client_id);
+    // An employee reaches the companies given to them, plus the companies of the projects they are a member of.
+    const [assigned, mine] = await Promise.all([
+      db.select().from(schema.user_clients).where(eq(schema.user_clients.user_id, user.id)),
+      db.select({ project_id: schema.project_members.project_id }).from(schema.project_members).where(eq(schema.project_members.user_id, user.id)),
+    ]);
+    const memberIds = mine.map((m) => m.project_id);
+    const memberClients = memberIds.length
+      ? await db.select({ client_id: schema.projects.client_id }).from(schema.projects).where(inArray(schema.projects.id, memberIds))
+      : [];
+    return [...new Set([...assigned.map((row) => row.client_id), ...memberClients.map((row) => row.client_id)])];
   } catch {
     return user.user_type === "external" ? [] : null;
+  }
+}
+
+/**
+ * Projects a person may open: `null` = all of them. An employee gets the projects they are a member of
+ * plus every project of a company they were given explicitly. Administrators and "all clients" staff see everything.
+ */
+export async function getAccessibleProjectIds(user: SessionUser | null): Promise<number[] | null> {
+  if (!user || !user.is_active) return [];
+  if (user.is_admin || user.user_type === "external" || user.view_as === "client") return null;
+  try {
+    const rows = await db.select().from(schema.users).where(eq(schema.users.id, user.id));
+    const live = rows[0] as SessionUser | undefined;
+    if (!live || live.all_clients !== 0) return null;
+    const [mine, links] = await Promise.all([
+      db.select({ project_id: schema.project_members.project_id }).from(schema.project_members).where(eq(schema.project_members.user_id, user.id)),
+      db.select({ client_id: schema.user_clients.client_id }).from(schema.user_clients).where(eq(schema.user_clients.user_id, user.id)),
+    ]);
+    const ids = new Set(mine.map((m) => m.project_id));
+    const clientIds = links.map((l) => l.client_id);
+    if (clientIds.length) {
+      const extra = await db.select({ id: schema.projects.id }).from(schema.projects).where(inArray(schema.projects.client_id, clientIds));
+      extra.forEach((p) => ids.add(p.id));
+    }
+    return [...ids];
+  } catch {
+    return null;
   }
 }
 
@@ -394,6 +426,40 @@ async function ensureModulePermission(
   await db.insert(schema.access_group_permissions).values({ group_id: groupId, ...row });
 }
 
+/**
+ * The Employee role, which is what "Default — staff" is. Admins have everything on their own.
+ *   dashboard and reports: view            documentation: view only, no managing
+ *   all projects: view (only assigned)     timesheets, expenses, punch: their own, create where it makes sense
+ */
+const EMPLOYEE_ROLE: { module: string; can_view: number; can_create: number; can_edit: number; can_delete: number }[] = [
+  { module: "app_overview", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },
+  { module: "app_dashboard", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },
+  { module: "app_reports", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },
+  { module: "app_client", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },
+  { module: "app_client_documents", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },
+  { module: "app_all_projects", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },
+  { module: "app_client_projects", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },
+  { module: "app_timesheets", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },
+  { module: "app_expenses", can_view: 1, can_create: 1, can_edit: 1, can_delete: 1 },
+  { module: "app_punch", can_view: 1, can_create: 1, can_edit: 0, can_delete: 0 },
+];
+
+async function ensureEmployeeRole(groupId: number) {
+  const existing = await db.select().from(schema.access_group_permissions).where(eq(schema.access_group_permissions.group_id, groupId));
+  // An earlier version seeded every menu module as view/create/edit. Move those untouched rows to the Employee role.
+  for (const want of EMPLOYEE_ROLE) {
+    const row = existing.find((p) => p.module === want.module);
+    if (!row) {
+      await db.insert(schema.access_group_permissions).values({ group_id: groupId, ...want });
+    } else if (row.can_view === 1 && row.can_create === 1 && row.can_edit === 1 && row.can_delete === 0 && !(want.can_create === 1 && want.can_edit === 1)) {
+      await db
+        .update(schema.access_group_permissions)
+        .set({ can_view: want.can_view, can_create: want.can_create, can_edit: want.can_edit, can_delete: want.can_delete })
+        .where(eq(schema.access_group_permissions.id, row.id));
+    }
+  }
+}
+
 async function ensureDefaultGroupsInner() {
   await dedupeAccessGroups();
 
@@ -470,9 +536,7 @@ async function ensureDefaultGroupsInner() {
     can_edit: 1,
     can_delete: 0,
   });
-  for (const module of ["app_overview", "app_dashboard", "app_all_projects", "app_client", "app_client_projects", "app_client_documents", "app_punch", "app_timesheets", "app_expenses"] as const) {
-    await ensureModulePermission(internalDefault.id, { module, can_view: 1, can_create: 1, can_edit: 1, can_delete: 0 });
-  }
+  await ensureEmployeeRole(internalDefault.id);
   for (const module of ["app_finance", "app_billing_mgmt"] as const) {
     await ensureModulePermission(accounting.id, { module, can_view: 1, can_create: 1, can_edit: 1, can_delete: 0 });
   }

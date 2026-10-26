@@ -109,7 +109,7 @@ export async function createUser(input: {
       avatar_initials: input.avatar_initials ?? null,
       locale: "en",
       theme: "light",
-      all_clients: input.user_type === "external" ? 0 : 1,
+      all_clients: input.user_type === "internal" && input.is_admin ? 1 : 0,
       must_change_password: input.must_change_password === false ? 0 : 1,
       tutorial_done: 0,
     });
@@ -134,7 +134,7 @@ export async function createUser(input: {
     avatar_initials: input.avatar_initials ?? null,
     locale: "en",
     theme: "light",
-    all_clients: input.user_type === "external" ? 0 : 1,
+    all_clients: input.user_type === "internal" && input.is_admin ? 1 : 0,
     must_change_password: input.must_change_password === false ? 0 : 1,
     tutorial_done: 0,
   });

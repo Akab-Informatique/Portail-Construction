@@ -25,7 +25,7 @@ import { ensureProjectColors } from "@/lib/project-colors";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
 import type { Client, Project } from "@/lib/types";
-import { getAccessibleClientIds } from "@/lib/access";
+import { getAccessibleClientIds, getAccessibleProjectIds } from "@/lib/access";
 import {
   DEFAULT_DASHBOARD,
   loadDashboardLayout,
@@ -62,10 +62,11 @@ export function DashboardPage() {
     (async () => {
       try {
         await dbReady;
-        const [clientRows, projectRows, allowed] = await Promise.all([
+        const [clientRows, projectRows, allowed, allowedProjects] = await Promise.all([
           db.select().from(schema.clients),
           db.select().from(schema.projects),
           getAccessibleClientIds(user),
+          getAccessibleProjectIds(user),
         ]);
         const allClients = clientRows as Client[];
         let allProjects = projectRows as Project[];
@@ -73,7 +74,8 @@ export function DashboardPage() {
           allProjects = await ensureProjectColors(allProjects).catch(() => allProjects);
         }
         const visibleClients = allowed ? allClients.filter((c) => allowed.includes(c.id)) : allClients;
-        const visibleProjects = allowed ? allProjects.filter((p) => allowed.includes(p.client_id)) : allProjects;
+        const byClient = allowed ? allProjects.filter((p) => allowed.includes(p.client_id)) : allProjects;
+        const visibleProjects = allowedProjects ? byClient.filter((p) => allowedProjects.includes(p.id)) : byClient;
         const projectIds = visibleProjects.map((p) => p.id);
         const moneyProjects = await withProjectMoney(visibleProjects);
 

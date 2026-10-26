@@ -38,7 +38,8 @@ export function ExpensesPage() {
   const isAdmin = Boolean(realUser?.is_admin) && user?.view_as !== "client";
   const [rows, setRows] = useState<Expense[]>([]);
   const [names, setNames] = useState<Record<number, string>>({});
-  const [scope, setScope] = useState<"mine" | "all">("mine");
+  // "me", "all", or an employee id. Employees only ever see their own.
+  const [scope, setScope] = useState<string>("me");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -59,7 +60,12 @@ export function ExpensesPage() {
     void load();
   }, [load]);
 
-  const shown = useMemo(() => rows.filter((r) => (scope === "all" && isAdmin ? true : r.user_id === user?.id)), [rows, scope, isAdmin, user?.id]);
+  const shown = useMemo(() => {
+    if (!isAdmin || scope === "me") return rows.filter((r) => r.user_id === user?.id);
+    if (scope === "all") return rows;
+    return rows.filter((r) => r.user_id === Number(scope));
+  }, [rows, scope, isAdmin, user?.id]);
+  const showWho = isAdmin && scope === "all";
   const monthKey = todayISO().slice(0, 7);
   const sum = (list: Expense[]) => list.reduce((s, r) => s + r.amount, 0);
   const cards = [
@@ -128,12 +134,24 @@ export function ExpensesPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         {isAdmin ? (
-          <div className="flex items-center gap-1 rounded-md border bg-muted/40 p-0.5">
-            {(["mine", "all"] as const).map((value) => (
-              <Button key={value} type="button" size="sm" variant={scope === value ? "default" : "ghost"} className="h-7 px-3 text-xs" onClick={() => setScope(value)}>
-                {value === "mine" ? t("exp.scopeMine") : t("exp.scopeAll")}
-              </Button>
-            ))}
+          <div className="space-y-1">
+            <Label className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{t("exp.who")}</Label>
+            <Select value={scope} onValueChange={setScope}>
+              <SelectTrigger className="w-64">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="me">{t("exp.scopeMine")}</SelectItem>
+                <SelectItem value="all">{t("exp.scopeAll")}</SelectItem>
+                {Object.entries(names)
+                  .filter(([id]) => Number(id) !== user?.id)
+                  .map(([id, name]) => (
+                    <SelectItem key={id} value={id}>
+                      {name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
           </div>
         ) : (
           <span />
@@ -162,7 +180,7 @@ export function ExpensesPage() {
               <thead className="border-b bg-muted/40 text-left text-[11px] uppercase tracking-wider text-muted-foreground">
                 <tr>
                   <th className="px-4 py-3 font-medium">{t("exp.date")}</th>
-                  {scope === "all" && isAdmin ? <th className="px-3 py-3 font-medium">{t("exp.who")}</th> : null}
+                  {showWho ? <th className="px-3 py-3 font-medium">{t("exp.who")}</th> : null}
                   <th className="px-3 py-3 font-medium">{t("exp.category")}</th>
                   <th className="px-3 py-3 font-medium">{t("exp.project")}</th>
                   <th className="px-3 py-3 text-right font-medium">{t("exp.amount")}</th>
@@ -177,7 +195,7 @@ export function ExpensesPage() {
                   return (
                     <tr key={row.id} className="hover:bg-muted/30">
                       <td className="px-4 py-3 tabular-nums">{formatDate(row.expense_date, locale)}</td>
-                      {scope === "all" && isAdmin ? <td className="px-3 py-3">{names[row.user_id] ?? row.user_id}</td> : null}
+                      {showWho ? <td className="px-3 py-3">{names[row.user_id] ?? row.user_id}</td> : null}
                       <td className="px-3 py-3">
                         <p className="font-medium">{t(`exp.cat.${row.category}` as MessageKey)}</p>
                         {row.vendor || row.description ? <p className="text-xs text-muted-foreground">{[row.vendor, row.description].filter(Boolean).join(" · ")}</p> : null}

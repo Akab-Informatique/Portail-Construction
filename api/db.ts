@@ -109,7 +109,6 @@ export async function ensureSchema() {
  */
 const CLIENT_SCOPED: Record<string, string> = {
   clients: "frx_client_ok(id)",
-  projects: "frx_client_ok(client_id)",
   billing_documents: "frx_client_ok(client_id)",
   quote_changes: "frx_client_ok(client_id)",
   billing_files: "frx_client_ok(client_id)",
@@ -149,6 +148,10 @@ function rowScopes(): Record<string, string> {
     OR EXISTS (SELECT 1 FROM client_users cu WHERE cu.user_id = users.id AND frx_client_ok(cu.client_id)))`;
   for (const t of OWN_ROWS) scopes[t] = `(${ALL_CLIENTS} OR user_id = ${ME})`;
   // Punches are created only by the server's punch action; staff read their own.
+  // Projects: an employee sees only the ones assigned to them; everyone else follows the client scope.
+  scopes.projects = `(CASE WHEN coalesce(current_setting('frx.project_ids', true), '') LIKE 'p:%'
+    THEN id = ANY(string_to_array(substr(current_setting('frx.project_ids', true), 3), ',')::int[])
+    ELSE frx_client_ok(client_id) END)`;
   scopes.time_punches = `(user_id = ${ME})`;
   // Expenses: each person reads their own; administrators see all (frx_admin_all).
   scopes.expenses = `(user_id = ${ME})`;
@@ -208,8 +211,12 @@ async function ensureApiRoles() {
        FROM (SELECT current_setting('frx.client_ids', true) AS s) setting
      $$`,
     `CREATE OR REPLACE FUNCTION frx_project_ok(pid integer) RETURNS boolean LANGUAGE sql STABLE AS $$
-       SELECT current_setting('frx.client_ids', true) = '*'
-           OR EXISTS (SELECT 1 FROM projects p WHERE p.id = pid AND frx_client_ok(p.client_id))
+       SELECT CASE
+         WHEN current_setting('frx.client_ids', true) = '*' THEN true
+         WHEN coalesce(current_setting('frx.project_ids', true), '') LIKE 'p:%'
+           THEN pid = ANY(string_to_array(substr(current_setting('frx.project_ids', true), 3), ',')::int[])
+         ELSE EXISTS (SELECT 1 FROM projects p WHERE p.id = pid AND frx_client_ok(p.client_id))
+       END
      $$`,
   ];
   for (const [table, scope] of Object.entries(scopes)) {
@@ -218,7 +225,7 @@ async function ensureApiRoles() {
     statements.push(...policy(table, "frx_scope_read", `FOR SELECT TO ${ROLE_USER}, ${ROLE_CLIENT} USING (${scope})`));
     if (table === "users") continue;
     for (const cmd of ["INSERT", "UPDATE", "DELETE"]) {
-      const writeScope = WRITE_SCOPES[table] ?? scope;
+      const writeScope = WRITE_SCOPES[table] ?? (table === "projects" && cmd === "INSERT" ? "frx_client_ok(client_id)" : scope);
       const clause = cmd === "INSERT" ? `WITH CHECK (${writeScope})` : cmd === "DELETE" ? `USING (${writeScope})` : `USING (${writeScope}) WITH CHECK (${writeScope})`;
       statements.push(...policy(table, `frx_scope_${cmd.toLowerCase()}`, `FOR ${cmd} TO ${ROLE_USER} ${clause}`));
     }
@@ -354,7 +361,7 @@ type ScopedSession = { id: number; is_admin: number; user_type: string; all_clie
 // change them (login/logout, password, user or access edits) clears the cache.
 const AUTH_CACHE_MS = 5000;
 const sessionCache = new Map<string, { at: number; user: Awaited<ReturnType<typeof loadSessionUserUncached>> }>();
-const scopeCache = new Map<number, { at: number; ids: string }>();
+const scopeCache = new Map<number, { at: number; ids: string; projects: string }>();
 
 export function invalidateAuthCache() {
   sessionCache.clear();
@@ -362,25 +369,48 @@ export function invalidateAuthCache() {
 }
 
 /** Clients this session may see: "*" for all, otherwise a comma-separated id list ("" = none). */
-async function allowedClientIds(session: ScopedSession) {
-  if (Number(session.is_admin) === 1) return "*";
+async function allowedScope(session: ScopedSession): Promise<{ ids: string; projects: string }> {
+  if (Number(session.is_admin) === 1) return { ids: "*", projects: "" };
   const cached = scopeCache.get(session.id);
-  if (cached && Date.now() - cached.at < AUTH_CACHE_MS) return cached.ids;
-  const ids = await allowedClientIdsUncached(session);
-  scopeCache.set(session.id, { at: Date.now(), ids });
-  return ids;
+  if (cached && Date.now() - cached.at < AUTH_CACHE_MS) return { ids: cached.ids, projects: cached.projects };
+  const scope = await allowedScopeUncached(session);
+  scopeCache.set(session.id, { at: Date.now(), ...scope });
+  return scope;
 }
 
-async function allowedClientIdsUncached(session: ScopedSession) {
-  const sql =
-    session.user_type === "external"
-      ? "SELECT client_id FROM client_users WHERE user_id = $1"
-      : Number(session.all_clients) !== 0
-        ? null
-        : "SELECT client_id FROM user_clients WHERE user_id = $1";
-  if (!sql) return "*";
-  const result = await getPool().query(sql, [session.id]);
-  return result.rows.map((r) => Number(r.client_id)).filter((n) => Number.isInteger(n)).join(",");
+async function allowedClientIds(session: ScopedSession) {
+  return (await allowedScope(session)).ids;
+}
+
+const digits = (rows: { [k: string]: unknown }[], key: string) =>
+  rows.map((r) => Number(r[key])).filter((n) => Number.isInteger(n));
+
+/**
+ * Who sees what. Clients: their own companies. Staff with "all clients": everything.
+ * Any other staff member (an employee): only the projects they are a member of, plus every project of a company
+ * they were given explicitly; their companies are the ones those projects belong to.
+ * `projects` is "" when there is no per-project limit, or "p:1,2,3" (possibly "p:") for an employee.
+ */
+async function allowedScopeUncached(session: ScopedSession): Promise<{ ids: string; projects: string }> {
+  const pool = getPool();
+  if (session.user_type === "external") {
+    const result = await pool.query("SELECT client_id FROM client_users WHERE user_id = $1", [session.id]);
+    return { ids: digits(result.rows, "client_id").join(","), projects: "" };
+  }
+  if (Number(session.all_clients) !== 0) return { ids: "*", projects: "" };
+  const [clients, projects] = await Promise.all([
+    pool.query(
+      `SELECT client_id FROM user_clients WHERE user_id = $1
+       UNION SELECT p.client_id FROM project_members pm JOIN projects p ON p.id = pm.project_id WHERE pm.user_id = $1`,
+      [session.id],
+    ),
+    pool.query(
+      `SELECT project_id AS id FROM project_members WHERE user_id = $1
+       UNION SELECT p.id FROM projects p JOIN user_clients uc ON uc.client_id = p.client_id WHERE uc.user_id = $1`,
+      [session.id],
+    ),
+  ]);
+  return { ids: digits(clients.rows, "client_id").join(","), projects: `p:${digits(projects.rows, "id").join(",")}` };
 }
 
 function roleFor(session: ScopedSession) {
@@ -398,15 +428,16 @@ async function runScopedSql(session: ScopedSession, sql: string, params: unknown
     text = `${text.replace(/;+\s*$/, "")} RETURNING ${intoUsers ? USERS_RETURNING : "*"}`;
   }
   const hidden = await loadHiddenColumns();
-  const clientIds = rolesReady ? await allowedClientIds(session) : "*";
+  const scope = rolesReady ? await allowedScope(session) : { ids: "*", projects: "" };
+  const clientIds = scope.ids;
   const client = await getPool().connect();
   try {
     if (rolesReady) {
       // One round trip. Values are server-computed integers / digit lists, safe to inline.
       const userId = String(Math.trunc(Number(session.id)));
-      if (!/^(\*|[\d,]*)$/.test(clientIds)) throw new Error("bad client scope");
+      if (!/^(\*|[\d,]*)$/.test(clientIds) || !/^(p:[\d,]*)?$/.test(scope.projects)) throw new Error("bad client scope");
       await client.query(
-        `RESET ROLE; BEGIN; SET LOCAL statement_timeout = '15s'; SET LOCAL ROLE ${roleFor(session)}; SELECT set_config('frx.user_id', '${userId}', true), set_config('frx.client_ids', '${clientIds}', true)`,
+        `RESET ROLE; BEGIN; SET LOCAL statement_timeout = '15s'; SET LOCAL ROLE ${roleFor(session)}; SELECT set_config('frx.user_id', '${userId}', true), set_config('frx.client_ids', '${clientIds}', true), set_config('frx.project_ids', '${scope.projects}', true)`,
       );
     } else {
       await client.query("BEGIN; SET LOCAL statement_timeout = '15s'");

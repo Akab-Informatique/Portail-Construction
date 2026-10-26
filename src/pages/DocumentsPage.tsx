@@ -15,7 +15,9 @@ export function DocumentsPage() {
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") === "access" ? "access" : "library";
   const asClient = user?.user_type === "external" || user?.view_as === "client";
-  const canManage = Boolean(user?.is_admin || user?.user_type === "internal") && !asClient;
+  // Only administrators manage who sees what. An employee just reads the folders of the projects they are assigned to.
+  const canManage = Boolean(user?.is_admin) && !asClient;
+  const canAdd = Boolean(user?.is_admin) || can("app_client_documents", "create");
   // There is no "active client" any more: staff see the whole library, while a
   // client account is limited to the folders shared with its own company.
   const forClient = asClient ? selectedClient : null;
@@ -37,7 +39,7 @@ export function DocumentsPage() {
               projectId={0}
               projectName={t("nav.documents")}
               client={null}
-              canCreate={can("documents", "create")}
+              canCreate={canAdd}
               scopeProjectIds={projects.map((p) => p.id)}
             />
           </TabsContent>
@@ -50,7 +52,8 @@ export function DocumentsPage() {
           projectId={0}
           projectName={t("nav.documents")}
           client={forClient}
-          canCreate={can("documents", "create")}
+          canCreate={canAdd}
+          scopeProjectIds={asClient ? undefined : projects.map((p) => p.id)}
         />
       )}
     </div>

@@ -1,3 +1,4 @@
+import { getAccessibleProjectIds } from "@/lib/access";
 import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
 import { pairPunches } from "@/lib/timeclock";
 import { PunchRuleChip } from "@/components/PunchRule";
@@ -106,7 +107,8 @@ export function ProjectDetailPage() {
     try {
       await dbReady;
       const rows = await db.select().from(schema.projects).where(eq(schema.projects.id, id));
-      if (!rows[0]) {
+      const reach = await getAccessibleProjectIds(user);
+      if (!rows[0] || (reach && !reach.includes(id))) {
         setProject(null);
         setLoading(false);
         return;
