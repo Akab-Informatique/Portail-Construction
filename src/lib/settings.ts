@@ -23,7 +23,7 @@ export const EMPTY_SMTP: SmtpSettings = {
 };
 
 export const EMPTY_SMS: SmsSettings = { enabled: true, account_sid: "", api_key: "", from: "" };
-export const EMPTY_AI: AiSettings = { enabled: true, provider: "gemini", api_key: "", model: "" };
+export const EMPTY_AI: AiSettings = { enabled: true, provider: "anthropic", api_key: "", model: "" };
 
 export const EMPTY_QUICKBOOKS: QuickBooksSettings = {
   client_id: "",

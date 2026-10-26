@@ -5,6 +5,7 @@ import { useTheme } from "@/lib/theme";
 import { PageHeader } from "@/components/PageHeader";
 import { UserAvatar } from "@/components/UserAvatar";
 import { StatusBadge } from "@/components/StatusBadge";
+import { ProfilePrefs } from "@/components/ProfilePrefs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -191,6 +192,8 @@ export function ProfilePage() {
             </CardContent>
           </Card>
         </div>
+
+        <ProfilePrefs />
 
         <Card className="py-0 lg:col-span-2">
           <CardHeader className="border-b px-5 py-4">

@@ -242,6 +242,12 @@ Write a short, practical analysis for the project manager in the requested langu
 Say whether the project is likely to finish on its planned end date; name the specific tasks or chains that hold things up and why (an unfinished predecessor, work not started past its date, slow progress); and give one concrete action for each main problem (for example start X earlier, add crew on Y, confirm the delivery of Z).
 Use only the facts given: never invent tasks, dates or numbers. Plain text only: no markdown other than the leading "- ".`;
 
+const MORNING_SYSTEM = `You write the editorial of "La Gazette FRX", a short morning newspaper-style email for one employee of a construction company in Quebec.
+You receive JSON facts: the employee's first name, today's date, their tasks (overdue, today, coming up), their calendar events for today and the projects they work on.
+Write 4 to 6 short sentences in the requested language, in a warm, lively newspaper tone with one catchy headline on the first line (no "#", no quotes). Then a blank line and the text.
+Say what the day looks like, what is urgent first (overdue or due today), then the meetings, then what is coming. Be encouraging but honest.
+Use only the facts given: never invent a task, project, person, time or number. Plain text only: no markdown, no lists, no emojis.`;
+
 /** Turns the dashboard's facts into a few readable sentences. */
 export async function writeSummary(input: {
   provider: AiProvider;
@@ -249,9 +255,9 @@ export async function writeSummary(input: {
   model?: string;
   language: "fr" | "en";
   facts: unknown;
-  kind?: "dashboard" | "project" | "forecast";
+  kind?: "dashboard" | "project" | "forecast" | "morning";
 }): Promise<string> {
-  const system = input.kind === "project" ? PROJECT_SYSTEM : input.kind === "forecast" ? FORECAST_SYSTEM : SUMMARY_SYSTEM;
+  const system = input.kind === "project" ? PROJECT_SYSTEM : input.kind === "forecast" ? FORECAST_SYSTEM : input.kind === "morning" ? MORNING_SYSTEM : SUMMARY_SYSTEM;
   const model = input.model || DEFAULT_MODELS[input.provider];
   const prompt = `Language: ${input.language === "fr" ? "French (Quebec)" : "English"}\nFacts:\n${JSON.stringify(input.facts)}`;
   const controller = new AbortController();
@@ -262,7 +268,7 @@ export async function writeSummary(input: {
         method: "POST",
         signal: controller.signal,
         headers: { "content-type": "application/json", "x-api-key": input.apiKey, "anthropic-version": "2023-06-01" },
-        body: JSON.stringify({ model, max_tokens: input.kind === "forecast" ? 900 : 400, system, messages: [{ role: "user", content: prompt }] }),
+        body: JSON.stringify({ model, max_tokens: input.kind === "forecast" || input.kind === "morning" ? 900 : 400, system, messages: [{ role: "user", content: prompt }] }),
       });
       const payload = (await res.json().catch(() => ({}))) as { content?: { type: string; text?: string }[]; error?: { message?: string } };
       if (!res.ok) throw new Error(payload.error?.message || `AI request failed (${res.status})`);
@@ -277,7 +283,7 @@ export async function writeSummary(input: {
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: input.kind === "forecast" ? 1200 : 600 },
+        generationConfig: { temperature: 0.3, maxOutputTokens: input.kind === "forecast" || input.kind === "morning" ? 1200 : 600 },
       }),
     });
     const payload = (await res.json().catch(() => ({}))) as { candidates?: { content?: { parts?: { text?: string }[] } }[]; error?: { message?: string } };
@@ -285,6 +291,50 @@ export async function writeSummary(input: {
     const text = payload.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("").trim();
     if (!text) throw new Error("The AI did not return any text.");
     return text;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const CORRECT_SYSTEM = `You are a proofreader for a construction company in Quebec. Correct the spelling, grammar, accents and punctuation of the text the user sends.
+Keep the meaning, the tone, the language, the line breaks, numbers, names, abbreviations and any technical or trade words exactly as they are. Do not add, remove or reorder ideas. Do not translate.
+Reply with the corrected text only: no quotes, no comments, no explanation.`;
+
+/** Fixes spelling and grammar of a short text, in the language asked. Returns the text unchanged when nothing needs fixing. */
+export async function correctText(input: { provider: AiProvider; apiKey: string; model?: string; language: "fr" | "en"; text: string }): Promise<string> {
+  const model = input.model || DEFAULT_MODELS[input.provider];
+  const system = `${CORRECT_SYSTEM}\nThe text is written in ${input.language === "fr" ? "French (Quebec)" : "English (Canada)"}.`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 45_000);
+  try {
+    if (input.provider === "anthropic") {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        signal: controller.signal,
+        headers: { "content-type": "application/json", "x-api-key": input.apiKey, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({ model, max_tokens: 2000, temperature: 0, system, messages: [{ role: "user", content: input.text }] }),
+      });
+      const payload = (await res.json().catch(() => ({}))) as { content?: { type: string; text?: string }[]; error?: { message?: string } };
+      if (!res.ok) throw new Error(payload.error?.message || `AI request failed (${res.status})`);
+      const text = payload.content?.map((c) => (c.type === "text" ? c.text ?? "" : "")).join("");
+      if (!text?.trim()) throw new Error("The AI did not return any text.");
+      return text.replace(/^\s+|\s+$/g, "");
+    }
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: { "content-type": "application/json", "x-goog-api-key": input.apiKey },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: "user", parts: [{ text: input.text }] }],
+        generationConfig: { temperature: 0, maxOutputTokens: 2000 },
+      }),
+    });
+    const payload = (await res.json().catch(() => ({}))) as { candidates?: { content?: { parts?: { text?: string }[] } }[]; error?: { message?: string } };
+    if (!res.ok) throw new Error(payload.error?.message || `AI request failed (${res.status})`);
+    const text = payload.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("");
+    if (!text?.trim()) throw new Error("The AI did not return any text.");
+    return text.replace(/^\s+|\s+$/g, "");
   } finally {
     clearTimeout(timer);
   }

@@ -599,3 +599,26 @@ export const form_entries = pgTable("form_entries", {
   created_by: integer("created_by"),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
+
+/** A person's private notebook. Only its owner reads it (not even administrators); a note can be sent to a project's notes. */
+export const personal_notes = pgTable("personal_notes", {
+  id: serial("id").primaryKey(),
+  user_id: integer("user_id").notNull(),
+  title: text("title").notNull().default(""),
+  body: text("body").notNull().default(""),
+  project_id: integer("project_id"),
+  /** The project note this one was sent to, and how it is shown there ("internal", "everyone" or "admin"). */
+  shared_note_id: integer("shared_note_id"),
+  shared_visibility: text("shared_visibility"),
+  created_on: text("created_on").notNull(),
+  updated_on: text("updated_on").notNull(),
+});
+
+/** Each person's own settings: the Outlook calendar on the personal calendar and the morning email. */
+export const user_prefs = pgTable("user_prefs", {
+  user_id: integer("user_id").primaryKey(),
+  morning_email: integer("morning_email").notNull().default(0),
+  o365_calendar: integer("o365_calendar").notNull().default(0),
+  /** The day the morning email was last sent (YYYY-MM-DD), so it goes out once a day. */
+  morning_sent_on: text("morning_sent_on"),
+});

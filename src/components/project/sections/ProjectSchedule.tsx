@@ -609,7 +609,7 @@ function AddTaskDialog({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="tk-title">{t("sch.taskTitle")}</Label>
-            <Input id="tk-title" autoFocus value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
+            <Input correct id="tk-title" autoFocus value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
@@ -695,7 +695,7 @@ function AddEventDialog({ open, onClose, onSave }: { open: boolean; onClose: () 
         <div className="grid gap-4">
           <div className="space-y-1.5">
             <Label>{t("sch.taskTitle")}</Label>
-            <Input autoFocus value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
+            <Input correct autoFocus value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">

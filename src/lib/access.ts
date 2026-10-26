@@ -436,6 +436,8 @@ const EMPLOYEE_ROLE: { module: string; can_view: number; can_create: number; can
   { module: "app_dashboard", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },
   { module: "app_reports", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },
   { module: "app_client", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },
+  { module: "app_notebook", can_view: 1, can_create: 1, can_edit: 1, can_delete: 1 },
+  { module: "app_calendar", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },
   { module: "app_client_documents", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },
   { module: "app_all_projects", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },
   { module: "app_client_projects", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },

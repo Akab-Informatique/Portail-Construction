@@ -30,7 +30,7 @@ const PRIVATE_TABLES = ["sessions", "app_settings", "password_resets", "billing_
  * Tables only FRX staff may read or write: real project costs and the target margin. Clients get no privilege on them at
  * all, so the database itself refuses them even if someone talks to the API directly.
  */
-const STAFF_ONLY_TABLES = ["project_finance", "project_costs", "budget_items", "expenses", "task_notes", "task_checklist", "project_notes", "project_qrt", "project_attachments", "task_dependencies", "form_templates", "form_entries"];
+const STAFF_ONLY_TABLES = ["project_finance", "project_costs", "budget_items", "expenses", "task_notes", "task_checklist", "project_notes", "project_qrt", "project_attachments", "task_dependencies", "form_templates", "form_entries", "personal_notes", "user_prefs"];
 /** Tables only effective admins may write. */
 const ADMIN_TABLES = [
   "users",
@@ -162,8 +162,19 @@ function rowScopes(): Record<string, string> {
   scopes.time_punches = `(user_id = ${ME})`;
   // Expenses: each person reads their own; administrators see all (frx_admin_all).
   scopes.expenses = `(user_id = ${ME})`;
+  // Personal notebook and settings: only their owner. Attachments of a personal note follow the same rule.
+  scopes.personal_notes = `(user_id = ${ME})`;
+  scopes.user_prefs = `(user_id = ${ME})`;
+  scopes.project_attachments = `(CASE WHEN owner_type = 'pnote' THEN uploaded_by = ${ME} ELSE frx_project_ok(project_id) END)`;
   return scopes;
 }
+
+/** Administrators see everything except what is personal. */
+const ADMIN_SCOPES: Record<string, string> = {
+  personal_notes: `(user_id = ${ME})`,
+  user_prefs: `(user_id = ${ME})`,
+  project_attachments: `(owner_type <> 'pnote' OR uploaded_by = ${ME})`,
+};
 
 /** Writes narrower than reads: nobody can approve their own expense, only add, change or remove it while submitted. */
 const WRITE_SCOPES: Record<string, string> = {
@@ -228,7 +239,7 @@ async function ensureApiRoles() {
   ];
   for (const [table, scope] of Object.entries(scopes)) {
     statements.push(`ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY`);
-    statements.push(...policy(table, "frx_admin_all", `TO ${ROLE_ADMIN} USING (true) WITH CHECK (true)`));
+    statements.push(...policy(table, "frx_admin_all", `TO ${ROLE_ADMIN} USING (${ADMIN_SCOPES[table] ?? "true"}) WITH CHECK (${ADMIN_SCOPES[table] ?? "true"})`));
     statements.push(...policy(table, "frx_scope_read", `FOR SELECT TO ${ROLE_USER}, ${ROLE_CLIENT} USING (${scope})`));
     if (table === "users") continue;
     for (const cmd of ["INSERT", "UPDATE", "DELETE"]) {

@@ -1,7 +1,7 @@
 import { and, desc, eq, like } from "drizzle-orm";
 import { db, dbReady, schema } from "../db";
 
-export type AttachmentOwner = "task" | "note" | "sst" | "qrt" | "form";
+export type AttachmentOwner = "task" | "note" | "sst" | "qrt" | "form" | "pnote";
 
 export type Attachment = {
   id: number;
@@ -123,7 +123,32 @@ export async function latestPhotos(projectId: number, limit = 8): Promise<Attach
     .limit(limit)) as Attachment[];
 }
 
-export type PdfAttachment = { name: string; size: number; dataUrl: string | null };
+/** Copies every file of one owner to another (a personal note sent to a project's notes keeps its photos). */
+export async function copyAttachments(
+  from: { projectId: number; owner: AttachmentOwner; ownerId: number },
+  to: { projectId: number; owner: AttachmentOwner; ownerId: number },
+  userId: number | null,
+) {
+  await dbReady;
+  const rows = await db
+    .select()
+    .from(schema.project_attachments)
+    .where(and(eq(schema.project_attachments.project_id, from.projectId), eq(schema.project_attachments.owner_type, from.owner), eq(schema.project_attachments.owner_id, from.ownerId)));
+  for (const r of rows) {
+    await db.insert(schema.project_attachments).values({
+      project_id: to.projectId,
+      owner_type: to.owner,
+      owner_id: to.ownerId,
+      file_name: r.file_name,
+      file_type: r.file_type,
+      file_size: r.file_size,
+      data: r.data,
+      uploaded_by: userId,
+    });
+  }
+}
+
+export type PdfAttachment ={ name: string; size: number; dataUrl: string | null };
 
 /** The files on an owner for a PDF: photos come with their picture, other files are listed by name. */
 export async function attachmentsForPdf(projectId: number, owner: AttachmentOwner, ownerId: number): Promise<PdfAttachment[]> {

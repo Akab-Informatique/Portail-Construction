@@ -26,6 +26,8 @@ const TimesheetsPage = lazyPage(() => import("@/pages/TimesheetsPage"), "Timeshe
 const ExpensesPage = lazyPage(() => import("@/pages/ExpensesPage"), "ExpensesPage");
 const DocumentsPage = lazyPage(() => import("@/pages/DocumentsPage"), "DocumentsPage");
 const DocumentsProjectsPage = lazyPage(() => import("@/pages/DocumentsProjectsPage"), "DocumentsProjectsPage");
+const NotebookPage = lazyPage(() => import("@/pages/NotebookPage"), "NotebookPage");
+const MyCalendarPage = lazyPage(() => import("@/pages/MyCalendarPage"), "MyCalendarPage");
 const ReportsPage = lazyPage(() => import("@/pages/ReportsPage"), "ReportsPage");
 const FinanceBillingPage = lazyPage(() => import("@/pages/FinanceBillingPage"), "FinanceBillingPage");
 
@@ -63,6 +65,8 @@ export default function App() {
           }
         >
           <Route index element={<RequireModule module="app_dashboard"><DashboardPage /></RequireModule>} />
+          <Route path="notebook" element={<RequireModule module="app_notebook"><NotebookPage /></RequireModule>} />
+          <Route path="calendar" element={<RequireModule module="app_calendar"><MyCalendarPage /></RequireModule>} />
           <Route path="documents" element={<RequireModule module="app_client_documents"><DocumentsPage /></RequireModule>} />
           <Route path="documents/projects" element={<RequireModule module="app_all_projects"><DocumentsProjectsPage /></RequireModule>} />
           <Route path="clients" element={<ClientsPage />} />

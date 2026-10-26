@@ -151,7 +151,7 @@ export function FormBuilder({
                       </Button>
                     </div>
                     {fl.type === "select" ? (
-                      <Textarea rows={2} placeholder={t("frm.b.options")} value={(fl.options ?? []).join("\n")} onChange={(e) => setField(i, j, { options: e.target.value.split("\n").map((o) => o.trim()).filter(Boolean) })} />
+                      <Textarea correct={false} rows={2} placeholder={t("frm.b.options")} value={(fl.options ?? []).join("\n")} onChange={(e) => setField(i, j, { options: e.target.value.split("\n").map((o) => o.trim()).filter(Boolean) })} />
                     ) : null}
                   </li>
                 ))}

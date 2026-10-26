@@ -204,7 +204,7 @@ export function FormFill({
           </Select>
         );
       default:
-        return <Input value={value} onChange={(e) => set(e.target.value)} />;
+        return <Input correct value={value} onChange={(e) => set(e.target.value)} />;
     }
   };
 

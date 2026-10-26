@@ -28,6 +28,8 @@ export const MODULES: ModuleDef[] = [
   { id: "app_dashboard", label: "Dashboard", scope: "global", description: "", group: "menu", parent: "app_overview", labelKey: "nav.dashboard" },
   { id: "app_reports", label: "Reports", scope: "global", description: "", group: "menu", parent: "app_overview", labelKey: "nav.reports" },
   { id: "app_client", label: "Job site", scope: "global", description: "", group: "menu", labelKey: "nav.section.client" },
+  { id: "app_notebook", label: "Notebook", scope: "global", description: "", group: "menu", parent: "app_client", labelKey: "nav.notebook" },
+  { id: "app_calendar", label: "My calendar", scope: "global", description: "", group: "menu", parent: "app_client", labelKey: "nav.myCalendar" },
   { id: "app_all_projects", label: "All projects", scope: "global", description: "", group: "menu", parent: "app_client", labelKey: "nav.allProjects" },
   { id: "app_client_documents", label: "Documentation", scope: "global", description: "", group: "menu", parent: "app_client", labelKey: "nav.documents" },
   { id: "app_client_projects", label: "Projects", scope: "global", description: "", group: "menu", parent: "app_client", labelKey: "nav.projects" },

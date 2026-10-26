@@ -237,7 +237,7 @@ export function ProjectSafety({ project, people }: SectionProps) {
           <div className="grid gap-4">
             <div className="space-y-1.5">
               <Label>{t("sst.what")}</Label>
-              <Input autoFocus value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+              <Input correct autoFocus value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">

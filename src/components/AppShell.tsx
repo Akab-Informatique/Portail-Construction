@@ -5,6 +5,7 @@ import { Logo } from "@/components/Logo";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
+  CalendarDays,
   Check,
   ChevronDown,
   ChevronsLeft,
@@ -17,6 +18,7 @@ import {
   LogOut,
   Menu,
   Moon,
+  NotebookPen,
   Presentation,
   Search,
   Settings,
@@ -161,6 +163,8 @@ export function useNavModel(): NavSection[] {
         tour: "operations",
         // Job site: projects and documents, then time on site (staff only).
         items: [
+          { id: "notebook", to: "/notebook", label: t("nav.notebook"), icon: NotebookPen, end: true, module: "app_notebook" },
+          { id: "myCalendar", to: "/calendar", label: t("nav.myCalendar"), icon: CalendarDays, end: true, module: "app_calendar" },
           clientItems[0],
           { id: "allProjects", to: "/documents/projects", label: t("nav.allProjects"), icon: LayoutGrid, end: true, tour: "projectsDocs", module: "app_all_projects", activePrefix: "/projects/" },
           // Punch and timesheets: one entry, two tabs; opens the first tab the user may see.

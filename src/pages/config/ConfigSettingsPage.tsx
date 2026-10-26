@@ -418,7 +418,7 @@ export function ConfigSettingsPage() {
                       />
                     </Field>
                     <Field label={t("settings.templates.body")}>
-                      <Textarea
+                      <Textarea correct={false}
                         rows={7}
                         value={templates[key].body}
                         onChange={(e) =>

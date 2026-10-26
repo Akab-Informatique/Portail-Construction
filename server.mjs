@@ -7,6 +7,8 @@ import { brotliCompressSync, gzipSync, constants as zlibConstants } from "node:z
 import sharepointHandler from "./api/sharepoint.ts";
 import mailHandler from "./api/mail/send.ts";
 import notifyHandler from "./api/notify.ts";
+import personalHandler from "./api/personal.ts";
+import { startMorningScheduler } from "./api/_lib/morning.ts";
 import billingFilesHandler from "./api/billing-files.ts";
 import dbHandler from "./api/db.ts";
 
@@ -329,6 +331,11 @@ const server = createServer(async (req, res) => {
       await notifyHandler({ method: req.method, body, headers }, adaptRes(res, req));
       return;
     }
+    if (url.pathname === "/api/personal") {
+      const body = req.method === "POST" ? await readJsonBody(req) : {};
+      await personalHandler({ method: req.method, body, headers }, adaptRes(res, req));
+      return;
+    }
     if (url.pathname === "/api/mail/send") {
       const body = req.method === "POST" ? await readJsonBody(req) : {};
       await mailHandler({ method: req.method, body, headers }, adaptRes(res, req));
@@ -395,4 +402,5 @@ const server = createServer(async (req, res) => {
 
 server.listen(port, "0.0.0.0", () => {
   console.log(`FRX portal listening on ${port}`);
+  startMorningScheduler();
 });

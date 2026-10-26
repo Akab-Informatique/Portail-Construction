@@ -7,7 +7,7 @@ import {
   requireApiUser,
   serverQuery,
 } from "./db.ts";
-import { analyzeDocument, DEFAULT_MODELS, testConnection, writeSummary, type AiProvider, type Extracted } from "./_lib/billing-ai.ts";
+import { analyzeDocument, correctText, DEFAULT_MODELS, testConnection, writeSummary, type AiProvider, type Extracted } from "./_lib/billing-ai.ts";
 
 /** Largest file accepted (decoded). The request body limit is 12 MB of base64. */
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
@@ -45,7 +45,7 @@ type StoredAi = { provider?: string; api_key?: string; model?: string; enabled?:
  * Setup has no key.
  * `override` is used by local development only, where the settings live in the browser instead of the server.
  */
-async function aiConfig(override?: StoredAi) {
+export async function aiConfig(override?: StoredAi) {
   let stored: StoredAi = override ?? {};
   if (!override && hasDatabase()) {
     try {
@@ -69,7 +69,7 @@ async function aiConfig(override?: StoredAi) {
     anthropic: env.ANTHROPIC_API_KEY,
   };
   let provider = String(env.AI_PROVIDER || "").toLowerCase() as AiProvider;
-  if (!PROVIDERS.includes(provider)) provider = envKeys.gemini ? "gemini" : envKeys.anthropic ? "anthropic" : "gemini";
+  if (!PROVIDERS.includes(provider)) provider = envKeys.anthropic ? "anthropic" : envKeys.gemini ? "gemini" : "anthropic";
   const apiKey = (env.AI_API_KEY || envKeys[provider] || "").trim();
   return { provider, apiKey, model: usableModel(env.AI_MODEL, provider) };
 }
@@ -167,6 +167,28 @@ export default async function handler(req: Req, res: Res) {
       return res.status(200).json({ text });
     } catch (err) {
       console.error("daily summary failed", err);
+      return res.status(200).json({ error: `ai.failed|${err instanceof Error ? err.message : "?"}` });
+    }
+  }
+
+  // "Correct" button next to any text box: staff only, and only the text they typed goes to the AI.
+  if (action === "correct") {
+    let override: StoredAi | undefined;
+    if (hasDatabase()) {
+      const who = await requireApiUser(req);
+      if (!who) return res.status(401).json({ error: "err.unauthorized" });
+      if (!isInternalStaff(who)) return res.status(403).json({ error: "err.forbidden" });
+    } else {
+      override = body.ai && typeof body.ai === "object" ? (body.ai as StoredAi) : undefined;
+    }
+    const text = String(body.text ?? "");
+    if (!text.trim() || text.length > 8000) return res.status(400).json({ error: "err.badRequest" });
+    const { provider, apiKey, model } = await aiConfig(override);
+    if (!apiKey) return res.status(200).json({ error: "ai.notConfigured" });
+    try {
+      return res.status(200).json({ text: await correctText({ provider, apiKey, model, language: body.language === "en" ? "en" : "fr", text }) });
+    } catch (err) {
+      console.error("text correction failed", err);
       return res.status(200).json({ error: `ai.failed|${err instanceof Error ? err.message : "?"}` });
     }
   }
