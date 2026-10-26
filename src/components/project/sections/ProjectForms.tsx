@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { desc, eq } from "drizzle-orm";
-import { BookOpenCheck, Copy, FilePlus2, FileOutput, ClipboardList, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { BookOpenCheck, Copy, FilePlus2, FileOutput, ClipboardList, Paperclip, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { db, schema } from "../../../db";
 import { useI18n } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
 import { projectColor } from "@/lib/project-colors";
 import { builtinForms, deleteCustomTemplate, loadCustomTemplates, parseData, parseDef, type FormTemplate } from "@/lib/forms";
 import { exportFormsPdf } from "@/lib/forms-pdf";
+import { attachmentsForPdf, countAttachments, removeAttachmentsOf } from "@/lib/project-files";
 import { FormBuilder } from "@/components/project/FormBuilder";
 import { FormFill, type FillTarget } from "@/components/project/FormFill";
 import { Button } from "@/components/ui/button";
@@ -33,14 +34,17 @@ export function ProjectForms({ project, people }: SectionProps) {
   const [binderKey, setBinderKey] = useState<string>("all");
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<number[]>([]);
+  const [fileCount, setFileCount] = useState<Record<number, number>>({});
 
   const load = useCallback(async () => {
-    const [templates, rows] = await Promise.all([
+    const [templates, rows, counts] = await Promise.all([
       loadCustomTemplates(),
       db.select().from(schema.form_entries).where(eq(schema.form_entries.project_id, project.id)).orderBy(desc(schema.form_entries.entry_date), desc(schema.form_entries.id)),
+      countAttachments(project.id, "form"),
     ]);
     setCustom(templates);
     setEntries(rows);
+    setFileCount(counts);
   }, [project.id]);
   useEffect(() => {
     void load();
@@ -71,12 +75,14 @@ export function ProjectForms({ project, people }: SectionProps) {
     page: t("wbs.page"),
     of: t("wbs.of"),
     empty: "—",
+    attachments: t("frm.attachments"),
   };
 
   async function exportEntries(list: Entry[]) {
     if (list.length === 0) return;
+    const files = await Promise.all(list.map((e) => attachmentsForPdf(project.id, "form", e.id)));
     await exportFormsPdf({
-      items: list.map((e) => ({
+      items: list.map((e, i) => ({
         templateName: e.template_name,
         projectName: project.name,
         projectNumber: project.project_number,
@@ -84,6 +90,7 @@ export function ProjectForms({ project, people }: SectionProps) {
         def: parseDef(e.definition),
         data: parseData(e.data),
         filledBy: who(e.created_by),
+        files: files[i],
       })),
       labels: pdfLabels,
       locale,
@@ -222,6 +229,12 @@ export function ProjectForms({ project, people }: SectionProps) {
                         <span className="block truncate font-medium">{e.template_name}</span>
                         <span className="block text-xs text-muted-foreground">
                           {formatDate(e.entry_date, locale)} · {who(e.created_by)}
+                          {fileCount[e.id] ? (
+                            <span className="ml-2 inline-flex items-center gap-1" title={t("frm.attachCount", { n: fileCount[e.id] })}>
+                              <Paperclip className="size-3" />
+                              {fileCount[e.id]}
+                            </span>
+                          ) : null}
                         </span>
                       </span>
                     </button>
@@ -234,6 +247,7 @@ export function ProjectForms({ project, people }: SectionProps) {
                       aria-label={t("exp.delete")}
                       onClick={async () => {
                         if (!window.confirm(t("frm.deleteEntry"))) return;
+                        await removeAttachmentsOf(project.id, "form", e.id);
                         await db.delete(schema.form_entries).where(eq(schema.form_entries.id, e.id));
                         setPicked((prev) => prev.filter((x) => x !== e.id));
                         await load();

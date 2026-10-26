@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { eq } from "drizzle-orm";
-import { FileOutput, Loader2, Pencil, Plus, Save, Trash2 } from "lucide-react";
+import { useRef } from "react";
+import { Camera, FileOutput, FileText, Loader2, Paperclip, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { db, schema } from "../../db";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -9,6 +10,8 @@ import { projectColor } from "@/lib/project-colors";
 import { logActivity } from "@/lib/activity";
 import { blankData, blankRow, missingRequired, parseData, type FormData, type FormDef, type FormField } from "@/lib/forms";
 import { exportFormsPdf } from "@/lib/forms-pdf";
+import { addAttachment, attachmentsForPdf, MAX_FILE_BYTES, type PdfAttachment } from "@/lib/project-files";
+import { Attachments } from "@/components/project/Attachments";
 import type { Project } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +54,10 @@ export function FormFill({
   const [readOnly, setReadOnly] = useState(false);
   const [problems, setProblems] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<File[]>([]);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const pickRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!target) return;
@@ -65,6 +72,8 @@ export function FormFill({
       setReadOnly(false);
     }
     setProblems([]);
+    setPending([]);
+    setFileError(null);
   }, [target]);
 
   const def = target?.def;
@@ -84,14 +93,18 @@ export function FormFill({
       const values = { data: JSON.stringify(data), entry_date: date };
       if (target.entry) await db.update(schema.form_entries).set(values).where(eq(schema.form_entries.id, target.entry.id));
       else {
-        await db.insert(schema.form_entries).values({
+        const [created] = await db
+          .insert(schema.form_entries)
+          .values({
           ...values,
           project_id: project.id,
           template_key: target.key,
           template_name: target.name,
           definition: JSON.stringify(def),
           created_by: user?.id ?? null,
-        });
+          })
+          .returning({ id: schema.form_entries.id });
+        for (const file of pending) await addAttachment(file, { projectId: project.id, owner: "form", ownerId: created.id, userId: user?.id ?? null }).catch(() => undefined);
         await logActivity({ action: "filled form", details: target.name, projectId: project.id, userId: user?.id });
       }
       onSaved();
@@ -101,10 +114,34 @@ export function FormFill({
     }
   }
 
+  function addPending(list: FileList | null) {
+    if (!list?.length) return;
+    const files = Array.from(list);
+    // photos are shrunk when saved; any other file has to fit the cap
+    const tooBig = files.some((f) => !f.type.startsWith("image/") && f.size > MAX_FILE_BYTES);
+    setFileError(tooBig ? t("att.tooBig") : null);
+    setPending((prev) => [...prev, ...files.filter((f) => f.type.startsWith("image/") || f.size <= MAX_FILE_BYTES)]);
+  }
+
   async function exportPdf() {
     if (!target || !def) return;
+    let files: PdfAttachment[] = [];
+    if (target.entry) files = await attachmentsForPdf(project.id, "form", target.entry.id);
+    else
+      files = await Promise.all(
+        pending.map(
+          (f) =>
+            new Promise<PdfAttachment>((resolve) => {
+              if (!/^image\/(jpeg|png)$/.test(f.type)) return resolve({ name: f.name, size: f.size, dataUrl: null });
+              const reader = new FileReader();
+              reader.onload = () => resolve({ name: f.name, size: f.size, dataUrl: String(reader.result) });
+              reader.onerror = () => resolve({ name: f.name, size: f.size, dataUrl: null });
+              reader.readAsDataURL(f);
+            }),
+        ),
+      );
     await exportFormsPdf({
-      items: [{ templateName: target.name, projectName: project.name, projectNumber: project.project_number, date, def, data, filledBy: target.entry ? filledByName(target.entry.created_by) : user?.name }],
+      items: [{ templateName: target.name, projectName: project.name, projectNumber: project.project_number, date, def, data, filledBy: target.entry ? filledByName(target.entry.created_by) : user?.name, files }],
       labels: {
         formTitle: t("frm.pdfTitle"),
         project: t("frm.projectName"),
@@ -115,6 +152,7 @@ export function FormFill({
         page: t("wbs.page"),
         of: t("wbs.of"),
         empty: "—",
+        attachments: t("frm.attachments"),
       },
       locale,
       fileName: `${target.name}_${project.name}_${date}.pdf`,
@@ -240,6 +278,44 @@ export function FormFill({
             );
           })}
 
+          <section className="space-y-3 rounded-2xl border bg-muted/20 p-5" style={{ borderColor: `color-mix(in srgb, ${color} 25%, var(--border))` }}>
+            <h3 className="border-b pb-1.5 font-display text-xl tracking-wide" style={{ color: "#e4002b", borderColor: "color-mix(in srgb, #e4002b 25%, transparent)" }}>
+              {t("frm.attachments")}
+            </h3>
+            {target.entry ? (
+              <Attachments projectId={project.id} owner="form" ownerId={target.entry.id} canEdit={!readOnly} />
+            ) : (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" size="sm" variant="outline" onClick={() => pickRef.current?.click()}>
+                    <Paperclip className="size-4" />
+                    {t("att.add")}
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => cameraRef.current?.click()}>
+                    <Camera className="size-4" />
+                    {t("att.photo")}
+                  </Button>
+                  <input ref={pickRef} type="file" multiple className="sr-only" onChange={(e) => { addPending(e.target.files); e.target.value = ""; }} />
+                  <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => { addPending(e.target.files); e.target.value = ""; }} />
+                </div>
+                {fileError ? <p className="text-xs text-destructive">{fileError}</p> : null}
+                {pending.length > 0 ? (
+                  <ul className="divide-y rounded-lg border bg-card/60">
+                    {pending.map((f, i) => (
+                      <li key={`${f.name}-${i}`} className="flex items-center gap-3 px-3 py-2 text-sm">
+                        <FileText className="size-4 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1 truncate">{f.name}</span>
+                        <Button type="button" size="icon-sm" variant="ghost" aria-label={t("exp.delete")} onClick={() => setPending((prev) => prev.filter((_, k) => k !== i))}>
+                          <X className="size-4" />
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            )}
+          </section>
+
           {problems.length ? (
             <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm">
               <p className="font-semibold">{t("frm.required")}</p>
@@ -261,7 +337,7 @@ export function FormFill({
               {readOnly ? (
                 <Button onClick={() => setReadOnly(false)}>
                   <Pencil className="size-4" />
-                  {t("exp.edit")}
+                  {t("frm.b.edit")}
                 </Button>
               ) : (
                 <>

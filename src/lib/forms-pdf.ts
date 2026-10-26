@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import { downloadBlob } from "./download";
 import { logoImage } from "./schedule-pdf";
 import { answerOf, type FormData, type FormDef } from "./forms";
+import type { PdfAttachment } from "./project-files";
 
 export type FormPdfItem = {
   templateName: string;
@@ -12,9 +13,11 @@ export type FormPdfItem = {
   def: FormDef;
   data: FormData;
   filledBy?: string;
+  /** Documents and photos attached to the form: photos are printed after the answers, other files are listed. */
+  files?: PdfAttachment[];
 };
 
-export type FormPdfLabels = { formTitle: string; project: string; date: string; type: string; filledBy: string; exportedOn: string; page: string; of: string; empty: string };
+export type FormPdfLabels = { formTitle: string; project: string; date: string; type: string; filledBy: string; exportedOn: string; page: string; of: string; empty: string; attachments: string };
 
 const GREY: [number, number, number] = [128, 128, 128];
 const RED: [number, number, number] = [228, 0, 43];
@@ -144,6 +147,53 @@ export async function exportFormsPdf(input: { items: FormPdfItem[]; labels: Form
         }
         y += 4;
       });
+    }
+
+    // ---- attached documents and photos ----
+    const files = item.files ?? [];
+    if (files.length) {
+      ensure(40);
+      y += 8;
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(13);
+      pdf.setTextColor(...RED);
+      pdf.text(labels.attachments.toUpperCase(), M, y);
+      pdf.setDrawColor(190, 200, 202);
+      pdf.setLineWidth(0.6);
+      pdf.line(M, y + 4, W - M, y + 4);
+      y += 20;
+      pdf.setFontSize(9.5);
+      for (const f of files) {
+        if (f.dataUrl) continue;
+        ensure(16);
+        pdf.setFont("helvetica", "normal");
+        pdf.setTextColor(...INK);
+        pdf.text(`•  ${f.name}`, M, y);
+        y += 14;
+      }
+      for (const f of files) {
+        if (!f.dataUrl) continue;
+        try {
+          const props = pdf.getImageProperties(f.dataUrl);
+          const scale = Math.min(innerW / props.width, 300 / props.height, 1);
+          const w = props.width * scale;
+          const h = props.height * scale;
+          ensure(h + 26);
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(8.5);
+          pdf.setTextColor(...MUTED);
+          pdf.text(f.name, M, y);
+          y += 6;
+          pdf.addImage(f.dataUrl, props.fileType, M, y, w, h, undefined, "FAST");
+          y += h + 14;
+        } catch {
+          ensure(16);
+          pdf.setFontSize(9.5);
+          pdf.setTextColor(...INK);
+          pdf.text(`•  ${f.name}`, M, y);
+          y += 14;
+        }
+      }
     }
   });
 

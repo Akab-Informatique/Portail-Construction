@@ -1,7 +1,7 @@
 import { and, desc, eq, like } from "drizzle-orm";
 import { db, dbReady, schema } from "../db";
 
-export type AttachmentOwner = "task" | "note" | "sst" | "qrt";
+export type AttachmentOwner = "task" | "note" | "sst" | "qrt" | "form";
 
 export type Attachment = {
   id: number;
@@ -121,4 +121,21 @@ export async function latestPhotos(projectId: number, limit = 8): Promise<Attach
     .where(and(eq(schema.project_attachments.project_id, projectId), like(schema.project_attachments.file_type, "image/%")))
     .orderBy(desc(schema.project_attachments.id))
     .limit(limit)) as Attachment[];
+}
+
+export type PdfAttachment = { name: string; size: number; dataUrl: string | null };
+
+/** The files on an owner for a PDF: photos come with their picture, other files are listed by name. */
+export async function attachmentsForPdf(projectId: number, owner: AttachmentOwner, ownerId: number): Promise<PdfAttachment[]> {
+  await dbReady;
+  const rows = await db
+    .select({ file_name: schema.project_attachments.file_name, file_type: schema.project_attachments.file_type, file_size: schema.project_attachments.file_size, data: schema.project_attachments.data })
+    .from(schema.project_attachments)
+    .where(and(eq(schema.project_attachments.project_id, projectId), eq(schema.project_attachments.owner_type, owner), eq(schema.project_attachments.owner_id, ownerId)))
+    .orderBy(schema.project_attachments.id);
+  return rows.map((r) => ({
+    name: r.file_name,
+    size: r.file_size,
+    dataUrl: /^image\/(jpeg|png)$/.test(r.file_type ?? "") ? `data:${r.file_type};base64,${r.data}` : null,
+  }));
 }
