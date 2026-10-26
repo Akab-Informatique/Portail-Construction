@@ -44,7 +44,7 @@ export function visibleProjectModules(
   permissions: Permission[],
   projectId: number,
 ) {
-  const ids: ModuleId[] = ["dashboard", "documents", "tasks", "notes", "safety", "qrt", "project_billing"];
+  const ids: ModuleId[] = ["dashboard", "documents", "tasks", "notes", "forms", "safety", "qrt", "project_billing"];
   if (user?.user_type === "external" || user?.view_as === "client") return ids;
   return ids.filter((id) => can(user, permissions, id, "view", { projectId }));
 }

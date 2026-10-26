@@ -28,7 +28,7 @@ const HEADER: [number, number, number] = [118, 118, 118];
 const GRID: [number, number, number] = [196, 196, 196];
 const INK: [number, number, number] = [30, 30, 28];
 
-async function logoImage(): Promise<{ data: string; w: number; h: number } | null> {
+export async function logoImage(): Promise<{ data: string; w: number; h: number } | null> {
   try {
     const res = await fetch("/brand/frx-logo-color.png");
     if (!res.ok) return null;

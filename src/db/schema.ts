@@ -575,3 +575,27 @@ export const task_dependencies = pgTable("task_dependencies", {
   depends_on_id: integer("depends_on_id").notNull(),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
+
+/** Form models made in the form creator (the three built-in ones live in code). */
+export const form_templates = pgTable("form_templates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  /** JSON: the sections and their questions. */
+  definition: text("definition").notNull(),
+  created_by: integer("created_by"),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+/** A filled-in form, kept in the project's binder. It carries a copy of the questions so it never changes afterwards. */
+export const form_entries = pgTable("form_entries", {
+  id: serial("id").primaryKey(),
+  project_id: integer("project_id").notNull(),
+  template_key: text("template_key").notNull(),
+  template_name: text("template_name").notNull(),
+  definition: text("definition").notNull(),
+  data: text("data").notNull(),
+  entry_date: text("entry_date").notNull(),
+  created_by: integer("created_by"),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});

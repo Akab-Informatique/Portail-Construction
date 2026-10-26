@@ -17,6 +17,7 @@ export const MODULES: ModuleDef[] = [
   { id: "documents", label: "Documentation", scope: "project", description: "The project's SharePoint folder" },
   { id: "tasks", label: "Schedule", scope: "project", description: "Tasks, calendar and Gantt" },
   { id: "notes", label: "Notes", scope: "project", description: "Site journal, internal or shared" },
+  { id: "forms", label: "Forms", scope: "project", description: "Forms to fill in and the binder of filled forms" },
   { id: "safety", label: "SST", scope: "project", description: "Safety incidents and files" },
   { id: "qrt", label: "QRT", scope: "project", description: "Questions and answers" },
   { id: "project_billing", label: "Quotes and invoices", scope: "project", description: "Quotes, change requests and invoices" },

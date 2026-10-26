@@ -297,6 +297,7 @@ export type ModuleId =
   | "users"
   | "billing"
   | "notes"
+  | "forms"
   | "qrt"
   | "project_billing"
   | "app_overview"

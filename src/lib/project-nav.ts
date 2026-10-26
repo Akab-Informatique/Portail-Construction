@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
+  ClipboardList,
   FolderTree,
   LayoutDashboard,
   ListChecks,
@@ -28,6 +29,7 @@ export const PROJECT_NAV: ProjectNavItem[] = [
   { id: "documents", labelKey: "pnav.documents", icon: FolderTree },
   { id: "tasks", labelKey: "pnav.schedule", icon: ListChecks },
   { id: "notes", labelKey: "pnav.notes", icon: NotebookPen },
+  { id: "forms", labelKey: "pnav.forms", icon: ClipboardList },
   { id: "safety", labelKey: "pnav.sst", icon: ShieldAlert },
   { id: "qrt", labelKey: "pnav.qrt", icon: MessagesSquare },
   { id: "project_billing", labelKey: "pnav.billing", icon: ReceiptText },
@@ -35,7 +37,7 @@ export const PROJECT_NAV: ProjectNavItem[] = [
 
 export const PROJECT_NAV_GROUPS: ProjectNavGroup[] = [
   { id: "overview", labelKey: "project.group.overview", items: PROJECT_NAV.filter((n) => n.id === "dashboard" || n.id === "documents") },
-  { id: "plan", labelKey: "project.group.plan", items: PROJECT_NAV.filter((n) => n.id === "tasks" || n.id === "notes" || n.id === "safety" || n.id === "qrt") },
+  { id: "plan", labelKey: "project.group.plan", items: PROJECT_NAV.filter((n) => n.id === "tasks" || n.id === "notes" || n.id === "forms" || n.id === "safety" || n.id === "qrt") },
   { id: "controls", labelKey: "project.group.controls", items: PROJECT_NAV.filter((n) => n.id === "project_billing") },
 ];
 

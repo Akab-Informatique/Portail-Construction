@@ -31,7 +31,7 @@ export function moneyExact(value: number, locale?: Locale) {
 
 /** A "YYYY-MM-DD" day is a calendar date, not a moment: read it in local time so it never slips to the day before. */
 function parseDay(value: string) {
-  const m = /^(d{4})-(d{2})-(d{2})$/.exec(value);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(value);
 }
 

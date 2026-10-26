@@ -32,6 +32,7 @@ import { ProjectOverview } from "@/components/project/sections/ProjectOverview";
 import { ProjectDocuments } from "@/components/project/sections/ProjectDocuments";
 import { ProjectSchedule } from "@/components/project/sections/ProjectSchedule";
 import { ProjectNotes } from "@/components/project/sections/ProjectNotes";
+import { ProjectForms } from "@/components/project/sections/ProjectForms";
 import { ProjectSafety } from "@/components/project/sections/ProjectSafety";
 import { ProjectQrt } from "@/components/project/sections/ProjectQrt";
 import { ProjectBilling } from "@/components/project/sections/ProjectBilling";
@@ -153,6 +154,7 @@ export function ProjectDetailPage() {
       {section === "documents" && <ProjectDocuments {...shared} />}
       {section === "tasks" && <ProjectSchedule {...shared} />}
       {section === "notes" && <ProjectNotes {...shared} />}
+      {section === "forms" && <ProjectForms {...shared} />}
       {section === "safety" && <ProjectSafety {...shared} />}
       {section === "qrt" && <ProjectQrt {...shared} />}
       {section === "project_billing" && <ProjectBilling {...shared} />}

@@ -537,7 +537,7 @@ async function ensureDefaultGroupsInner() {
     can_delete: 0,
   });
   await ensureEmployeeRole(internalDefault.id);
-  for (const module of ["notes", "qrt"] as const) {
+  for (const module of ["notes", "forms", "qrt"] as const) {
     await ensureModulePermission(internalDefault.id, { module, can_view: 1, can_create: 1, can_edit: 1, can_delete: 0 });
   }
   for (const module of ["app_finance", "app_billing_mgmt"] as const) {
