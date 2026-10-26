@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { desc, eq } from "drizzle-orm";
-import { Camera, Eye, EyeOff, Loader2, Paperclip, Send, Trash2, X } from "lucide-react";
+import { Bot, Camera, Eye, EyeOff, Loader2, Paperclip, Send, Trash2, X } from "lucide-react";
+import { syncAutoNotes } from "@/lib/task-activity";
 import { db, schema } from "../../../db";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -35,20 +36,24 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
   const [visibility, setVisibility] = useState<Visibility>("internal");
   const [pending, setPending] = useState<File[]>([]);
   const [notify, setNotify] = useState<NotifyChoice>({ userIds: [], channels: ["email"] });
-  const [filter, setFilter] = useState<"all" | Visibility>("all");
+  const [filter, setFilter] = useState<"all" | Visibility | "auto">("all");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const pick = useRef<HTMLInputElement>(null);
   const camera = useRef<HTMLInputElement>(null);
 
+  const isAdminUser = Boolean(user?.is_admin) && user?.view_as !== "client";
   const load = useCallback(async () => {
+    // The portal's own notes about late or stalled tasks, for administrators only.
+    if (isAdminUser) await syncAutoNotes(project, t as never, locale).catch(() => 0);
     const [rows, counts] = await Promise.all([
       db.select().from(schema.project_notes).where(eq(schema.project_notes.project_id, project.id)).orderBy(desc(schema.project_notes.created_at), desc(schema.project_notes.id)),
       countAttachments(project.id, "note"),
     ]);
     setNotes(rows);
     setFileCount(counts);
-  }, [project.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.id, isAdminUser]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -84,7 +89,9 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
     }
   }
 
-  const shown = notes.filter((n) => filter === "all" || n.visibility === filter);
+  // Notes written by the portal are for administrators only, for now.
+  const visible = notes.filter((n) => n.visibility !== "admin" || isAdminUser);
+  const shown = visible.filter((n) => (filter === "auto" ? n.auto === 1 : filter === "all" || n.visibility === filter));
 
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
@@ -145,9 +152,9 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
       {/* journal */}
       <div className="space-y-3">
         <div className="flex items-center gap-1 rounded-lg border bg-muted/40 p-0.5 self-start w-fit">
-          {(["all", "everyone", "internal"] as const).map((f) => (
+          {(isAdminUser ? (["all", "everyone", "internal", "auto"] as const) : (["all", "everyone", "internal"] as const)).map((f) => (
             <Button key={f} type="button" size="sm" variant={filter === f ? "default" : "ghost"} className="h-7 px-3 text-xs" onClick={() => setFilter(f)}>
-              {f === "all" ? t("sch.filter.all") : t(`note.vis.${f}`)}
+              {f === "all" ? t("sch.filter.all") : f === "auto" ? t("note.filter.auto") : t(`note.vis.${f}`)}
             </Button>
           ))}
         </div>
@@ -161,14 +168,20 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
                 <li key={n.id}>
                   <Card className="gap-3 p-4" style={{ boxShadow: `var(--glass-shadow), inset 3px 0 0 ${n.visibility === "everyone" ? color : "transparent"}` }}>
                     <div className="flex items-center gap-3">
-                      <UserAvatar name={who(n.user_id)} size="sm" />
+                      {n.auto === 1 ? (
+                        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                          <Bot className="size-4" />
+                        </span>
+                      ) : (
+                        <UserAvatar name={who(n.user_id)} size="sm" />
+                      )}
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{who(n.user_id)}</p>
+                        <p className="truncate text-sm font-medium">{n.auto === 1 ? t("note.autoAuthor") : who(n.user_id)}</p>
                         <p className="text-xs text-muted-foreground">{formatDateTime(n.created_at, locale)}</p>
                       </div>
-                      <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold", n.visibility === "everyone" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-muted text-muted-foreground")}>
+                      <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold", n.visibility === "everyone" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : n.visibility === "admin" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-muted text-muted-foreground")}>
                         {n.visibility === "everyone" ? <Eye className="size-3" /> : <EyeOff className="size-3" />}
-                        {t(`note.vis.${n.visibility === "everyone" ? "everyone" : "internal"}`)}
+                        {n.visibility === "admin" ? t("note.vis.admin") : t(`note.vis.${n.visibility === "everyone" ? "everyone" : "internal"}`)}
                       </span>
                       {mine || isAdmin ? (
                         <Button

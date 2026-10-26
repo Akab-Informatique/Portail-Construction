@@ -1,4 +1,7 @@
-import { Fragment } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
+import { and, eq } from "drizzle-orm";
+import { db, schema } from "../db";
+import { AUTO_NOTES_EVENT } from "@/lib/task-activity";
 import { Link, NavLink } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -17,6 +20,19 @@ export function ProjectTopNav({ project, backLabel }: { project: Project; backLa
   const { t } = useI18n();
   const { user, permissions } = useAuth();
   const color = projectColor(project);
+  // Administrators see how many automatic notes (late or stalled tasks) are waiting on the Notes tab.
+  const isAdmin = Boolean(user?.is_admin) && user?.view_as !== "client";
+  const [autoCount, setAutoCount] = useState(0);
+  const countAuto = useCallback(async () => {
+    if (!isAdmin) return;
+    const rows = await db.select({ id: schema.project_notes.id }).from(schema.project_notes).where(and(eq(schema.project_notes.project_id, project.id), eq(schema.project_notes.auto, 1)));
+    setAutoCount(rows.length);
+  }, [isAdmin, project.id]);
+  useEffect(() => {
+    void countAuto();
+    window.addEventListener(AUTO_NOTES_EVENT, countAuto);
+    return () => window.removeEventListener(AUTO_NOTES_EVENT, countAuto);
+  }, [countAuto]);
   const allowed = visibleProjectModules(user, permissions, project.id);
   const groups = PROJECT_NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((n) => allowed.includes(n.id)) })).filter((g) => g.items.length > 0);
 
@@ -65,6 +81,7 @@ export function ProjectTopNav({ project, backLabel }: { project: Project; backLa
                     <>
                       <item.icon className="size-[17px] shrink-0 transition-colors" style={isActive ? { color } : undefined} />
                       {t(item.labelKey)}
+                      {item.id === "notes" && autoCount > 0 ? <span className="ml-0.5 rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-black tabular-nums">{autoCount}</span> : null}
                       {isActive ? <span className="absolute inset-x-3 -bottom-1.5 h-[3px] rounded-full" style={{ background: color, boxShadow: `0 0 10px ${color}` }} /> : null}
                     </>
                   )}

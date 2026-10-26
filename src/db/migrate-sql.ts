@@ -135,6 +135,10 @@ ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 't
 ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS responsible TEXT;
 ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS progress INTEGER;
 CREATE TABLE IF NOT EXISTS task_dependencies (id SERIAL PRIMARY KEY, project_id INTEGER NOT NULL, task_id INTEGER NOT NULL, depends_on_id INTEGER NOT NULL, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
+ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS updated_on TEXT;
+UPDATE project_tasks SET updated_on = to_char(created_at, 'YYYY-MM-DD') WHERE updated_on IS NULL;
+ALTER TABLE project_notes ADD COLUMN IF NOT EXISTS auto INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE project_notes ADD COLUMN IF NOT EXISTS auto_key TEXT;
 CREATE INDEX IF NOT EXISTS project_attachments_owner_idx ON project_attachments (project_id, owner_type, owner_id);
 CREATE INDEX IF NOT EXISTS expenses_user_idx ON expenses (user_id, expense_date DESC);
 CREATE INDEX IF NOT EXISTS time_punches_user_time_idx ON time_punches (user_id, punched_at DESC);

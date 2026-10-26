@@ -9,6 +9,7 @@ import { withProjectMoney } from "@/lib/project-money";
 import { visibleProjectModules } from "@/lib/permissions";
 import { isProjectSection, projectSectionPath } from "@/lib/project-nav";
 import { useI18n } from "@/lib/i18n";
+import { syncAutoNotes } from "@/lib/task-activity";
 import type { Client, ModuleId, Project, User } from "@/lib/types";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
@@ -87,6 +88,13 @@ export function ProjectDetailPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const isAdminUser = Boolean(user?.is_admin) && user?.view_as !== "client";
+  const { locale } = useI18n();
+  useEffect(() => {
+    if (project && isAdminUser) void syncAutoNotes(project, t as never, locale).catch(() => 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project?.id, isAdminUser]);
 
   const allowed = useMemo(() => visibleProjectModules(user, permissions, id), [user, permissions, id]);
   useEffect(() => {

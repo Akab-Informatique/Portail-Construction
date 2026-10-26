@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { asc, eq } from "drizzle-orm";
-import { CalendarDays, CheckCircle2, ChevronDown, ChevronsDownUp, ChevronsUpDown, Circle, GanttChartSquare, ListChecks, Lock, MessageSquare, Paperclip, Plus, Rows3, Search, TrendingUp } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Circle, GanttChartSquare, ListChecks, Lock, MessageSquare, Paperclip, Plus, Rows3, Search, TrendingUp } from "lucide-react";
 import { db, schema } from "../../../db";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -75,6 +75,10 @@ export function ProjectSchedule({ project, people }: SectionProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [addPreset, setAddPreset] = useState<{ kind: "task" | "phase" | "break"; parentId: number | null }>({ kind: "task", parentId: null });
   const [eventOpen, setEventOpen] = useState(false);
+  /** Tasks whose dependency links are open in the list. */
+  const [relOpen, setRelOpen] = useState<Set<number>>(new Set());
+  const [flashId, setFlashId] = useState<number | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [taskRows, eventRows, checks, notes, files, depRows] = await Promise.all([
@@ -132,14 +136,46 @@ export function ProjectSchedule({ project, people }: SectionProps) {
       .filter((d) => d.task_id === id)
       .map((d) => tasks.find((x) => x.id === d.depends_on_id))
       .filter((x): x is Task => Boolean(x) && x!.status !== "completed");
+  /** Tasks that cannot start until this one is done. */
+  const unlocksOf = (id: number) =>
+    deps
+      .filter((d) => d.depends_on_id === id)
+      .map((d) => tasks.find((x) => x.id === d.task_id))
+      .filter((x): x is Task => Boolean(x));
   const phases = tasks.filter((x) => x.kind === "phase").sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
   const openTask = tasks.find((x) => x.id === openId) ?? null;
   const who = (id: number | null) => people.find((p) => p.id === id)?.name ?? "";
   const today = todayISO();
 
   async function toggleDone(task: Task) {
-    await db.update(schema.project_tasks).set({ status: task.status === "completed" ? "in_progress" : "completed" }).where(eq(schema.project_tasks.id, task.id));
+    const closing = task.status !== "completed";
+    // A task cannot be closed while something it waits for is still open.
+    const waiting = closing ? blockersOf(task.id) : [];
+    if (waiting.length) {
+      setNotice(t("sch.cannotClose", { names: waiting.map((b) => b.title).join(", ") }));
+      return;
+    }
+    setNotice(null);
+    await db.update(schema.project_tasks).set({ status: closing ? "completed" : "in_progress", updated_on: todayISO() }).where(eq(schema.project_tasks.id, task.id));
     await load();
+  }
+
+  /** Jump to a task in the list: open its group, make sure it is not filtered out, scroll to it and light it up. */
+  function goToTask(id: number) {
+    const target = tasks.find((x) => x.id === id);
+    if (!target) return;
+    setParams({}, { replace: true });
+    if (filter === "open" && target.status === "completed") setFilter("all");
+    setQuery("");
+    const key = target.parent_id !== null && tasks.some((p) => p.id === target.parent_id && p.kind === "phase") ? String(target.parent_id) : "none";
+    if (folded.has(key)) {
+      const next = new Set(folded);
+      next.delete(key);
+      setFoldedSaved(next);
+    }
+    setFlashId(id);
+    window.setTimeout(() => document.getElementById(`task-row-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
+    window.setTimeout(() => setFlashId((cur) => (cur === id ? null : cur)), 2200);
   }
 
   const tabs: { id: View; label: string; icon: typeof ListChecks }[] = [
@@ -206,6 +242,15 @@ export function ProjectSchedule({ project, people }: SectionProps) {
             <Card className="p-10 text-center text-sm text-muted-foreground">{t("sch.empty")}</Card>
           ) : (
             <>
+              {notice ? (
+                <div className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-sm" role="alert">
+                  <Lock className="mt-0.5 size-4 shrink-0 text-amber-600" />
+                  <span className="flex-1">{notice}</span>
+                  <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setNotice(null)}>
+                    ×
+                  </button>
+                </div>
+              ) : null}
               <div className="flex justify-end gap-1">
                 <Button size="sm" variant="ghost" onClick={() => setFoldedSaved(new Set())}>
                   <ChevronsUpDown className="size-4" />
@@ -253,13 +298,13 @@ export function ProjectSchedule({ project, people }: SectionProps) {
                               const late = !done && task.end_date !== null && task.end_date < today;
                               const blockers = blockersOf(task.id);
                               return (
-                                <li key={task.id}>
+                                <li key={task.id} id={`task-row-${task.id}`}>
                                   <div
                                     role="button"
                                     tabIndex={isFolded ? -1 : 0}
                                     onClick={() => setOpenId(task.id)}
                                     onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setOpenId(task.id)}
-                                    className="frx-glass group flex cursor-pointer items-center gap-3 border border-[color:var(--glass-edge)] px-4 py-3 transition-all hover:-translate-y-0.5"
+                                    className={cn("frx-glass group flex cursor-pointer items-center gap-3 border border-[color:var(--glass-edge)] px-4 py-3 transition-all hover:-translate-y-0.5", flashId === task.id && "ring-2 ring-primary")}
                                     style={{ boxShadow: `var(--glass-shadow), inset 3px 0 0 ${done ? "transparent" : blockers.length ? "#ef4444" : color}` }}
                                   >
                                     <button
@@ -308,9 +353,57 @@ export function ProjectSchedule({ project, people }: SectionProps) {
                                       </p>
                                     </div>
                                     <span className={cn("size-2 shrink-0 rounded-full", PRIORITY_DOT[task.priority] ?? "bg-slate-400")} title={t(`sch.priority.${task.priority}` as MessageKey)} />
+                                    {blockers.length || unlocksOf(task.id).length ? (
+                                      <button
+                                        type="button"
+                                        aria-expanded={relOpen.has(task.id)}
+                                        aria-label={t("sch.relations")}
+                                        title={t("sch.relations")}
+                                        className="flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted-foreground hover:bg-foreground/10"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setRelOpen((prev) => {
+                                            const next = new Set(prev);
+                                            if (next.has(task.id)) next.delete(task.id);
+                                            else next.add(task.id);
+                                            return next;
+                                          });
+                                        }}
+                                      >
+                                        <ChevronDown className={cn("size-4 transition-transform", !relOpen.has(task.id) && "-rotate-90")} />
+                                        {blockers.length + unlocksOf(task.id).length}
+                                      </button>
+                                    ) : null}
                                     <StatusBadge value={task.status} />
                                     {task.assigned_to ? <UserAvatar name={who(task.assigned_to)} size="sm" /> : null}
                                   </div>
+                                  {relOpen.has(task.id) ? (
+                                    <div className="mt-1 ml-6 space-y-1 border-l-2 pl-4" style={{ borderColor: `color-mix(in srgb, ${color} 40%, transparent)` }}>
+                                      {[
+                                        { label: t("sch.waitsFor"), list: deps.filter((d) => d.task_id === task.id).map((d) => tasks.find((x) => x.id === d.depends_on_id)).filter((x): x is Task => Boolean(x)) },
+                                        { label: t("sch.unlocks"), list: unlocksOf(task.id) },
+                                      ]
+                                        .filter((g) => g.list.length)
+                                        .map((g) => (
+                                          <div key={g.label}>
+                                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{g.label}</p>
+                                            {g.list.map((other) => (
+                                              <button
+                                                key={other.id}
+                                                type="button"
+                                                onClick={() => goToTask(other.id)}
+                                                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors hover:bg-foreground/5"
+                                              >
+                                                <span className={cn("size-2 shrink-0 rounded-full", other.status === "completed" ? "bg-emerald-500" : "bg-red-500")} />
+                                                <span className="min-w-0 flex-1 truncate">{other.title}</span>
+                                                <span className="text-xs text-muted-foreground">{t(`status.${other.status}` as MessageKey)}</span>
+                                                <ChevronRight className="size-3.5 text-muted-foreground" />
+                                              </button>
+                                            ))}
+                                          </div>
+                                        ))}
+                                    </div>
+                                  ) : null}
                                 </li>
                               );
                             })}
@@ -366,7 +459,7 @@ export function ProjectSchedule({ project, people }: SectionProps) {
         onSave={async (v) => {
           const sameLevel = tasks.filter((x) => (v.kind === "phase" ? x.kind === "phase" : x.parent_id === v.parent_id && x.kind !== "phase"));
           const sort_order = sameLevel.reduce((m, x) => Math.max(m, x.sort_order), -1) + 1;
-          const [row] = await db.insert(schema.project_tasks).values({ ...v, sort_order, project_id: project.id }).returning();
+          const [row] = await db.insert(schema.project_tasks).values({ ...v, sort_order, updated_on: todayISO(), project_id: project.id }).returning();
           await logActivity({ action: "added task", details: v.title, projectId: project.id, userId: user?.id });
           setAddOpen(false);
           await load();

@@ -117,6 +117,8 @@ export const project_tasks = pgTable("project_tasks", {
   responsible: text("responsible"),
   /** Manual % progress; null = worked out from the checklist and the status. */
   progress: integer("progress"),
+  /** The day anything about the task last changed (fields, checklist, notes, files), as YYYY-MM-DD. */
+  updated_on: text("updated_on"),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -524,7 +526,12 @@ export const project_notes = pgTable("project_notes", {
   project_id: integer("project_id").notNull(),
   user_id: integer("user_id"),
   body: text("body").notNull(),
+  /** "internal", "everyone", or "admin" (written by the portal for administrators only). */
   visibility: text("visibility").notNull(),
+  /** 1 = written by the portal itself. */
+  auto: integer("auto").notNull().default(0),
+  /** What the automatic note is about, so it is only written once ("late:12"). */
+  auto_key: text("auto_key"),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 

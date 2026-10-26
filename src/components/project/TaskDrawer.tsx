@@ -10,6 +10,8 @@ import { PRIORITIES, TASK_STATUSES } from "@/lib/constants";
 import { projectColor } from "@/lib/project-colors";
 import { removeAttachmentsOf } from "@/lib/project-files";
 import { wouldCycle, type Dep } from "@/lib/schedule-forecast";
+import { touchTask } from "@/lib/task-activity";
+import { todayISO } from "@/lib/format";
 import type { Project, User } from "@/lib/types";
 import { Attachments } from "@/components/project/Attachments";
 import { UserAvatar } from "@/components/UserAvatar";
@@ -75,9 +77,25 @@ export function TaskDrawer({
   const done = check.filter((c) => c.done === 1).length;
   const pct = check.length ? Math.round((done / check.length) * 100) : 0;
 
+  /** Unfinished tasks this one waits for. */
+  const waiting = task
+    ? deps
+        .filter((d) => d.task_id === task.id)
+        .map((d) => allTasks.find((x) => x.id === d.depends_on_id))
+        .filter((x): x is Task => Boolean(x) && x!.status !== "completed")
+    : [];
+  const [guard, setGuard] = useState<string | null>(null);
+
   async function patch(values: Partial<Task>) {
     if (!task) return;
-    await db.update(schema.project_tasks).set(values).where(eq(schema.project_tasks.id, task.id));
+    // Cannot be closed while something it waits for is still open.
+    if ((values.status === "completed" || values.progress === 100) && waiting.length) {
+      setGuard(t("sch.cannotClose", { names: waiting.map((b) => b.title).join(", ") }));
+      onChanged();
+      return;
+    }
+    setGuard(null);
+    await db.update(schema.project_tasks).set({ ...values, updated_on: todayISO() }).where(eq(schema.project_tasks.id, task.id));
     onChanged();
   }
 
@@ -85,6 +103,7 @@ export function TaskDrawer({
     const label = newItem.trim();
     if (!label || !task) return;
     await db.insert(schema.task_checklist).values({ project_id: project.id, task_id: task.id, label, done: 0, sort_order: check.length });
+    await touchTask(task.id);
     setNewItem("");
     await load();
     onChanged();
@@ -94,6 +113,7 @@ export function TaskDrawer({
     const body = newNote.trim();
     if (!body || !task) return;
     await db.insert(schema.task_notes).values({ project_id: project.id, task_id: task.id, user_id: user?.id ?? null, body });
+    await touchTask(task.id);
     setNewNote("");
     await load();
     onChanged();
@@ -145,6 +165,11 @@ export function TaskDrawer({
         </SheetHeader>
 
         <div className="space-y-7 px-6 py-5">
+          {guard ? (
+            <div role="alert" className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-sm">
+              {guard}
+            </div>
+          ) : null}
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label>{t("project.status")}</Label>
@@ -289,6 +314,7 @@ export function TaskDrawer({
                     checked={c.done === 1}
                     onCheckedChange={async (v) => {
                       await db.update(schema.task_checklist).set({ done: v === true ? 1 : 0 }).where(eq(schema.task_checklist.id, c.id));
+                      await touchTask(task.id);
                       await load();
                       onChanged();
                     }}
@@ -346,7 +372,15 @@ export function TaskDrawer({
           {/* files */}
           <section className="space-y-3">
             <h3 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t("sch.files")}</h3>
-            <Attachments projectId={project.id} owner="task" ownerId={task.id} onChange={onChanged} />
+            <Attachments
+              projectId={project.id}
+              owner="task"
+              ownerId={task.id}
+              onChange={() => {
+                void touchTask(task.id);
+                onChanged();
+              }}
+            />
           </section>
 
           <div className="flex justify-end border-t pt-4">
