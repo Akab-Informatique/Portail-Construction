@@ -126,8 +126,10 @@ export function SharePointLibrary({
       user.view_as !== "client",
   );
   const showRootForClient = Boolean(libraryRoot && clientHasRootShare(shares, client?.id ?? null) && projectId === 0);
+  // A project page is rooted in the one folder chosen when the project was created: you can go down into it, never above it.
+  const rooted = projectId !== 0;
   const navFolders: BrowseFolder[] =
-    projectId !== 0 ? visible : showRoot && libraryRoot ? [libraryRoot, ...visible] : showRootForClient && libraryRoot ? [libraryRoot, ...visible] : visible;
+    projectId !== 0 ? visible.slice(0, 1) : showRoot && libraryRoot ? [libraryRoot, ...visible] : showRootForClient && libraryRoot ? [libraryRoot, ...visible] : visible;
   const active = navFolders.find((f) => f.id === activeId) ?? navFolders[0] ?? null;
   const folderShare = active && active.id && client ? shareFor(shares, active.id, client.id, "") : null;
   const canUpload = Boolean(manager || (staff && canCreate && active && active.id !== 0) || (canCreate && folderShare?.can_upload && active && active.id !== 0));
@@ -604,6 +606,7 @@ export function SharePointLibrary({
       <div>
         <Card className="mb-3 gap-3 p-3">
           <div className="flex flex-wrap items-center gap-2">
+            {rooted ? null : (
             <FolderTreeMenu
               folders={showRoot && libraryRoot ? [libraryRoot] : navFolders}
               driveId={settings.drive_id}
@@ -619,6 +622,7 @@ export function SharePointLibrary({
                 setSelected([]);
               }}
             />
+            )}
             <Button size="sm" variant="outline" disabled={trail.length === 0} onClick={() => goToCrumb(trail.length - 1)}>
               {t("sp.up")}
             </Button>
@@ -663,7 +667,7 @@ export function SharePointLibrary({
                 {t("sp.shareFolder")}
               </Button>
             ) : null}
-            {manager && active && active.id !== 0 && !browse ? (
+            {manager && !rooted && active && active.id !== 0 && !browse ? (
               <>
                 <Button
                   size="sm"

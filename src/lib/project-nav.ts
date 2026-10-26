@@ -47,7 +47,7 @@ export const PROJECT_NAV_GROUPS: ProjectNavGroup[] = [
   {
     id: "overview",
     labelKey: "project.group.overview",
-    items: PROJECT_NAV.filter((n) => n.id === "dashboard" || n.id === "documents" || n.id === "reports"),
+    items: PROJECT_NAV.filter((n) => n.id === "dashboard" || n.id === "documents"),
   },
   {
     id: "plan",
@@ -62,7 +62,7 @@ export const PROJECT_NAV_GROUPS: ProjectNavGroup[] = [
   {
     id: "controls",
     labelKey: "project.group.controls",
-    items: PROJECT_NAV.filter((n) => n.id === "rfis" || n.id === "change_orders" || n.id === "budget" || n.id === "team"),
+    items: PROJECT_NAV.filter((n) => n.id === "rfis" || n.id === "change_orders" || n.id === "budget" || n.id === "team" || n.id === "reports"),
   },
 ];
 

@@ -71,6 +71,9 @@ import {
   type ProjectFormValues,
 } from "@/components/ProjectFormFields";
 
+/** Flip to true when the new project overview is built. */
+const PROJECT_OVERVIEW_READY = false;
+
 export function ProjectDetailPage() {
   const { projectId, section: sectionParam } = useParams();
   const id = Number(projectId);
@@ -271,7 +274,8 @@ export function ProjectDetailPage() {
       />
 
       <div>
-          {section === "dashboard" && (
+          {/* The project overview is cleared on purpose and gets redesigned at the end. */}
+          {section === "dashboard" && PROJECT_OVERVIEW_READY && (
             <Dashboard
               project={project}
               used={used}
