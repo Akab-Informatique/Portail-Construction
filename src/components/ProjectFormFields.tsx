@@ -116,6 +116,22 @@ export async function applyProjectFolder(opts: {
   });
 }
 
+/**
+ * A labelled field. It lives at module level on purpose: a component declared inside ProjectFormFields would be a
+ * brand-new component on every keystroke, so every input would be thrown away and lose focus after one letter.
+ */
+function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <Label>
+        {label}
+        {required ? <span className="text-destructive"> *</span> : null}
+      </Label>
+      {children}
+    </div>
+  );
+}
+
 export function ProjectFormFields({
   form,
   onChange,
@@ -146,17 +162,6 @@ export function ProjectFormFields({
   assignedName?: string;
 }) {
   const { t } = useI18n();
-  function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
-    return (
-      <div className="space-y-1.5">
-        <Label>
-          {label}
-          {required ? <span className="text-destructive"> *</span> : null}
-        </Label>
-        {children}
-      </div>
-    );
-  }
   return (
     <div className="grid gap-4">
       {clients && onClientId ? (

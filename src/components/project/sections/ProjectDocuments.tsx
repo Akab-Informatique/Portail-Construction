@@ -280,12 +280,13 @@ export function ProjectDocuments({ project }: SectionProps) {
 
   const crumbs: Crumb[] = [{ id: root.id, name: root.name }, ...trail];
 
-  function TreeNode({ node, path, depth }: { node: Crumb; path: Crumb[]; depth: number }) {
+  // A plain function (called, not rendered as a component) so the tree is not rebuilt from scratch on every render.
+  function renderNode(node: Crumb, path: Crumb[], depth: number) {
     const open = expanded.has(node.id);
     const kids = (cache[node.id] ?? []).filter((i) => i.isFolder).sort((a, b) => a.name.localeCompare(b.name));
     const active = node.id === currentId;
     return (
-      <div>
+      <div key={node.id}>
         <div
           className={cn(
             "group flex items-center gap-1 rounded-lg py-1.5 pr-2 text-sm transition-colors",
@@ -304,7 +305,7 @@ export function ProjectDocuments({ project }: SectionProps) {
             <span className="truncate">{node.name}</span>
           </button>
         </div>
-        {open ? kids.map((k) => <TreeNode key={k.id} node={{ id: k.id, name: k.name }} path={[...path, { id: k.id, name: k.name }]} depth={depth + 1} />) : null}
+        {open ? kids.map((k) => renderNode({ id: k.id, name: k.name }, [...path, { id: k.id, name: k.name }], depth + 1)) : null}
       </div>
     );
   }
@@ -363,7 +364,7 @@ export function ProjectDocuments({ project }: SectionProps) {
       <div className="grid gap-3 lg:grid-cols-[minmax(220px,280px)_minmax(0,1fr)]">
         {/* tree: the root is the top, there is nothing above it */}
         <Card className="gap-1 p-2 lg:max-h-[68vh] lg:overflow-y-auto">
-          <TreeNode node={{ id: root.id, name: root.name }} path={[]} depth={0} />
+          {renderNode({ id: root.id, name: root.name }, [], 0)}
         </Card>
 
         {/* explorer */}
