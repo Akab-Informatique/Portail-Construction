@@ -13,7 +13,7 @@ export function useSpTree(root: SpRoot | null) {
     async (folderId: string, force = false) => {
       if (!root) return [] as SpItem[];
       if (!force && cache[folderId]) return cache[folderId];
-      const data = await callSharePoint<{ items: SpItem[] }>("list", { driveId: root.drive, itemId: folderId });
+      const data = await callSharePoint<{ items: SpItem[] }>("list", { driveId: root.drive, itemId: folderId || undefined });
       setCache((prev) => ({ ...prev, [folderId]: data.items }));
       return data.items;
     },

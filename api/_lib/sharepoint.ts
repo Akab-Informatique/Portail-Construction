@@ -152,7 +152,9 @@ export async function uploadSmallFile(
   bytes: Uint8Array,
 ) {
   const encoded = encodeURIComponent(filename);
-  const res = await fetch(`${GRAPH}/drives/${driveId}/items/${parentId}:/${encoded}:/content`, {
+  // An empty parent means the root of the library.
+  const place = parentId ? `items/${parentId}` : "root";
+  const res = await fetch(`${GRAPH}/drives/${driveId}/${place}:/${encoded}:/content`, {
     method: "PUT",
     headers: {
       Authorization: `Bearer ${token}`,
