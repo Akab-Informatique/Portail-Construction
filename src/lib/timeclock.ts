@@ -1,5 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db, schema } from "../db";
+import { logActivity } from "./activity";
 import type { Project, TimePunch } from "./types";
 
 export function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
@@ -326,4 +327,47 @@ export function formatDistance(meters: number, locale: "en" | "fr" = "en") {
   const km = meters / 1000;
   const text = km < 10 ? km.toFixed(1) : String(Math.round(km));
   return `${locale === "fr" ? text.replace(".", ",") : text} km`;
+}
+
+export type EditEntryInput = {
+  entry: TimeEntry;
+  /** The new times, as ISO strings. */
+  inAt: string;
+  outAt: string | null;
+  reason: string;
+  userId: number;
+};
+
+/**
+ * A person corrects the times of their own entry. The server checks it is theirs (an administrator may correct anyone's)
+ * and writes the old and new times, with the reason, to the activity log.
+ */
+export async function editTimeEntry(input: EditEntryInput): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { entry } = input;
+  if (import.meta.env.PROD) {
+    try {
+      const res = await fetch("/api/db", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "edit_punch", in_id: entry.punchIn.id, out_id: entry.punchOut?.id ?? null, in_at: input.inAt, out_at: input.outAt, reason: input.reason }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      return data.ok ? { ok: true } : { ok: false, error: data.error ?? "punch.error.failed" };
+    } catch {
+      return { ok: false, error: "punch.error.network" };
+    }
+  }
+  // Dev (in-browser database): same rules, applied locally.
+  if (!input.reason.trim()) return { ok: false, error: "punch.error.needReason" };
+  if (input.outAt && new Date(input.outAt) <= new Date(input.inAt)) return { ok: false, error: "punch.error.badTime" };
+  await db.update(schema.time_punches).set({ punched_at: input.inAt }).where(eq(schema.time_punches.id, entry.punchIn.id));
+  if (entry.punchOut && input.outAt) await db.update(schema.time_punches).set({ punched_at: input.outAt }).where(eq(schema.time_punches.id, entry.punchOut.id));
+  await logActivity({
+    action: "edited time entry",
+    projectId: entry.punchIn.project_id,
+    userId: input.userId,
+    details: `${entry.punchIn.punched_at}${entry.punchOut ? ` → ${entry.punchOut.punched_at}` : ""} => ${input.inAt}${input.outAt ? ` → ${input.outAt}` : ""} · ${input.reason.trim()}`,
+  });
+  return { ok: true };
 }

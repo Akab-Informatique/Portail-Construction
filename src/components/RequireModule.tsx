@@ -13,3 +13,12 @@ export function RequireModule({ module, children }: { module: ModuleId; children
   if (canUseMenuModule(user, can, module)) return <>{children}</>;
   return <EmptyState icon={<Lock className="size-5" />} title={t("module.noAccess")} description={t("module.noAccess.desc")} />;
 }
+
+/** Administration pages (clients, people, setup, billing builder): administrators only. Staff only configure themselves in their profile. */
+export function RequireAdmin({ children, allowExternal = false }: { children: ReactNode; allowExternal?: boolean }) {
+  const { user } = useAuth();
+  const { t } = useI18n();
+  if (allowExternal && user?.user_type === "external") return <>{children}</>;
+  if (user?.is_admin && user.view_as !== "client") return <>{children}</>;
+  return <EmptyState icon={<Lock className="size-5" />} title={t("module.noAccess")} description={t("module.noAccess.desc")} />;
+}

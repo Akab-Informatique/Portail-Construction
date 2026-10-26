@@ -9,7 +9,7 @@ import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
 import { lazyPage } from "@/lib/lazy-page";
 // Small tab frame around the punch/timesheet pages (those stay lazy-loaded).
 import { TimeOnSitePage } from "@/pages/TimeOnSitePage";
-import { RequireModule } from "@/components/RequireModule";
+import { RequireAdmin, RequireModule } from "@/components/RequireModule";
 
 const DashboardPage = lazyPage(() => import("@/pages/DashboardPage"), "DashboardPage");
 const ClientsPage = lazyPage(() => import("@/pages/ClientsPage"), "ClientsPage");
@@ -69,21 +69,21 @@ export default function App() {
           <Route path="calendar" element={<RequireModule module="app_calendar"><MyCalendarPage /></RequireModule>} />
           <Route path="documents" element={<RequireModule module="app_client_documents"><DocumentsPage /></RequireModule>} />
           <Route path="documents/projects" element={<RequireModule module="app_all_projects"><DocumentsProjectsPage /></RequireModule>} />
-          <Route path="clients" element={<ClientsPage />} />
-          <Route path="accounting/billing" element={<AccountingBillingPage />} />
+          <Route path="clients" element={<RequireAdmin allowExternal><ClientsPage /></RequireAdmin>} />
+          <Route path="accounting/billing" element={<RequireAdmin><AccountingBillingPage /></RequireAdmin>} />
           <Route path="finance/billing" element={<RequireModule module="app_billing_mgmt"><FinanceBillingPage /></RequireModule>} />
           <Route path="projects" element={<RequireModule module="app_client_projects"><ProjectsPage /></RequireModule>} />
           <Route path="reports" element={<RequireModule module="app_reports"><ReportsPage /></RequireModule>} />
           <Route path="projects/:projectId" element={<ProjectDetailPage />} />
           <Route path="projects/:projectId/:section" element={<ProjectDetailPage />} />
-          <Route path="team" element={<TeamPage />} />
-          <Route path="team/:userId" element={<UserAccessPage />} />
+          <Route path="team" element={<RequireAdmin><TeamPage /></RequireAdmin>} />
+          <Route path="team/:userId" element={<RequireAdmin><UserAccessPage /></RequireAdmin>} />
           <Route path="config/clients" element={<Navigate to="/settings?tab=clients" replace />} />
           <Route path="config/internal" element={<Navigate to="/settings?tab=users" replace />} />
           <Route path="config/groups" element={<Navigate to="/settings?tab=users" replace />} />
-          <Route path="config/users/:userId" element={<ConfigUserPage />} />
+          <Route path="config/users/:userId" element={<RequireAdmin><ConfigUserPage /></RequireAdmin>} />
           <Route path="config/settings" element={<Navigate to="/settings" replace />} />
-          <Route path="settings" element={<ConfigSettingsPage />} />
+          <Route path="settings" element={<RequireAdmin><ConfigSettingsPage /></RequireAdmin>} />
           <Route path="tools/punch" element={<TimeOnSitePage module="app_punch"><PunchPage /></TimeOnSitePage>} />
           <Route path="tools/timesheets" element={<TimeOnSitePage module="app_timesheets"><TimesheetsPage /></TimeOnSitePage>} />
           <Route path="tools/expenses" element={<TimeOnSitePage module="app_expenses"><ExpensesPage /></TimeOnSitePage>} />

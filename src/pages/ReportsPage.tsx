@@ -103,7 +103,11 @@ export function ReportsPage() {
   const jobs = selectedClient ? clientProjects : projects;
   const [jobId, setJobId] = useState<string>("all");
   const [busy, setBusy] = useState<ReportKind | null>(null);
-  const allowed = Boolean(user?.is_admin && user.view_as !== "client");
+  const asClient = user?.user_type === "external" || user?.view_as === "client";
+  const isAdmin = Boolean(user?.is_admin) && !asClient;
+  // Staff get the reports without money: the status, safety and labour reports of the projects they work on.
+  const allowed = isAdmin || (user?.user_type === "internal" && !asClient);
+  const reports = isAdmin ? STANDARD_REPORTS : STANDARD_REPORTS.filter((r) => ["status", "safety", "labour"].includes(r.id));
 
   const selectedJobs = useMemo(() => {
     if (jobId === "all") return jobs;
@@ -141,6 +145,7 @@ export function ReportsPage() {
         pack,
         locale,
         preparedBy: user?.name ?? "",
+        noMoney: !isAdmin,
         t: (key, vars) => t(key as never, vars as never),
       });
       downloadReportPdf(report, locale);
@@ -183,7 +188,7 @@ export function ReportsPage() {
             </Select>
           </Card>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {STANDARD_REPORTS.map((kind) => (
+            {reports.map((kind) => (
               <Card key={kind.id} className="gap-4 p-5">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">

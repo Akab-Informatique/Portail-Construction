@@ -958,9 +958,14 @@ async function recordPunch(session: ScopedSession, body: Record<string, unknown>
     )
   ).rows[0] as Record<string, unknown> | undefined;
   if (!project) return { error: "punch.error.noProject" };
-  const allowed = await allowedClientIds(session);
-  if (allowed !== "*" && !allowed.split(",").includes(String(project.client_id)) && kind === "in") {
-    return { error: "punch.error.noProject" };
+  const scope = await allowedScope(session);
+  if (kind === "in") {
+    // An employee can only check in on a project they are assigned to; others follow their clients.
+    if (scope.projects.startsWith("p:")) {
+      if (!scope.projects.slice(2).split(",").includes(String(projectId))) return { error: "punch.error.noProject" };
+    } else if (scope.ids !== "*" && !scope.ids.split(",").includes(String(project.client_id))) {
+      return { error: "punch.error.noProject" };
+    }
   }
 
   const lat = finiteOrNull(body.lat);
@@ -1001,6 +1006,48 @@ async function recordPunch(session: ScopedSession, body: Record<string, unknown>
     [session.id, projectId, kind, new Date().toISOString(), lat, lng, accuracy, distance, status, note],
   );
   return { punch: inserted.rows[0] };
+}
+
+/**
+ * A person corrects their own time entry (its check-in and check-out times). An administrator may correct anyone's.
+ * Every change is written to the activity log with the old and the new times and the reason.
+ */
+async function editPunches(session: ScopedSession, body: Record<string, unknown>) {
+  const inId = Number(body.in_id);
+  const outId = body.out_id === null || body.out_id === undefined || body.out_id === "" ? null : Number(body.out_id);
+  if (!Number.isInteger(inId) || (outId !== null && !Number.isInteger(outId))) return { error: "punch.error.failed" };
+  const inAt = new Date(String(body.in_at ?? ""));
+  const outAt = outId === null ? null : new Date(String(body.out_at ?? ""));
+  const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 300) : "";
+  if (Number.isNaN(inAt.getTime()) || (outAt && Number.isNaN(outAt.getTime()))) return { error: "punch.error.badTime" };
+  if (outAt && outAt.getTime() <= inAt.getTime()) return { error: "punch.error.badTime" };
+  const latest = Date.now() + 5 * 60_000;
+  if (inAt.getTime() > latest || (outAt && outAt.getTime() > latest)) return { error: "punch.error.badTime" };
+  if (!reason) return { error: "punch.error.needReason" };
+
+  const ids = outId === null ? [inId] : [inId, outId];
+  const rows = (await getPool().query("SELECT id, user_id, project_id, kind, punched_at FROM time_punches WHERE id = ANY($1::int[])", [ids])).rows as {
+    id: number;
+    user_id: number;
+    project_id: number;
+    kind: string;
+    punched_at: string;
+  }[];
+  const before = rows.find((r) => r.id === inId);
+  const beforeOut = outId === null ? undefined : rows.find((r) => r.id === outId);
+  if (!before || before.kind !== "in" || (outId !== null && (!beforeOut || beforeOut.kind !== "out" || beforeOut.project_id !== before.project_id || beforeOut.user_id !== before.user_id))) return { error: "punch.error.failed" };
+  if (before.user_id !== session.id && !effectiveAdmin(session)) return { error: "err.forbidden" };
+
+  await getPool().query("UPDATE time_punches SET punched_at = $2 WHERE id = $1", [inId, inAt.toISOString()]);
+  if (outId !== null && outAt) await getPool().query("UPDATE time_punches SET punched_at = $2 WHERE id = $1", [outId, outAt.toISOString()]);
+  const span = (a: string, b?: string) => `${new Date(a).toISOString()}${b ? ` → ${new Date(b).toISOString()}` : ""}`;
+  await getPool().query("INSERT INTO activities (project_id, user_id, action, details) VALUES ($1, $2, $3, $4)", [
+    before.project_id,
+    session.id,
+    "edited time entry",
+    `${span(before.punched_at, beforeOut?.punched_at)} => ${span(inAt.toISOString(), outAt?.toISOString())}${before.user_id !== session.id ? ` (employee #${before.user_id})` : ""} · ${reason}`,
+  ]);
+  return { ok: true };
 }
 
 const AUTH_ACTIONS = new Set([
@@ -1364,6 +1411,14 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
         return res.status(403).json({ error: "punch.error.notStaff" });
       }
       return res.status(200).json(await recordPunch(session, req.body ?? {}));
+    }
+    if (action === "edit_punch") {
+      if (!hasRemoteDb()) return res.status(200).json({ local: true });
+      const session = await loadSessionUser(req);
+      if (!session) return res.status(401).json({ error: "err.unauthorized" });
+      if (Number(session.must_change_password) === 1) return res.status(403).json({ error: "password_change_required" });
+      if (session.user_type !== "internal") return res.status(403).json({ error: "punch.error.notStaff" });
+      return res.status(200).json(await editPunches(session, req.body ?? {}));
     }
     if (action === "get_setting" || action === "set_setting") {
       if (!hasRemoteDb()) {

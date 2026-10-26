@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, Download, Timer } from "lucide-react";
+import { CalendarDays, Download, Loader2, Pencil, Timer } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { useWorkspace } from "@/lib/workspace";
 import { formatDate, formatDateTime } from "@/lib/format";
-import { addDaysISO, formatDuration, loadAllPunches, loadUserPunches, pairPunches, weekStartISO } from "@/lib/timeclock";
+import { addDaysISO, editTimeEntry, formatDuration, loadAllPunches, loadUserPunches, pairPunches, weekStartISO, type TimeEntry } from "@/lib/timeclock";
 import { downloadBlob } from "@/lib/download";
 import type { TimePunch, User } from "@/lib/types";
 import { db, dbReady, schema } from "../db";
@@ -44,6 +44,13 @@ export function TimesheetsPage() {
   const [exportIds, setExportIds] = useState<number[]>([]);
 
   const isAdmin = Boolean(user?.is_admin);
+  const [version, setVersion] = useState(0);
+  const [editing, setEditing] = useState<TimeEntry | null>(null);
+  const [editIn, setEditIn] = useState("");
+  const [editOut, setEditOut] = useState("");
+  const [editReason, setEditReason] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editBusy, setEditBusy] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -65,7 +72,7 @@ export function TimesheetsPage() {
         setLoading(false);
       }
     })();
-  }, [user?.id, isAdmin]);
+  }, [user?.id, isAdmin, version]);
 
   const weekEnd = addDaysISO(week, 7);
   const scoped = useMemo(() => {
@@ -137,6 +144,37 @@ export function TimesheetsPage() {
     const who = exportIds.length === 0 || exportIds.length === people.length ? "all" : `${exportIds.length}staff`;
     downloadBlob(new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" }), `timesheet-${week}-${who}.csv`);
     setExportOpen(false);
+  }
+
+  const localInput = (iso: string) => {
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  function openEdit(entry: TimeEntry) {
+    setEditing(entry);
+    setEditIn(localInput(entry.punchIn.punched_at));
+    setEditOut(entry.punchOut ? localInput(entry.punchOut.punched_at) : "");
+    setEditReason("");
+    setEditError(null);
+  }
+
+  async function saveEdit() {
+    if (!editing || !user) return;
+    setEditBusy(true);
+    setEditError(null);
+    const result = await editTimeEntry({
+      entry: editing,
+      inAt: new Date(editIn).toISOString(),
+      outAt: editing.punchOut && editOut ? new Date(editOut).toISOString() : null,
+      reason: editReason,
+      userId: user.id,
+    });
+    setEditBusy(false);
+    if (!result.ok) return setEditError(t((result.error.startsWith("punch.error.") ? result.error : "punch.error.failed") as never));
+    setEditing(null);
+    setVersion((v) => v + 1);
   }
 
   const byProject = useMemo(() => {
@@ -234,6 +272,7 @@ export function TimesheetsPage() {
                 <th className="px-4 py-3 font-medium">{t("punch.out")}</th>
                 <th className="px-4 py-3 text-right font-medium">{t("timesheet.hours")}</th>
                 <th className="px-4 py-3 font-medium">{t("billing.status")}</th>
+                <th className="w-12 px-2 py-3" />
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -260,6 +299,13 @@ export function TimesheetsPage() {
                     <td className="px-4 py-3">
                       <StatusBadge value={entry.open ? "in_progress" : "complete"} />
                     </td>
+                    <td className="px-2 py-3 text-right">
+                      {entry.punchIn.user_id === user?.id || isAdmin ? (
+                        <Button type="button" size="icon-sm" variant="ghost" aria-label={t("timesheet.edit")} title={t("timesheet.edit")} onClick={() => openEdit(entry)}>
+                          <Pencil className="size-4" />
+                        </Button>
+                      ) : null}
+                    </td>
                   </tr>
                 );
               })}
@@ -267,6 +313,41 @@ export function TimesheetsPage() {
           </table>
         </div>
       )}
+
+      <Dialog open={Boolean(editing)} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("timesheet.editTitle")}</DialogTitle>
+            <DialogDescription>{t("timesheet.logged")}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="space-y-1.5">
+              <Label>{t("punch.in")}</Label>
+              <Input type="datetime-local" value={editIn} onChange={(e) => setEditIn(e.target.value)} />
+            </div>
+            {editing?.punchOut ? (
+              <div className="space-y-1.5">
+                <Label>{t("punch.out")}</Label>
+                <Input type="datetime-local" value={editOut} onChange={(e) => setEditOut(e.target.value)} />
+              </div>
+            ) : null}
+            <div className="space-y-1.5">
+              <Label>{t("timesheet.reason")}</Label>
+              <Input correct value={editReason} onChange={(e) => setEditReason(e.target.value)} />
+            </div>
+            {editError ? <p className="text-sm text-destructive">{editError}</p> : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditing(null)}>
+              {t("clients.cancel")}
+            </Button>
+            <Button onClick={() => void saveEdit()} disabled={editBusy || !editIn || !editReason.trim()}>
+              {editBusy ? <Loader2 className="size-4 animate-spin" /> : null}
+              {t("timesheet.save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={exportOpen} onOpenChange={setExportOpen}>
         <DialogContent className="sm:max-w-md">

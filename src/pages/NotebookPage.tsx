@@ -12,7 +12,6 @@ import { copyAttachments, removeAttachmentsOf } from "@/lib/project-files";
 import { Attachments } from "@/components/project/Attachments";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -42,6 +41,7 @@ export function NotebookPage() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
   const [query, setQuery] = useState("");
+  const [section, setSection] = useState("all");
   const [draft, setDraft] = useState<Draft>({ title: "", body: "", project_id: "none" });
   const [state, setState] = useState<"idle" | "saving" | "saved">("idle");
   const [visibility, setVisibility] = useState<Visibility>("internal");
@@ -160,13 +160,33 @@ export function NotebookPage() {
     await load();
   }
 
+  // sections: like the tabs of a paper notebook, one per project that has notes, plus the notes with no project
+  const sections = useMemo(() => {
+    const ids = [...new Set(notes.map((n) => n.project_id).filter((id): id is number => id !== null))];
+    return ids.flatMap((id) => {
+      const p = projectOf(id);
+      return p ? [{ key: String(id), label: p.name, color: projectColor(p), n: notes.filter((n) => n.project_id === id).length }] : [];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notes, projects]);
+  const loose = notes.filter((n) => n.project_id === null).length;
+
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return q ? notes.filter((n) => `${n.title} ${n.body}`.toLowerCase().includes(q)) : notes;
-  }, [notes, query]);
+    return notes
+      .filter((n) => section === "all" || (section === "none" ? n.project_id === null : String(n.project_id) === section))
+      .filter((n) => !q || `${n.title} ${n.body}`.toLowerCase().includes(q));
+  }, [notes, query, section]);
 
   const project = projectOf(draft.project_id === "none" ? null : Number(draft.project_id));
-  const color = project ? projectColor(project) : "var(--primary)";
+  const color = project ? projectColor(project) : "#e4002b";
+  const stampLabel = note ? new Intl.DateTimeFormat(locale === "fr" ? "fr-CA" : "en-CA", { dateStyle: "full", timeStyle: "short" }).format(new Date(note.created_on)) : "";
+
+  const tabs = [
+    { key: "all", label: t("sch.filter.all"), color: "#8a8577", n: notes.length },
+    { key: "none", label: t("nb.general"), color: "#6b7280", n: loose },
+    ...sections,
+  ];
 
   return (
     <div>
@@ -187,36 +207,49 @@ export function NotebookPage() {
         }
       />
 
-      <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <Card className="gap-0 overflow-hidden p-0">
-          <div className="relative border-b bg-muted/30 p-3">
-            <Search className="pointer-events-none absolute top-5.5 left-6 size-4 text-muted-foreground" />
-            <Input className="h-9 pl-9" value={query} placeholder={t("nb.search")} onChange={(e) => setQuery(e.target.value)} />
+      {/* section tabs, like the coloured tabs of a notebook */}
+      <div className="flex flex-wrap items-end gap-1 px-2">
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => setSection(tab.key)}
+            className={cn(
+              "flex items-center gap-2 rounded-t-lg border border-b-0 px-4 py-2 text-sm font-medium transition-all",
+              section === tab.key ? "translate-y-px bg-[#fbfaf5] text-[#1f2a44] shadow-sm" : "bg-muted/50 text-muted-foreground hover:bg-muted",
+            )}
+            style={{ boxShadow: `inset 0 3px 0 ${tab.color}` }}
+          >
+            <span className="max-w-44 truncate">{tab.label}</span>
+            <span className="text-[10px] tabular-nums opacity-70">{tab.n}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="grid overflow-hidden rounded-2xl rounded-tl-none border bg-[#fbfaf5] text-[#1f2a44] shadow-lg lg:grid-cols-[250px_minmax(0,1fr)]">
+        {/* the pages of the section */}
+        <aside className="border-b bg-[#f1eee3] lg:border-r lg:border-b-0">
+          <div className="relative border-b border-[#ddd6c2] p-3">
+            <Search className="pointer-events-none absolute top-5.5 left-6 size-4 text-[#8a8577]" />
+            <Input className="h-9 border-[#d6cfba] bg-white/70 pl-9 dark:bg-white/70 text-[#1f2a44] placeholder:text-[#8a8577]" value={query} placeholder={t("nb.search")} onChange={(e) => setQuery(e.target.value)} />
           </div>
           {shown.length === 0 ? (
-            <p className="px-5 py-12 text-center text-sm text-muted-foreground">{t("nb.empty")}</p>
+            <p className="px-5 py-12 text-center text-sm text-[#6b665a]">{t("nb.empty")}</p>
           ) : (
-            <ul className="max-h-[70vh] divide-y overflow-y-auto">
+            <ul className="max-h-[72vh] overflow-y-auto">
               {shown.map((n) => {
                 const p = projectOf(n.project_id);
-                const c = p ? projectColor(p) : null;
                 return (
                   <li key={n.id}>
                     <button
                       type="button"
                       onClick={() => setSelected(n.id)}
-                      className={cn("block w-full px-4 py-3 text-left transition-colors hover:bg-foreground/5", selected === n.id && "bg-foreground/5")}
-                      style={selected === n.id ? { boxShadow: `inset 3px 0 0 ${c ?? "var(--primary)"}` } : undefined}
+                      className={cn("block w-full border-b border-[#e3ddc9] px-4 py-2.5 text-left transition-colors hover:bg-white/60", selected === n.id && "bg-white shadow-[inset_3px_0_0_#e4002b]")}
                     >
-                      <span className="block truncate font-medium">{n.title.trim() || t("nb.untitled")}</span>
-                      <span className="mt-0.5 line-clamp-2 block text-xs text-muted-foreground">{n.body.trim() || "—"}</span>
-                      <span className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+                      <span className="block truncate text-sm font-semibold">{n.title.trim() || t("nb.untitled")}</span>
+                      <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-[#6b665a]">
                         <span>{formatDateTime(n.updated_on, locale)}</span>
-                        {p ? (
-                          <span className="inline-flex max-w-40 items-center gap-1 truncate rounded-full px-2 py-0.5 font-medium" style={{ background: `color-mix(in srgb, ${c} 18%, transparent)` }}>
-                            {p.name}
-                          </span>
-                        ) : null}
+                        {p && section === "all" ? <span className="size-2 shrink-0 rounded-full" style={{ background: projectColor(p) }} title={p.name} /> : null}
                         {n.shared_note_id ? <Send className="size-3" aria-label={t("nb.inProject")} /> : null}
                       </span>
                     </button>
@@ -225,84 +258,112 @@ export function NotebookPage() {
               })}
             </ul>
           )}
-        </Card>
+        </aside>
 
+        {/* the page: lined paper with a red margin and punched holes */}
         {note ? (
-          <Card className="gap-4 p-5" style={{ boxShadow: `var(--glass-shadow), inset 0 3px 0 ${color}` }}>
-            <div className="flex items-start gap-3">
-              <NotebookPen className="mt-2 size-5 shrink-0" style={{ color }} />
-              <Input correct className="h-10 flex-1 border-0 bg-transparent px-0 text-lg font-semibold shadow-none focus-visible:ring-0" value={draft.title} placeholder={t("nb.titlePh")} onChange={(e) => change({ title: e.target.value })} />
-              <span className="mt-2 flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
-                {state === "saving" ? <Loader2 className="size-3 animate-spin" /> : state === "saved" ? <Check className="size-3" /> : null}
-                {state === "saving" ? t("nb.saving") : state === "saved" ? t("nb.saved") : null}
-              </span>
-              <Button size="icon-sm" variant="ghost" aria-label={t("exp.delete")} onClick={() => void remove(note)}>
+          <section className="relative min-w-0">
+            {[14, 50, 86].map((top) => (
+              <span key={top} aria-hidden className="absolute left-3 hidden size-3.5 rounded-full bg-[#2a2a28]/85 shadow-[inset_0_2px_3px_rgba(0,0,0,0.6)] sm:block" style={{ top: `${top}%` }} />
+            ))}
+            <span aria-hidden className="absolute inset-y-0 left-14 w-px bg-[#e57373]/70" />
+            <span aria-hidden className="absolute inset-y-0 left-[58px] w-px bg-[#e57373]/40" />
+
+            <div className="flex items-start gap-3 py-4 pr-4 pl-20">
+              <div className="min-w-0 flex-1">
+                <Input
+                  correct
+                  className="h-11 border-0 bg-transparent px-0 font-display text-3xl font-semibold tracking-wide md:text-3xl text-[#1f2a44] shadow-none placeholder:text-[#9a9585] focus-visible:ring-0 dark:bg-transparent"
+                  value={draft.title}
+                  placeholder={t("nb.titlePh")}
+                  onChange={(e) => change({ title: e.target.value })}
+                />
+                <p className="mt-1 flex items-center gap-2 text-xs text-[#6b665a]">
+                  <span className="capitalize">{stampLabel}</span>
+                  <span className="flex items-center gap-1">
+                    {state === "saving" ? <Loader2 className="size-3 animate-spin" /> : state === "saved" ? <Check className="size-3" /> : null}
+                    {state === "saving" ? t("nb.saving") : state === "saved" ? t("nb.saved") : null}
+                  </span>
+                </p>
+              </div>
+              <Button size="icon-sm" variant="ghost" className="text-[#6b665a] hover:bg-black/5 hover:text-[#b3261e]" aria-label={t("exp.delete")} onClick={() => void remove(note)}>
                 <Trash2 className="size-4" />
               </Button>
             </div>
+            <div className="mx-4 mb-2 h-0.5 rounded-full bg-[#1f2a44]/15 sm:ml-0" style={{ background: `linear-gradient(90deg, ${color}, transparent)` }} />
 
-            <Textarea className="min-h-56 resize-y" rows={10} value={draft.body} placeholder={t("nb.bodyPh")} onChange={(e) => change({ body: e.target.value })} />
+            <Textarea
+              className="min-h-[440px] resize-none rounded-none border-0 bg-transparent py-0 pr-6 pl-20 text-[16px] leading-8 text-[#1f2a44] shadow-none placeholder:text-[#9a9585] focus-visible:ring-0 dark:bg-transparent"
+              style={{ backgroundImage: "repeating-linear-gradient(transparent 0 31px, #b8d0e8 31px 32px)", backgroundAttachment: "local" }}
+              value={draft.body}
+              placeholder={t("nb.bodyPh")}
+              onChange={(e) => change({ body: e.target.value })}
+            />
 
-            <div className="space-y-2">
-              <Label className="text-xs uppercase tracking-wider text-muted-foreground">{t("nb.files")}</Label>
-              <Attachments projectId={NO_PROJECT} owner="pnote" ownerId={note.id} />
-            </div>
-
-            <div className="grid gap-4 border-t pt-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label>{t("nb.project")}</Label>
-                <Select value={draft.project_id} disabled={Boolean(note.shared_note_id)} onValueChange={(v) => change({ project_id: v })}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">{t("nb.noProject")}</SelectItem>
-                    {projects.map((p) => (
-                      <SelectItem key={p.id} value={String(p.id)}>
-                        {p.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            <div className="space-y-4 border-t border-[#ddd6c2] bg-[#f6f3e8] py-4 pr-6 pl-20">
+              <div className="space-y-2">
+                <Label className="text-[11px] uppercase tracking-wider text-[#6b665a]">{t("nb.files")}</Label>
+                <Attachments projectId={NO_PROJECT} owner="pnote" ownerId={note.id} />
               </div>
 
-              {draft.project_id !== "none" ? (
-                <div className="space-y-1.5">
-                  <Label>{t("nb.sendAs")}</Label>
-                  <Select value={visibility} onValueChange={(v) => setVisibility(v as Visibility)}>
-                    <SelectTrigger className="w-full">
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="w-full max-w-xs space-y-1.5">
+                  <Label className="text-[11px] uppercase tracking-wider text-[#6b665a]">{t("nb.project")}</Label>
+                  <Select value={draft.project_id} disabled={Boolean(note.shared_note_id)} onValueChange={(v) => change({ project_id: v })}>
+                    <SelectTrigger className="w-full bg-white/80 dark:bg-white/80 dark:hover:bg-white/90">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {VISIBILITIES.map((v) => (
-                        <SelectItem key={v} value={v}>
-                          {t(`nb.vis.${v}` as MessageKey)}
+                      <SelectItem value="none">{t("nb.noProject")}</SelectItem>
+                      {projects.map((p) => (
+                        <SelectItem key={p.id} value={String(p.id)}>
+                          {p.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-              ) : null}
-            </div>
 
-            {draft.project_id !== "none" ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <Button onClick={() => void sendToProject()} disabled={sending || !projectNoteText(draft)}>
-                  {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
-                  {note.shared_note_id ? t("nb.update") : t("nb.send")}
-                </Button>
-                {note.shared_note_id ? (
-                  <Button variant="outline" onClick={() => void unlink()}>
-                    <Undo2 className="size-4" />
-                    {t("nb.unlink")}
-                  </Button>
+                {draft.project_id !== "none" ? (
+                  <div className="w-full max-w-xs space-y-1.5">
+                    <Label className="text-[11px] uppercase tracking-wider text-[#6b665a]">{t("nb.sendAs")}</Label>
+                    <Select value={visibility} onValueChange={(v) => setVisibility(v as Visibility)}>
+                      <SelectTrigger className="w-full bg-white/80 dark:bg-white/80 dark:hover:bg-white/90">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {VISIBILITIES.map((v) => (
+                          <SelectItem key={v} value={v}>
+                            {t(`nb.vis.${v}` as MessageKey)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 ) : null}
-                {note.shared_note_id ? <span className="text-xs text-muted-foreground">{t("nb.inProject")}</span> : null}
+
+                {draft.project_id !== "none" ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button onClick={() => void sendToProject()} disabled={sending || !projectNoteText(draft)}>
+                      {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+                      {note.shared_note_id ? t("nb.update") : t("nb.send")}
+                    </Button>
+                    {note.shared_note_id ? (
+                      <Button variant="outline" className="bg-white/80" onClick={() => void unlink()}>
+                        <Undo2 className="size-4" />
+                        {t("nb.unlink")}
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-          </Card>
+            </div>
+          </section>
         ) : (
-          <Card className="flex min-h-64 items-center justify-center p-8 text-sm text-muted-foreground">{t("nb.pickSelect")}</Card>
+          <div className="flex min-h-80 items-center justify-center gap-3 p-8 text-sm text-[#6b665a]">
+            <NotebookPen className="size-5" />
+            {t("nb.pickSelect")}
+          </div>
         )}
       </div>
     </div>

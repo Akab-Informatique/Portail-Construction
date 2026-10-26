@@ -119,6 +119,8 @@ export function buildReport(opts: {
   pack: ReportPack;
   locale: Locale;
   preparedBy: string;
+  /** Staff reports leave out every amount of money. */
+  noMoney?: boolean;
   t: (key: string, vars?: Record<string, string | number>) => string;
 }): BuiltReport {
   const { project, pack, locale, t } = opts;
@@ -135,18 +137,24 @@ export function buildReport(opts: {
     snapshot: () => ({
       id: "snapshot",
       title: t("reports.sec.snapshot"),
-      summary: t("reports.snap.summary", {
-        status: project.status,
-        phase: project.phase,
-        used,
-      }),
+      summary: opts.noMoney
+        ? `${project.status} · ${project.phase}`
+        : t("reports.snap.summary", {
+            status: project.status,
+            phase: project.phase,
+            used,
+          }),
       rows: [
         { label: t("reports.snap.number"), value: project.project_number },
         { label: t("reports.snap.client"), value: opts.client?.company_name ?? "—" },
         { label: t("reports.snap.city"), value: project.city ?? "—" },
         { label: t("reports.snap.window"), value: `${formatDate(project.start_date, locale)} → ${formatDate(project.end_date, locale)}` },
-        { label: t("reports.snap.budget"), value: money(project.budget, locale) },
-        { label: t("reports.snap.spent"), value: `${money(project.spent, locale)} (${used}%)` },
+        ...(opts.noMoney
+          ? []
+          : [
+              { label: t("reports.snap.budget"), value: money(project.budget, locale) },
+              { label: t("reports.snap.spent"), value: `${money(project.spent, locale)} (${used}%)` },
+            ]),
         { label: t("reports.snap.tasks"), value: String(inFlight) },
         { label: t("reports.snap.rfis"), value: String(openRfi) },
         { label: t("reports.snap.punch"), value: String(openPunch) },

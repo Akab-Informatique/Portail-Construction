@@ -21,7 +21,7 @@ import type { SectionProps } from "./types";
  */
 export function ProjectDocuments({ project, client }: SectionProps) {
   const { t } = useI18n();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const [params, setParams] = useSearchParams();
   const color = projectColor(project);
   const isAdmin = Boolean(user?.is_admin) && user?.view_as !== "client";
@@ -78,7 +78,7 @@ export function ProjectDocuments({ project, client }: SectionProps) {
       {tab === "access" ? (
         <DocsAccess root={root} color={color} clients={client ? [client] : []} shareFolderId={root.rowId} rootLabel={root.name} />
       ) : (
-        <DocsExplorer root={root} settings={settings!} color={color} rootLabel={root.name} />
+        <DocsExplorer root={root} settings={settings!} color={color} rootLabel={root.name} readOnly={!isAdmin && !can("app_client_documents", "create")} />
       )}
     </div>
   );

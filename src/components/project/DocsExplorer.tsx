@@ -54,7 +54,8 @@ const kb = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} M
  * The file view: a tree of folders on the left, the tools on top (upload, download, export to PDF, print, selection)
  * and the folder's files in the middle like a file explorer. Nothing above `root` can be reached.
  */
-export function DocsExplorer({ root, settings, color, rootLabel }: { root: SpRoot; settings: SharePointSettings; color: string; rootLabel: string }) {
+/** `readOnly`: people who may look and download but not add, create or delete (the default for employees). */
+export function DocsExplorer({ root, settings, color, rootLabel, readOnly = false }: { root: SpRoot; settings: SharePointSettings; color: string; rootLabel: string; readOnly?: boolean }) {
   const { t, locale, tr } = useI18n();
   const [params, setParams] = useSearchParams();
   const tree = useSpTree(root);
@@ -307,10 +308,12 @@ export function DocsExplorer({ root, settings, color, rootLabel }: { root: SpRoo
   return (
     <div className="space-y-3">
       <Card className="flex-row flex-wrap items-center gap-2 p-3">
-        <Button size="sm" onClick={() => fileInput.current?.click()} disabled={busy}>
-          <Upload className="size-4" />
-          {t("pdoc.upload")}
-        </Button>
+        {!readOnly ? (
+          <Button size="sm" onClick={() => fileInput.current?.click()} disabled={busy}>
+            <Upload className="size-4" />
+            {t("pdoc.upload")}
+          </Button>
+        ) : null}
         <input
           ref={fileInput}
           type="file"
@@ -321,6 +324,7 @@ export function DocsExplorer({ root, settings, color, rootLabel }: { root: SpRoo
             e.target.value = "";
           }}
         />
+        {!readOnly ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button size="sm" variant="outline" disabled={busy}>
@@ -348,6 +352,7 @@ export function DocsExplorer({ root, settings, color, rootLabel }: { root: SpRoo
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        ) : null}
         <Button size="sm" variant="outline" onClick={() => void download()} disabled={needsSelection}>
           <Download className="size-4" />
           {t("pdoc.download")}
@@ -360,10 +365,12 @@ export function DocsExplorer({ root, settings, color, rootLabel }: { root: SpRoo
           <Printer className="size-4" />
           {t("pdoc.print")}
         </Button>
-        <Button size="sm" variant="outline" onClick={() => setDeleteOpen(true)} disabled={busy || selectedItems.length === 0} className="text-destructive hover:text-destructive">
-          <Trash2 className="size-4" />
-          {t("pdoc.delete")}
-        </Button>
+        {!readOnly ? (
+          <Button size="sm" variant="outline" onClick={() => setDeleteOpen(true)} disabled={busy || selectedItems.length === 0} className="text-destructive hover:text-destructive">
+            <Trash2 className="size-4" />
+            {t("pdoc.delete")}
+          </Button>
+        ) : null}
         <span className="mx-1 h-6 w-px bg-border" aria-hidden />
         <Button size="sm" variant="ghost" onClick={() => setSelected(all ? [] : ordered.map((i) => i.id))} disabled={ordered.length === 0}>
           <ChevronsUpDown className="size-4" />
@@ -402,7 +409,7 @@ export function DocsExplorer({ root, settings, color, rootLabel }: { root: SpRoo
           onDrop={(e) => {
             e.preventDefault();
             setDragging(false);
-            if (e.dataTransfer.files.length) void uploadFiles(e.dataTransfer.files);
+            if (!readOnly && e.dataTransfer.files.length) void uploadFiles(e.dataTransfer.files);
           }}
         >
           <nav className="flex flex-wrap items-center gap-1 border-b bg-muted/30 px-3 py-2 text-sm">
