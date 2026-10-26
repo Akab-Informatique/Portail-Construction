@@ -11,14 +11,12 @@ import { RequireModule } from "@/components/RequireModule";
 
 const DashboardPage = lazyPage(() => import("@/pages/DashboardPage"), "DashboardPage");
 const ClientsPage = lazyPage(() => import("@/pages/ClientsPage"), "ClientsPage");
-const ClientDetailPage = lazyPage(() => import("@/pages/ClientDetailPage"), "ClientDetailPage");
 const ProjectsPage = lazyPage(() => import("@/pages/ProjectsPage"), "ProjectsPage");
 const ProjectDetailPage = lazyPage(() => import("@/pages/ProjectDetailPage"), "ProjectDetailPage");
 const TeamPage = lazyPage(() => import("@/pages/TeamPage"), "TeamPage");
 const UserAccessPage = lazyPage(() => import("@/pages/UserAccessPage"), "UserAccessPage");
 const ProfilePage = lazyPage(() => import("@/pages/ProfilePage"), "ProfilePage");
 const ConfigUserPage = lazyPage(() => import("@/pages/config/ConfigUserPage"), "ConfigUserPage");
-const ClientBillingPage = lazyPage(() => import("@/pages/ClientBillingPage"), "ClientBillingPage");
 const AccountingBillingPage = lazyPage(() => import("@/pages/AccountingBillingPage"), "AccountingBillingPage");
 const ConfigSettingsPage = lazyPage(() => import("@/pages/config/ConfigSettingsPage"), "ConfigSettingsPage");
 const PunchPage = lazyPage(() => import("@/pages/PunchPage"), "PunchPage");
@@ -65,8 +63,6 @@ export default function App() {
           <Route path="documents" element={<RequireModule module="app_client_documents"><DocumentsPage /></RequireModule>} />
           <Route path="documents/projects" element={<RequireModule module="app_all_projects"><DocumentsProjectsPage /></RequireModule>} />
           <Route path="clients" element={<ClientsPage />} />
-          <Route path="clients/:clientId" element={<RequireModule module="app_client_overview"><ClientDetailPage /></RequireModule>} />
-          <Route path="clients/:clientId/billing" element={<RequireModule module="app_client_billing"><ClientBillingPage /></RequireModule>} />
           <Route path="accounting/billing" element={<AccountingBillingPage />} />
           <Route path="finance/billing" element={<RequireModule module="app_billing_mgmt"><FinanceBillingPage /></RequireModule>} />
           <Route path="projects" element={<RequireModule module="app_client_projects"><ProjectsPage /></RequireModule>} />

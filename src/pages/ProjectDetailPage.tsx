@@ -228,7 +228,7 @@ export function ProjectDetailPage() {
   return (
     <div>
       <Button variant="ghost" size="sm" className="-ml-2 mb-3" asChild>
-        <Link to={`/clients/${project.client_id}`}>
+        <Link to="/documents/projects">
           <ArrowLeft className="size-4" />
           {clientName || t("projects.clientFallback")}
         </Link>

@@ -77,7 +77,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
       icon: Building2,
       run: () => {
         selectClient(c.id);
-        go(`/clients/${c.id}`)();
+        go("/documents/projects")();
       },
     }));
     const clientName = new Map(clients.map((c) => [c.id, c.company_name]));

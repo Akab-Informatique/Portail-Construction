@@ -6,7 +6,6 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowLeft,
-  Building2,
   Check,
   ChevronDown,
   ChevronsLeft,
@@ -20,7 +19,6 @@ import {
   Menu,
   Moon,
   Presentation,
-  Receipt,
   Search,
   Settings,
   Shield,
@@ -44,7 +42,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { Select, SelectContent, SelectItem, SelectTrigger } from "./ui/select";
 import { CommandPalette, useCommandPaletteHotkey } from "./CommandPalette";
 import { ClockBadge, SignOutGuard } from "./ClockBadge";
 import { useClock } from "@/lib/clock";
@@ -80,12 +77,10 @@ export type NavItem = {
 export type NavSection = {
   id: string;
   label: string;
-  /** Shown next to the section label, e.g. the selected client's name. */
+  /** Shown next to the section label. */
   context?: string;
   tour?: string;
   items: NavItem[];
-  /** Rendered between the label and the items (client switcher). */
-  lead?: "clientPicker" | "clientName";
 };
 
 /**
@@ -126,35 +121,16 @@ export function useNavModel(): NavSection[] {
   const [showDev] = useShowDev();
   const { t } = useI18n();
   const { user, can, permissions } = useAuth();
-  const { selectedClient, clientProjects, clients } = useWorkspace();
   const allowed = (id: ModuleId) => canUseMenuModule(user, can, id);
 
   return useMemo(() => {
     const isClient = user?.user_type === "external";
     const isAdmin = Boolean(user?.is_admin) && user?.view_as !== "client";
-    const clientItems: NavItem[] = selectedClient
-      ? [
-          {
-            id: "clientOverview",
-            to: `/clients/${selectedClient.id}`,
-            label: isClient ? t("nav.companyOverview") : t("nav.clientOverview"),
-            icon: Building2,
-            end: true,
-            module: "app_client_overview",
-          },
-          {
-            id: "clientProjects",
-            to: "/projects",
-            label: t("nav.projects"),
-            icon: FolderKanban,
-            end: true,
-            count: clientProjects.length,
-            module: "app_client_projects",
-          },
-          { id: "clientDocuments", to: "/documents", label: t("nav.documents"), icon: FileText, end: true, tour: "documents", module: "app_client_documents" },
-          { id: "clientBilling", to: `/clients/${selectedClient.id}/billing`, label: t("nav.billing"), icon: Receipt, module: "app_client_billing" },
-        ]
-      : [];
+    // Client section is being rebuilt: only Projects and Documentation remain.
+    const clientItems: NavItem[] = [
+      { id: "clientProjects", to: "/projects", label: t("nav.projects"), icon: FolderKanban, end: true, module: "app_client_projects" },
+      { id: "clientDocuments", to: "/documents", label: t("nav.documents"), icon: FileText, end: true, tour: "documents", module: "app_client_documents" },
+    ];
 
     if (isClient) {
       return [
@@ -167,8 +143,6 @@ export function useNavModel(): NavSection[] {
           id: "client",
           label: t("nav.yourCompany"),
           tour: "operations",
-          lead: clients.length > 1 && user?.view_as !== "client" ? "clientPicker" : "clientName",
-          context: selectedClient?.company_name,
           items: clientItems,
         },
       ];
@@ -188,8 +162,6 @@ export function useNavModel(): NavSection[] {
         id: "client",
         label: t("nav.section.client"),
         tour: "operations",
-        lead: "clientPicker",
-        context: selectedClient?.company_name,
         items: clientItems,
       },
       {
@@ -225,7 +197,7 @@ export function useNavModel(): NavSection[] {
         if (own && !canUseMenuModule(user, can, own)) return false;
         return section.id === "client" || section.items.length > 0;
       });
-  }, [t, user, can, permissions, selectedClient, clientProjects.length, clients.length, showDev]);
+  }, [t, user, can, permissions, showDev]);
 }
 
 type SidebarCtx = { collapsed: boolean; onNavigate?: () => void };
@@ -267,54 +239,8 @@ function SidebarLink({ item }: { item: NavItem }) {
   );
 }
 
-function ClientSwitcher() {
-  const { t } = useI18n();
-  const navigate = useNavigate();
-  const { onNavigate } = useContext(SidebarContext);
-  const { clients, selectedClient, selectedClientId, selectClient } = useWorkspace();
-
-  return (
-    <Select
-      value={selectedClientId ? String(selectedClientId) : ""}
-      onValueChange={(v) => {
-        const id = Number(v);
-        selectClient(id);
-        navigate(`/clients/${id}`);
-        onNavigate?.();
-      }}
-    >
-      <SelectTrigger
-        aria-label={t("nav.workingOn")}
-        className="frx-ticks mb-2 h-auto w-full rounded-sm border border-white/10 bg-white/[0.03] px-3 py-2.5 text-left shadow-none hover:border-primary/60 hover:bg-white/[0.05] focus-visible:ring-primary/40 dark:bg-white/[0.03] dark:hover:bg-white/[0.05] [&>svg]:text-white/50"
-      >
-        <span className="flex min-w-0 flex-1 items-center gap-2.5">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-sm bg-primary font-display text-sm font-bold text-black">
-            {(selectedClient?.company_name ?? "?").slice(0, 2).toUpperCase()}
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="frx-label block text-[9px] text-white/45">{t("nav.workingOn")}</span>
-            <span className="block truncate text-[13.5px] font-semibold text-white">
-              {selectedClient?.company_name ?? t("nav.selectClient")}
-            </span>
-          </span>
-        </span>
-      </SelectTrigger>
-      {/* "popper" anchors the list under the custom trigger; the default
-          item-aligned mode needs a <SelectValue> and opened off-screen. */}
-      <SelectContent position="popper" sideOffset={6} className="w-(--radix-select-trigger-width)">
-        {clients.map((c) => (
-          <SelectItem key={c.id} value={String(c.id)}>
-            {c.company_name}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}
-
 function SectionBlock({ section, index }: { section: NavSection; index: number }) {
   const { collapsed } = useContext(SidebarContext);
-  const { t } = useI18n();
   return (
     <div className="mt-5 first:mt-1" data-tour={section.tour}>
       {collapsed ? (
@@ -326,13 +252,6 @@ function SectionBlock({ section, index }: { section: NavSection; index: number }
           <span className="h-px flex-1 bg-white/[0.08]" aria-hidden />
         </p>
       )}
-      {!collapsed && section.lead === "clientPicker" ? <ClientSwitcher /> : null}
-      {!collapsed && section.lead === "clientName" && section.context ? (
-        <p className="mb-2 truncate px-3 text-[12px] font-semibold text-white/70">{section.context}</p>
-      ) : null}
-      {section.items.length === 0 && !collapsed && section.lead !== "clientPicker" ? (
-        <p className="px-3 py-1 text-[12px] text-white/35">{t("nav.selectClient")}</p>
-      ) : null}
       <div className="flex flex-col gap-0.5">
         {section.items.map((item) => (
           <SidebarLink key={item.id} item={item} />
@@ -357,7 +276,7 @@ function ProjectMenu() {
       <button
         type="button"
         onClick={() => {
-          navigate(`/clients/${activeProject.client_id}`);
+          navigate("/documents/projects");
           onNavigate?.();
         }}
         title={collapsed ? t("nav.backToMenu") : undefined}
@@ -625,7 +544,7 @@ export function AppShell() {
   const { t, locale, setLocale } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
-  const { activeProject, selectedClient, selectedClientId } = useWorkspace();
+  const { activeProject, selectedClient } = useWorkspace();
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -646,8 +565,7 @@ export function AppShell() {
   function chooseView(mode: ViewAsMode) {
     setViewAs(mode);
     if (mode === "client") {
-      if (selectedClientId) navigate(`/clients/${selectedClientId}`);
-      else navigate("/");
+      navigate("/");
       return;
     }
     if (mode !== "admin" && (location.pathname.startsWith("/settings") || location.pathname.startsWith("/accounting") || location.pathname.startsWith("/finance"))) {
@@ -663,23 +581,15 @@ export function AppShell() {
   const wideLayout =
     location.pathname === "/projects" ||
     location.pathname.startsWith("/finance") ||
-    location.pathname.startsWith("/accounting") ||
-    /^\/clients\/\d+\/billing/.test(location.pathname);
+    location.pathname.startsWith("/accounting");
 
   const segments = location.pathname.split("/").filter(Boolean);
   const named = segments.filter((s) => Number.isNaN(Number(s)));
   const last = named[named.length - 1];
   const pageKey = (last && CRUMB[last]) || (named[0] ? CRUMB[named[0]] : undefined) || "nav.dashboard";
-  const onClientHome = named.length === 1 && named[0] === "clients" && segments.length === 2;
-  const pageLabel =
-    activeProject && named[0] === "projects"
-      ? activeProject.name
-      : onClientHome
-        ? t("nav.clientOverview")
-        : t(pageKey);
-  const showClientCrumb =
-    selectedClient &&
-    (named[0] === "clients" || named[0] === "projects" || (named[0] === "documents" && named.length === 1));
+  const pageLabel = activeProject && named[0] === "projects" ? activeProject.name : t(pageKey);
+  // On a project page the breadcrumb shows its client.
+  const showClientCrumb = Boolean(activeProject && selectedClient && named[0] === "projects");
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -723,7 +633,7 @@ export function AppShell() {
             {showClientCrumb ? (
               <>
                 <span className="text-primary">/</span>
-                <span className="max-w-[16rem] truncate">{selectedClient.company_name}</span>
+                <span className="max-w-[16rem] truncate">{selectedClient?.company_name}</span>
               </>
             ) : null}
             <span className="text-primary">/</span>

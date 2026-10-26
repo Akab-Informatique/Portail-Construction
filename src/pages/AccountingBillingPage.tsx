@@ -126,7 +126,6 @@ export function AccountingBillingPage() {
   const canManage = Boolean(
     user?.is_admin || (groupBilling && user?.user_type === "internal" && can("billing", "create")),
   );
-  const homeClientId = clients[0]?.id;
   const mailReady = smtp ? smtpIsReady(smtp) : false;
 
   // Opened from the notification bubble: /accounting/billing?quote=<id>
@@ -466,7 +465,7 @@ export function AccountingBillingPage() {
   }
 
   if (user?.user_type === "external") {
-    return <Navigate to={homeClientId ? `/clients/${homeClientId}/billing` : "/"} replace />;
+    return <Navigate to="/" replace />;
   }
   if (loading || !company) return <PageSkeleton />;
   if (!canView) {

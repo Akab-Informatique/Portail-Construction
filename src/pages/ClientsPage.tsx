@@ -1,5 +1,4 @@
 import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
 import { eq } from "drizzle-orm";
 import { Building2, Plus, Search } from "lucide-react";
 import { db, dbReady, schema } from "../db";
@@ -178,7 +177,7 @@ export function ClientsPage() {
             const jobs = projects.filter((p) => p.client_id === c.id);
             const active = jobs.filter((p) => p.status === "active").length;
             return (
-              <Link key={c.id} to={`/clients/${c.id}`} className="group">
+              <div key={c.id} className="group">
                 <Card className="h-full gap-4 py-5 transition-colors group-hover:border-primary/35">
                   <div className="flex items-start justify-between gap-3 px-5">
                     <div className="min-w-0">
@@ -205,7 +204,7 @@ export function ClientsPage() {
                     </span>
                   </div>
                 </Card>
-              </Link>
+              </div>
             );
           })}
         </div>

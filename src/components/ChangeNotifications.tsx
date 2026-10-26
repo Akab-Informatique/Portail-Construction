@@ -138,7 +138,8 @@ export function ChangeNotifications() {
 
   function go(item: Item) {
     setOpen(false);
-    navigate(isClient ? `/clients/${item.clientId}/billing?file=${item.fileId}` : `/finance/billing?file=${item.fileId}`);
+    // Client billing pages were removed; clients land on their dashboard.
+    navigate(isClient ? "/" : `/finance/billing?file=${item.fileId}`);
   }
 
   async function markAll() {

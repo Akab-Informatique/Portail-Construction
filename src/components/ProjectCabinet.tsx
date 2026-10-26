@@ -168,10 +168,6 @@ export function ClientDrawer({
               {running.length > 0 ? <span className="font-semibold tabular-nums text-foreground">{overall}%</span> : null}
             </span>
           </button>
-          <Link to={`/clients/${client.id}`} className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground">
-            {t("dash.viewAll")}
-            <ChevronRight className="size-3.5" />
-          </Link>
           {/* the drawer handle */}
           <span className="hidden h-2 w-14 rounded-full bg-gradient-to-b from-foreground/25 to-foreground/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_2px_3px_rgba(0,0,0,0.25)] sm:block" aria-hidden />
         </div>

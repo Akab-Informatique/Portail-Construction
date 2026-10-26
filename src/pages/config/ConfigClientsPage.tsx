@@ -331,9 +331,6 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
                     </p>
                   </div>
                   <div className="flex shrink-0 gap-2">
-                    <Button variant="outline" size="sm" asChild>
-                      <Link to={`/clients/${c.id}`}>{t("nav.clientDashboard")}</Link>
-                    </Button>
                     <Button variant="outline" size="sm" onClick={() => openEdit(c)}>
                       <Pencil className="size-3.5" />
                       {t("config.clients.edit")}
