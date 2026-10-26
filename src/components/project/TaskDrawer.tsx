@@ -58,6 +58,7 @@ export function TaskDrawer({
   const [newNote, setNewNote] = useState("");
   const [depPick, setDepPick] = useState("");
   const [depError, setDepError] = useState<string | null>(null);
+  const [guard, setGuard] = useState<string | null>(null);
   const taskId = task?.id ?? 0;
 
   const load = useCallback(async () => {
@@ -84,7 +85,6 @@ export function TaskDrawer({
         .map((d) => allTasks.find((x) => x.id === d.depends_on_id))
         .filter((x): x is Task => Boolean(x) && x!.status !== "completed")
     : [];
-  const [guard, setGuard] = useState<string | null>(null);
 
   async function patch(values: Partial<Task>) {
     if (!task) return;
