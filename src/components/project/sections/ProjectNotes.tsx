@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { desc, eq } from "drizzle-orm";
-import { Bot, Camera, Eye, EyeOff, Loader2, Paperclip, Send, Trash2, X } from "lucide-react";
+import { asc, desc, eq } from "drizzle-orm";
+import { Bot, Camera, MessageSquare, Eye, EyeOff, Loader2, Paperclip, Send, Trash2, X } from "lucide-react";
 import { syncAutoNotes } from "@/lib/task-activity";
 import { db, schema } from "../../../db";
 import { useAuth } from "@/lib/auth";
@@ -8,7 +8,7 @@ import { useI18n } from "@/lib/i18n";
 import { formatDateTime } from "@/lib/format";
 import { projectColor } from "@/lib/project-colors";
 import { addAttachment, countAttachments, removeAttachmentsOf } from "@/lib/project-files";
-import { notifySummary, sendNotification } from "@/lib/notify";
+import { notifyEvent, notifySummary, sendNotification } from "@/lib/notify";
 import { logActivity } from "@/lib/activity";
 import { Attachments } from "@/components/project/Attachments";
 import { NotifyPicker, type NotifyChoice } from "@/components/project/NotifyPicker";
@@ -21,6 +21,7 @@ import type { SectionProps } from "./types";
 
 type Note = typeof schema.project_notes.$inferSelect;
 type Visibility = "everyone" | "internal";
+type Comment = typeof schema.note_comments.$inferSelect;
 
 /**
  * Notes: the project's journal. Each note is either for everyone (the client will see it) or internal only,
@@ -43,15 +44,24 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
   const camera = useRef<HTMLInputElement>(null);
 
   const isAdminUser = Boolean(user?.is_admin) && user?.view_as !== "client";
+  // A client account reads the notes shared with it and comments on them; it cannot write notes.
+  const viewer = user?.user_type === "external" || user?.view_as === "client";
+  const [comments, setComments] = useState<Record<number, Comment[]>>({});
+  const [drafts, setDrafts] = useState<Record<number, string>>({});
+  const [sendingComment, setSendingComment] = useState<number | null>(null);
   const load = useCallback(async () => {
     // The portal's own notes about late or stalled tasks, for administrators only.
     if (isAdminUser) await syncAutoNotes(project, t as never, locale).catch(() => 0);
-    const [rows, counts] = await Promise.all([
+    const [rows, counts, commentRows] = await Promise.all([
       db.select().from(schema.project_notes).where(eq(schema.project_notes.project_id, project.id)).orderBy(desc(schema.project_notes.created_at), desc(schema.project_notes.id)),
       countAttachments(project.id, "note"),
+      db.select().from(schema.note_comments).where(eq(schema.note_comments.project_id, project.id)).orderBy(asc(schema.note_comments.id)),
     ]);
     setNotes(rows);
     setFileCount(counts);
+    const grouped: Record<number, Comment[]> = {};
+    for (const c of commentRows) (grouped[c.note_id] ??= []).push(c);
+    setComments(grouped);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.id, isAdminUser]);
   useEffect(() => {
@@ -62,6 +72,21 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
   const inCharge = members.map((m) => m.user_id);
   const who = (id: number | null) => people.find((p) => p.id === id)?.name ?? "—";
   const isAdmin = Boolean(user?.is_admin);
+
+  async function comment(note: Note) {
+    const text = (drafts[note.id] ?? "").trim();
+    if (!text || !user) return;
+    setSendingComment(note.id);
+    try {
+      const [row] = await db.insert(schema.note_comments).values({ note_id: note.id, project_id: project.id, user_id: user.id, body: text, created_on: new Date().toISOString() }).returning();
+      setDrafts((d) => ({ ...d, [note.id]: "" }));
+      await load();
+      // the person who wrote the note hears about it
+      if (row) void notifyEvent("note_comment", row.id);
+    } finally {
+      setSendingComment(null);
+    }
+  }
 
   async function post() {
     const text = body.trim();
@@ -90,12 +115,13 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
   }
 
   // Notes written by the portal are for administrators only, for now.
-  const visible = notes.filter((n) => n.visibility !== "admin" || isAdminUser);
+  const visible = notes.filter((n) => (viewer ? n.visibility === "everyone" && n.auto === 0 : n.visibility !== "admin" || isAdminUser));
   const shown = visible.filter((n) => (filter === "auto" ? n.auto === 1 : filter === "all" || n.visibility === filter));
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
+    <div className={cn("grid gap-5", !viewer && "lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]")}>
       {/* composer */}
+      {viewer ? null : (
       <Card className="h-fit gap-4 p-5 lg:sticky lg:top-36">
         <Textarea rows={5} value={body} placeholder={t("note.placeholder")} onChange={(e) => setBody(e.target.value)} />
 
@@ -148,10 +174,11 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
         </Button>
         {message ? <p className="text-xs text-muted-foreground">{message}</p> : null}
       </Card>
+      )}
 
       {/* journal */}
       <div className="space-y-3">
-        <div className="flex items-center gap-1 rounded-lg border bg-muted/40 p-0.5 self-start w-fit">
+        <div className={cn("flex items-center gap-1 rounded-lg border bg-muted/40 p-0.5 self-start w-fit", viewer && "hidden")}>
           {(isAdminUser ? (["all", "everyone", "internal", "auto"] as const) : (["all", "everyone", "internal"] as const)).map((f) => (
             <Button key={f} type="button" size="sm" variant={filter === f ? "default" : "ghost"} className="h-7 px-3 text-xs" onClick={() => setFilter(f)}>
               {f === "all" ? t("sch.filter.all") : f === "auto" ? t("note.filter.auto") : t(`note.vis.${f}`)}
@@ -183,7 +210,7 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
                         {n.visibility === "everyone" ? <Eye className="size-3" /> : <EyeOff className="size-3" />}
                         {n.visibility === "admin" ? t("note.vis.admin") : t(`note.vis.${n.visibility === "everyone" ? "everyone" : "internal"}`)}
                       </span>
-                      {mine || isAdmin ? (
+                      {!viewer && (mine || isAdmin) ? (
                         <Button
                           size="icon-sm"
                           variant="ghost"
@@ -200,7 +227,25 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
                       ) : null}
                     </div>
                     <p className="whitespace-pre-wrap text-sm leading-relaxed">{n.body}</p>
-                    {fileCount[n.id] ? <Attachments projectId={project.id} owner="note" ownerId={n.id} canEdit={mine || isAdmin} onChange={() => void load()} /> : null}
+                    {fileCount[n.id] ? <Attachments projectId={project.id} owner="note" ownerId={n.id} canEdit={!viewer && (mine || isAdmin)} onChange={() => void load()} /> : null}
+                    <div className="space-y-2 border-t pt-3">
+                      {(comments[n.id] ?? []).map((c) => (
+                        <div key={c.id} className="flex gap-2.5">
+                          <UserAvatar name={who(c.user_id)} size="sm" />
+                          <div className="min-w-0 flex-1 rounded-xl bg-muted/40 px-3 py-2">
+                            <p className="text-xs"><span className="font-medium">{who(c.user_id)}</span> <span className="text-muted-foreground">· {formatDateTime(c.created_on, locale)}</span></p>
+                            <p className="mt-0.5 whitespace-pre-wrap text-sm">{c.body}</p>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="flex items-end gap-2">
+                        <Textarea rows={1} className="min-h-10" value={drafts[n.id] ?? ""} placeholder={t("note.commentPh")} onChange={(e) => setDrafts((d) => ({ ...d, [n.id]: e.target.value }))} />
+                        <Button type="button" size="sm" variant="outline" disabled={sendingComment === n.id || !(drafts[n.id] ?? "").trim()} onClick={() => void comment(n)}>
+                          {sendingComment === n.id ? <Loader2 className="size-4 animate-spin" /> : <MessageSquare className="size-4" />}
+                          {t("note.comment")}
+                        </Button>
+                      </div>
+                    </div>
                   </Card>
                 </li>
               );

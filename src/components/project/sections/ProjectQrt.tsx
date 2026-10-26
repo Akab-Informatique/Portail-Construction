@@ -7,7 +7,7 @@ import { useI18n } from "@/lib/i18n";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { projectColor } from "@/lib/project-colors";
 import { countAttachments, removeAttachmentsOf } from "@/lib/project-files";
-import { notifySummary, sendNotification } from "@/lib/notify";
+import { notifyEvent, notifySummary, sendNotification } from "@/lib/notify";
 import { Attachments } from "@/components/project/Attachments";
 import { NotifyPicker, type NotifyChoice } from "@/components/project/NotifyPicker";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,8 @@ export function ProjectQrt({ project, client, people, members }: SectionProps) {
   const [answerText, setAnswerText] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  // A client account asks questions and reads the answers; it cannot answer, edit or delete.
+  const viewer = user?.user_type === "external" || user?.view_as === "client";
 
   const staff = people.filter((p) => p.user_type === "internal");
   const inCharge = members.map((m) => m.user_id);
@@ -52,7 +54,7 @@ export function ProjectQrt({ project, client, people, members }: SectionProps) {
   const load = useCallback(async () => {
     let rows = await db.select().from(schema.project_qrt).where(eq(schema.project_qrt.project_id, project.id)).orderBy(asc(schema.project_qrt.id));
     // First visit: fill in what we already know about the job.
-    if (rows.length === 0) {
+    if (rows.length === 0 && !viewer) {
       const running = seeding.get(project.id);
       if (running) {
         await running;
@@ -90,7 +92,7 @@ export function ProjectQrt({ project, client, people, members }: SectionProps) {
     setEntries(rows);
     setFileCount(await countAttachments(project.id, "qrt"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project.id]);
+  }, [project.id, viewer]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -101,18 +103,20 @@ export function ProjectQrt({ project, client, people, members }: SectionProps) {
     setBusy(true);
     setMessage(null);
     try {
-      await db.insert(schema.project_qrt).values({
+      const [created] = await db.insert(schema.project_qrt).values({
         project_id: project.id,
         question: text,
         answer: null,
-        origin: fromClient ? "client" : "staff",
+        origin: viewer || fromClient ? "client" : "staff",
         status: "open",
         asked_by: user?.id ?? null,
         answered_by: null,
         answered_at: null,
         prefilled: 0,
-      });
-      if (notify.userIds.length && notify.channels.length) {
+      }).returning();
+      // a client's question tells the people on the project by email
+      if (viewer && created) void notifyEvent("qrt", created.id);
+      if (!viewer && notify.userIds.length && notify.channels.length) {
         const result = await sendNotification({
           userIds: notify.userIds,
           channels: notify.channels,
@@ -220,7 +224,7 @@ export function ProjectQrt({ project, client, people, members }: SectionProps) {
                     </p>
                   )}
 
-                  <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className={cn("flex flex-wrap items-center justify-between gap-2", viewer && "hidden")}>
                     <Button
                       size="sm"
                       variant={open ? "default" : "outline"}
@@ -246,7 +250,7 @@ export function ProjectQrt({ project, client, people, members }: SectionProps) {
                       <Trash2 className="size-4" />
                     </Button>
                   </div>
-                  <Attachments projectId={project.id} owner="qrt" ownerId={e.id} compact={!fileCount[e.id]} onChange={() => void load()} />
+                  {viewer && !fileCount[e.id] ? null : <Attachments projectId={project.id} owner="qrt" ownerId={e.id} canEdit={!viewer} compact={!fileCount[e.id]} onChange={() => void load()} />}
                 </Card>
               </li>
             );
@@ -264,11 +268,15 @@ export function ProjectQrt({ project, client, people, members }: SectionProps) {
               <Label>{t("qrt.question")}</Label>
               <Textarea autoFocus rows={4} value={question} onChange={(e) => setQuestion(e.target.value)} />
             </div>
-            <label className="flex cursor-pointer items-center gap-2 text-sm">
-              <input type="checkbox" checked={fromClient} onChange={(e) => setFromClient(e.target.checked)} />
-              {t("qrt.asByClient")}
-            </label>
-            <NotifyPicker people={staff} value={notify} onChange={setNotify} preselect={inCharge} />
+            {viewer ? null : (
+              <>
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input type="checkbox" checked={fromClient} onChange={(e) => setFromClient(e.target.checked)} />
+                  {t("qrt.asByClient")}
+                </label>
+                <NotifyPicker people={staff} value={notify} onChange={setNotify} preselect={inCharge} />
+              </>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAskOpen(false)}>{t("clients.cancel")}</Button>

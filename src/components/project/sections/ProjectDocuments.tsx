@@ -10,6 +10,7 @@ import type { SharePointFolder, SharePointSettings } from "@/lib/types";
 import { EmptyState } from "@/components/EmptyState";
 import { DocsAccess } from "@/components/project/DocsAccess";
 import { DocsExplorer } from "@/components/project/DocsExplorer";
+import { SharePointLibrary } from "@/components/project/SharePointLibrary";
 import type { SpRoot } from "@/components/project/useSpTree";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,8 @@ export function ProjectDocuments({ project, client }: SectionProps) {
   const color = projectColor(project);
   const isAdmin = Boolean(user?.is_admin) && user?.view_as !== "client";
   const tab = isAdmin && params.get("tab") === "access" ? "access" : "files";
+  // A client account only sees the folders and files shared with it, with the rights it was given.
+  const viewer = user?.user_type === "external" || user?.view_as === "client";
   const [state, setState] = useState<"loading" | "notConfigured" | "noFolder" | "ready">("loading");
   const [settings, setSettings] = useState<SharePointSettings | null>(null);
   const [root, setRoot] = useState<SpRoot | null>(null);
@@ -48,6 +51,7 @@ export function ProjectDocuments({ project, client }: SectionProps) {
     };
   }, [project.id]);
 
+  if (viewer) return <SharePointLibrary projectId={project.id} projectName={project.name} client={client} canCreate={false} />;
   if (state === "loading") return <Card className="p-10 text-center text-sm text-muted-foreground">…</Card>;
   if (state === "notConfigured") return <EmptyState icon={<FileText className="size-5" />} title={t("sp.notConfigured")} description={t("sp.notConfiguredHint")} />;
   if (state === "noFolder" || !root) return <EmptyState icon={<FolderOpen className="size-5" />} title={t("pdoc.noFolder")} description={t("pdoc.noFolderHint")} />;

@@ -622,3 +622,13 @@ export const user_prefs = pgTable("user_prefs", {
   /** The day the morning email was last sent (YYYY-MM-DD), so it goes out once a day. */
   morning_sent_on: text("morning_sent_on"),
 });
+
+/** A comment under a project note. Clients cannot write notes, but can comment on the ones shared with them. */
+export const note_comments = pgTable("note_comments", {
+  id: serial("id").primaryKey(),
+  note_id: integer("note_id").notNull(),
+  project_id: integer("project_id").notNull(),
+  user_id: integer("user_id").notNull(),
+  body: text("body").notNull(),
+  created_on: text("created_on").notNull(),
+});

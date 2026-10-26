@@ -129,6 +129,15 @@ export async function getAccessibleClientIds(
  */
 export async function getAccessibleProjectIds(user: SessionUser | null): Promise<number[] | null> {
   if (!user || !user.is_active) return [];
+  // A real client account: only the projects it was assigned to (an administrator previewing as a client sees the whole company).
+  if (user.user_type === "external" && user.view_as !== "client" && !user.is_admin) {
+    try {
+      const mine = await db.select({ project_id: schema.project_members.project_id }).from(schema.project_members).where(eq(schema.project_members.user_id, user.id));
+      return mine.map((m) => m.project_id);
+    } catch {
+      return null;
+    }
+  }
   if (user.is_admin || user.user_type === "external" || user.view_as === "client") return null;
   try {
     const rows = await db.select().from(schema.users).where(eq(schema.users.id, user.id));

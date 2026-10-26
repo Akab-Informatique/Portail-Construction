@@ -29,6 +29,7 @@ export function ScheduleBreakdown({
   onOpen,
   onAdd,
   onChanged,
+  readOnly = false,
 }: {
   project: Project;
   tasks: Task[];
@@ -38,6 +39,8 @@ export function ScheduleBreakdown({
   /** Ask for a new phase (kind "phase") or a task under a phase. */
   onAdd: (kind: "phase" | "task", parentId: number | null) => void;
   onChanged: () => void;
+  /** A client reads the breakdown and exports it; nothing can be added, moved or opened. */
+  readOnly?: boolean;
 }) {
   const { t, locale } = useI18n();
   const fr = locale === "fr";
@@ -121,10 +124,14 @@ export function ScheduleBreakdown({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Button variant="outline" onClick={() => onAdd("phase", null)}>
-          <PlusCircle className="size-4" />
-          {t("wbs.addPhase")}
-        </Button>
+        {readOnly ? (
+          <span />
+        ) : (
+          <Button variant="outline" onClick={() => onAdd("phase", null)}>
+            <PlusCircle className="size-4" />
+            {t("wbs.addPhase")}
+          </Button>
+        )}
         <Button
           onClick={() => {
             let saved = "";
@@ -169,7 +176,7 @@ export function ScheduleBreakdown({
                 const isBreak = row.kind === "break";
                 const bg = isPhase ? `color-mix(in srgb, ${color} 22%, var(--card))` : isBreak ? "color-mix(in srgb, var(--foreground) 12%, var(--card))" : undefined;
                 return (
-                  <tr key={row.task.id} className="group cursor-pointer border-b border-border/70 transition-colors hover:brightness-95" style={{ background: bg }} onClick={() => onOpen(row.task.id)}>
+                  <tr key={row.task.id} className={cn("group border-b border-border/70 transition-colors", !readOnly && "cursor-pointer hover:brightness-95")} style={{ background: bg }} onClick={() => !readOnly && onOpen(row.task.id)}>
                     <td className="border-r border-border/50 px-2 text-[10px] tabular-nums text-muted-foreground">{row.n}</td>
                     <td className={cn("border-r border-border/50 py-1.5 pr-2", isPhase || isBreak ? "font-bold" : "")} style={{ paddingLeft: row.depth === 1 ? 26 : 10 }}>
                       {row.task.title}
@@ -185,7 +192,7 @@ export function ScheduleBreakdown({
                     <td className="border-r border-border/50 px-2 text-right tabular-nums">{isBreak ? "" : `${row.progress}%`}</td>
                     <td className="border-r border-border/50 px-2">{row.task.description ?? ""}</td>
                     <td className="px-1" onClick={(e) => e.stopPropagation()}>
-                      <span className="flex items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                      <span className={cn("flex items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100", readOnly && "hidden")}>
                         {isPhase ? (
                           <button type="button" title={t("wbs.addTask")} aria-label={t("wbs.addTask")} className="rounded p-1 hover:bg-foreground/10" onClick={() => onAdd("task", row.task.id)}>
                             <Plus className="size-3.5" />

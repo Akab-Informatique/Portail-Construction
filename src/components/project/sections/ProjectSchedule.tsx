@@ -41,9 +41,11 @@ const PRIORITY_DOT: Record<string, string> = { low: "bg-slate-400", medium: "bg-
 export function ProjectSchedule({ project, people }: SectionProps) {
   const { t, locale } = useI18n();
   const { user } = useAuth();
+  // A client account reads the schedule: no forecast, nothing to add or change, no task details.
+  const viewer = user?.user_type === "external" || user?.view_as === "client";
   const [params, setParams] = useSearchParams();
   const rawView = params.get("view");
-  const view: View = rawView === "calendar" || rawView === "gantt" || rawView === "wbs" || rawView === "forecast" ? rawView : "tasks";
+  const view: View = rawView === "calendar" || rawView === "gantt" || rawView === "wbs" || (rawView === "forecast" && !viewer) ? rawView : "tasks";
   const color = projectColor(project);
 
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -84,10 +86,10 @@ export function ProjectSchedule({ project, people }: SectionProps) {
     const [taskRows, eventRows, checks, notes, files, depRows] = await Promise.all([
       db.select().from(schema.project_tasks).where(eq(schema.project_tasks.project_id, project.id)).orderBy(asc(schema.project_tasks.end_date), asc(schema.project_tasks.id)),
       db.select().from(schema.calendar_events).where(eq(schema.calendar_events.project_id, project.id)),
-      db.select().from(schema.task_checklist).where(eq(schema.task_checklist.project_id, project.id)),
-      db.select({ task_id: schema.task_notes.task_id }).from(schema.task_notes).where(eq(schema.task_notes.project_id, project.id)),
-      countAttachments(project.id, "task"),
-      db.select({ task_id: schema.task_dependencies.task_id, depends_on_id: schema.task_dependencies.depends_on_id }).from(schema.task_dependencies).where(eq(schema.task_dependencies.project_id, project.id)),
+      viewer ? Promise.resolve([]) : db.select().from(schema.task_checklist).where(eq(schema.task_checklist.project_id, project.id)),
+      viewer ? Promise.resolve([]) : db.select({ task_id: schema.task_notes.task_id }).from(schema.task_notes).where(eq(schema.task_notes.project_id, project.id)),
+      viewer ? Promise.resolve({}) : countAttachments(project.id, "task"),
+      viewer ? Promise.resolve([]) : db.select({ task_id: schema.task_dependencies.task_id, depends_on_id: schema.task_dependencies.depends_on_id }).from(schema.task_dependencies).where(eq(schema.task_dependencies.project_id, project.id)),
     ]);
     setDeps(depRows);
     setTasks(taskRows);
@@ -103,7 +105,7 @@ export function ProjectSchedule({ project, people }: SectionProps) {
     for (const n of notes) nc[n.task_id] = (nc[n.task_id] ?? 0) + 1;
     setNoteCount(nc);
     setFileCount(files);
-  }, [project.id]);
+  }, [project.id, viewer]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -184,7 +186,7 @@ export function ProjectSchedule({ project, people }: SectionProps) {
     { id: "forecast", label: t("sch.forecast"), icon: TrendingUp },
     { id: "calendar", label: t("sch.calendar"), icon: CalendarDays },
     { id: "gantt", label: t("sch.gantt"), icon: GanttChartSquare },
-  ];
+  ].filter((tab) => !(viewer && tab.id === "forecast")) as { id: View; label: string; icon: typeof ListChecks }[];
 
   return (
     <div className="space-y-4">
@@ -203,7 +205,7 @@ export function ProjectSchedule({ project, people }: SectionProps) {
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2">
+        <div className={cn("flex items-center gap-2", viewer && "hidden")}>
           {view === "calendar" ? (
             <Button variant="outline" onClick={() => setEventOpen(true)}>
               <Plus className="size-4" />
@@ -302,15 +304,16 @@ export function ProjectSchedule({ project, people }: SectionProps) {
                                   <div
                                     role="button"
                                     tabIndex={isFolded ? -1 : 0}
-                                    onClick={() => setOpenId(task.id)}
-                                    onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setOpenId(task.id)}
-                                    className={cn("frx-glass group flex cursor-pointer items-center gap-3 border border-[color:var(--glass-edge)] px-4 py-3 transition-all hover:-translate-y-0.5", flashId === task.id && "ring-2 ring-primary")}
+                                    onClick={() => !viewer && setOpenId(task.id)}
+                                    onKeyDown={(e) => !viewer && (e.key === "Enter" || e.key === " ") && setOpenId(task.id)}
+                                    className={cn("frx-glass group flex items-center gap-3 border border-[color:var(--glass-edge)] px-4 py-3 transition-all", !viewer && "cursor-pointer hover:-translate-y-0.5", flashId === task.id && "ring-2 ring-primary")}
                                     style={{ boxShadow: `var(--glass-shadow), inset 3px 0 0 ${done ? "transparent" : blockers.length ? "#ef4444" : color}` }}
                                   >
                                     <button
                                       type="button"
                                       aria-label={t("sch.toggleDone")}
                                       className="shrink-0"
+                                      disabled={viewer}
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         void toggleDone(task);
@@ -426,6 +429,7 @@ export function ProjectSchedule({ project, people }: SectionProps) {
           check={checkCount}
           people={people}
           onOpen={setOpenId}
+          readOnly={viewer}
           onAdd={(kind, parentId) => {
             setAddPreset({ kind, parentId });
             setAddOpen(true);
@@ -448,7 +452,7 @@ export function ProjectSchedule({ project, people }: SectionProps) {
 
       {view === "gantt" ? <TaskGantt tasks={tasks} color={color} checkCount={checkCount} onOpen={setOpenId} /> : null}
 
-      <TaskDrawer project={project} task={openTask} people={people} phases={phases} allTasks={tasks} deps={deps} open={openTask !== null} onClose={() => setOpenId(null)} onChanged={() => void load()} />
+      {viewer ? null : <TaskDrawer project={project} task={openTask} people={people} phases={phases} allTasks={tasks} deps={deps} open={openTask !== null} onClose={() => setOpenId(null)} onChanged={() => void load()} />}
 
       <AddTaskDialog
         open={addOpen}

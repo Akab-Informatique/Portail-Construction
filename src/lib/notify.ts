@@ -44,3 +44,12 @@ export function notifySummary(result: NotifyResult, t: (key: never, vars?: Recor
   if (result.failed.length) parts.push(say("ntf.failed"));
   return parts.length ? parts.join(" · ") : null;
 }
+
+/** Tells the right person by email about a comment under a note, or a client's question in QRT. The server decides who. */
+export async function notifyEvent(kind: "note_comment" | "qrt", id: number): Promise<void> {
+  try {
+    await fetch("/api/notify-event", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, id }) });
+  } catch {
+    /* no server in local development */
+  }
+}

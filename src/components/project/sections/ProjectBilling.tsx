@@ -20,7 +20,7 @@ import {
 } from "@/lib/billing-files";
 import { buildProjectMoney } from "@/lib/project-money";
 import type { BillingFile, BillingRequest } from "@/lib/types";
-import { StatusPill } from "@/components/BillingFileDialog";
+import { BillingFileDialog, StatusPill } from "@/components/BillingFileDialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -30,7 +30,7 @@ import type { SectionProps } from "./types";
  * Quotes and invoices of this project, the way the client sees them: every quote with its versions, add-ons and
  * change requests, then the invoices. Clicking any line opens it in Billing management to make adjustments.
  */
-export function ProjectBilling({ project }: SectionProps) {
+export function ProjectBilling({ project, client }: SectionProps) {
   const { t, locale } = useI18n();
   const { user, can } = useAuth();
   const navigate = useNavigate();
@@ -38,7 +38,10 @@ export function ProjectBilling({ project }: SectionProps) {
   const [files, setFiles] = useState<BillingFile[]>([]);
   const [requests, setRequests] = useState<BillingRequest[]>([]);
   const [folded, setFolded] = useState<Set<number>>(new Set());
-  const canManage = canUseMenuModule(user, can, "app_billing_mgmt");
+  // A client account never leaves this page: it opens, accepts, declines and asks for changes right here.
+  const viewer = user?.user_type === "external" || user?.view_as === "client";
+  const [viewingId, setViewingId] = useState<number | null>(null);
+  const canManage = !viewer && canUseMenuModule(user, can, "app_billing_mgmt");
 
   const load = useCallback(async () => {
     const [f, r] = await Promise.all([listBillingFiles(), listBillingRequests()]);
@@ -56,7 +59,12 @@ export function ProjectBilling({ project }: SectionProps) {
   const quotes = mine.filter((f) => f.kind === "quote" && !f.parent_id);
   const invoices = mine.filter((f) => f.kind === "invoice").sort((a, b) => (b.issued_on ?? "").localeCompare(a.issued_on ?? ""));
   const moneyOf = buildProjectMoney(mine).get(project.id);
-  const open = (id: number) => navigate(`/finance/billing?file=${id}`);
+  const open = (id: number) => {
+    if (!viewer) return navigate(`/finance/billing?file=${id}`);
+    setViewingId(id);
+  };
+  const viewing = files.find((f) => f.id === viewingId) ?? null;
+  const pillMode = viewer ? "client" : "staff";
   const openRequests = requests.filter((r) => r.status === "open" && mine.some((f) => f.id === r.file_id));
 
   const cards = [
@@ -147,7 +155,7 @@ export function ProjectBilling({ project }: SectionProps) {
                         {addons ? ` · ${t("pb.addons", { n: addons })}` : ""}
                       </span>
                     ) : null}
-                    <StatusPill file={current} mode="staff" status={status} />
+                    <StatusPill file={current} mode={pillMode} status={status} />
                     <span className="w-28 text-right font-semibold tabular-nums">{moneyExact(quoteEffectiveTotal(q, mine), locale)}</span>
                     <ChevronRight className="size-4 text-muted-foreground" />
                   </button>
@@ -160,7 +168,7 @@ export function ProjectBilling({ project }: SectionProps) {
                           <span className="tabular-nums">{k.number}</span>
                           <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{k.is_addon === 1 ? t("pb.addon") : t("pb.version")}</span>
                           <span className="min-w-0 flex-1 truncate text-muted-foreground">{k.title}</span>
-                          <StatusPill file={k} mode="staff" status={revisionStatus(k, mine)} />
+                          <StatusPill file={k} mode={pillMode} status={revisionStatus(k, mine)} />
                           <span className="w-28 text-right tabular-nums">{moneyExact(k.amount, locale)}</span>
                         </button>
                       </li>
@@ -191,7 +199,7 @@ export function ProjectBilling({ project }: SectionProps) {
                     <span className="font-semibold tabular-nums">{inv.number}</span>
                     <span className="min-w-0 flex-1 truncate">{inv.title}</span>
                     <span className="hidden text-xs tabular-nums text-muted-foreground sm:inline">{inv.issued_on ? formatDate(inv.issued_on, locale) : ""}</span>
-                    <StatusPill file={inv} mode="staff" status={displayStatus(inv)} />
+                    <StatusPill file={inv} mode={pillMode} status={displayStatus(inv)} />
                     <span className="w-28 text-right font-semibold tabular-nums">{moneyExact(inv.amount, locale)}</span>
                     <ChevronRight className="size-4 text-muted-foreground" />
                   </button>
@@ -201,6 +209,21 @@ export function ProjectBilling({ project }: SectionProps) {
           </Card>
         )}
       </section>
+      {viewer ? (
+        <BillingFileDialog
+          file={viewing}
+          allFiles={files}
+          requests={requests}
+          mode="client"
+          canDecide
+          canManage={false}
+          userId={user?.id ?? 0}
+          userName={user?.name ?? ""}
+          companyName={client?.company_name ?? ""}
+          onClose={() => setViewingId(null)}
+          onChanged={() => void load()}
+        />
+      ) : null}
     </div>
   );
 }

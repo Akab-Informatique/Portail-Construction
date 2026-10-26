@@ -134,7 +134,9 @@ export function DashboardPage() {
     persist(layout.map((w) => (w.id === id ? { ...w, visible: !w.visible } : w)));
   }
 
-  const widgets = useMemo(() => (editing ? layout : layout.filter((w) => w.visible)), [editing, layout]);
+  // A client account sees one thing here: the schedule of the projects it was assigned to.
+  const isClient = user?.user_type === "external" || user?.view_as === "client";
+  const widgets = useMemo(() => (isClient ? layout.filter((w) => w.id === "gantt").map((w) => ({ ...w, visible: true })) : editing ? layout : layout.filter((w) => w.visible)), [editing, layout, isClient]);
   if (loading) return <PageSkeleton />;
 
   const greeting = (() => {
@@ -187,6 +189,7 @@ export function DashboardPage() {
         eyebrow={t("dash.eyebrow")}
         title={`${greeting}, ${user?.name.split(" ")[0]}`}
         actions={
+          isClient ? undefined : (
           <div className="flex flex-wrap gap-2">
             {editing ? (
               <Button variant="outline" onClick={() => persist(DEFAULT_DASHBOARD)}>
@@ -205,8 +208,10 @@ export function DashboardPage() {
               {editing ? t("dash.done") : t("dash.customize")}
             </Button>
           </div>
+          )
         }
       />
+      {isClient ? null : (
       <DailySummary
         userId={user?.id}
         projects={projects}
@@ -219,6 +224,7 @@ export function DashboardPage() {
           ...punchItems.filter((x) => x.due_date).map((x) => ({ project_id: x.project_id, title: x.title, date: x.due_date! })),
         ]}
       />
+      )}
       <div className="grid gap-6">
         {widgets.map((widget, index) => (
           <section key={widget.id} className={editing ? "rounded-sm border border-dashed border-border p-3" : undefined}>

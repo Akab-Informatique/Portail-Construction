@@ -45,6 +45,7 @@ export function visibleProjectModules(
   projectId: number,
 ) {
   const ids: ModuleId[] = ["dashboard", "documents", "tasks", "notes", "forms", "safety", "qrt", "project_billing"];
-  if (user?.user_type === "external" || user?.view_as === "client") return ids;
+  // A client sees the overview, its documentation, the schedule, the notes shared with it, QRT and quotes/invoices (no forms, no SST).
+  if (user?.user_type === "external" || user?.view_as === "client") return ids.filter((id) => id !== "forms" && id !== "safety");
   return ids.filter((id) => can(user, permissions, id, "view", { projectId }));
 }

@@ -131,6 +131,11 @@ export function useNavModel(): NavSection[] {
       { id: "clientDocuments", to: "/documents", label: t("nav.documents"), icon: FileText, end: true, tour: "documents", module: "app_client_documents" },
       { id: "clientProjects", to: "/projects", label: t("nav.projects"), icon: FolderKanban, end: true, module: "app_client_projects" },
     ];
+    // A client account: its documentation (with the rights it was given) and its projects, in the cabinet.
+    const clientOwnItems: NavItem[] = [
+      clientItems[0],
+      { id: "allProjects", to: "/documents/projects", label: t("nav.allProjects"), icon: LayoutGrid, end: true, tour: "projectsDocs", module: "app_all_projects", activePrefix: "/projects/" },
+    ];
 
     if (isClient) {
       return [
@@ -143,7 +148,7 @@ export function useNavModel(): NavSection[] {
           id: "client",
           label: t("nav.yourCompany"),
           tour: "operations",
-          items: clientItems,
+          items: clientOwnItems,
         },
       ];
     }

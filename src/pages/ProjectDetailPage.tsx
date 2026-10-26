@@ -131,7 +131,7 @@ export function ProjectDetailPage() {
         description={project.description || project.city || undefined}
         actions={
           <>
-            <PunchRuleChip project={project} onClick={isAdmin ? () => setRuleOpen(true) : undefined} />
+            {user?.user_type === "external" || user?.view_as === "client" ? null : <PunchRuleChip project={project} onClick={isAdmin ? () => setRuleOpen(true) : undefined} />}
             <StatusBadge value={project.status} />
             <StatusBadge value={project.phase} />
             {isAdmin || user?.user_type === "internal" ? (

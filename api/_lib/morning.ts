@@ -194,7 +194,7 @@ export async function buildMorning(person: Person, prefs: { o365_calendar: numbe
   return { subject: L.subject(dateLabel), html, text };
 }
 
-async function sendMail(to: string, mail: { subject: string; html: string; text: string }) {
+export async function sendMail(to: string, mail: { subject: string; html: string; text: string }) {
   let stored: Smtp | undefined;
   try {
     const raw = await readStoredSetting("smtp");

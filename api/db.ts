@@ -139,6 +139,7 @@ const PROJECT_SCOPED = [
   "project_attachments",
   "task_dependencies",
   "form_entries",
+  "note_comments",
 ];
 const ME = "NULLIF(current_setting('frx.user_id', true), '')::int";
 const ALL_CLIENTS = "(current_setting('frx.client_ids', true) = '*')";
@@ -214,6 +215,9 @@ async function ensureApiRoles() {
          EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO ${ROLE_ADMIN}', t);
        END LOOP;
      END $$`,
+    // A client account reads the notes shared with it, the QRT and the files on them; it may comment and ask questions.
+    `GRANT SELECT ON project_notes, project_attachments, project_qrt TO ${ROLE_CLIENT}`,
+    `GRANT INSERT ON note_comments, project_qrt TO ${ROLE_CLIENT}`,
     `GRANT SELECT (${publicCols}) ON users TO ${all}`,
     `GRANT INSERT, UPDATE, DELETE ON users TO ${ROLE_ADMIN}`,
     `GRANT UPDATE (${USER_SELF_COLUMNS.join(", ")}) ON users TO ${ROLE_USER}, ${ROLE_CLIENT}`,
@@ -287,6 +291,14 @@ async function ensureApiRoles() {
       "frx_client_request",
       `FOR INSERT TO ${ROLE_CLIENT} WITH CHECK (status = 'open' AND requested_by = ${ME} AND ${scopes.billing_requests})`,
     ),
+    ...policy("project_notes", "frx_client_shared", `AS RESTRICTIVE FOR SELECT TO ${ROLE_CLIENT} USING (visibility = 'everyone' AND auto = 0)`),
+    ...policy(
+      "project_attachments",
+      "frx_client_files",
+      `AS RESTRICTIVE FOR SELECT TO ${ROLE_CLIENT} USING (owner_type = 'qrt' OR (owner_type = 'note' AND EXISTS (SELECT 1 FROM project_notes n WHERE n.id = owner_id AND n.visibility = 'everyone')))`,
+    ),
+    ...policy("note_comments", "frx_client_comment", `FOR INSERT TO ${ROLE_CLIENT} WITH CHECK (user_id = ${ME} AND frx_project_ok(project_id))`),
+    ...policy("project_qrt", "frx_client_ask", `FOR INSERT TO ${ROLE_CLIENT} WITH CHECK (origin = 'client' AND asked_by = ${ME} AND frx_project_ok(project_id))`),
     ...policy("activities", "frx_client_log", `FOR INSERT TO ${ROLE_CLIENT} WITH CHECK (user_id = ${ME} AND ${scopes.activities})`),
     ...policy(
       "activities",
@@ -413,7 +425,12 @@ async function allowedScopeUncached(session: ScopedSession): Promise<{ ids: stri
   const pool = getPool();
   if (session.user_type === "external") {
     const result = await pool.query("SELECT client_id FROM client_users WHERE user_id = $1", [session.id]);
-    return { ids: digits(result.rows, "client_id").join(","), projects: "" };
+    // A client account sees only the projects of its company that it was assigned to.
+    const assigned = await pool.query(
+      "SELECT pm.project_id AS id FROM project_members pm JOIN projects p ON p.id = pm.project_id JOIN client_users cu ON cu.client_id = p.client_id AND cu.user_id = $1 WHERE pm.user_id = $1",
+      [session.id],
+    );
+    return { ids: digits(result.rows, "client_id").join(","), projects: `p:${digits(assigned.rows, "id").join(",")}` };
   }
   if (Number(session.all_clients) !== 0) return { ids: "*", projects: "" };
   const [clients, projects] = await Promise.all([

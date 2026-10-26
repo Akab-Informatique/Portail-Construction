@@ -15,6 +15,8 @@ import { projectSectionPath } from "@/lib/project-nav";
 import { PhaseBar } from "@/components/ProjectCabinet";
 import { Thumb } from "@/components/project/Attachments";
 import { UserAvatar } from "@/components/UserAvatar";
+import { ProjectTeamDialog } from "@/components/project/ProjectTeamDialog";
+import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import type { SectionProps } from "./types";
@@ -40,8 +42,11 @@ function Ring({ percent, color }: { percent: number; color: string }) {
  * Overview: a dashboard for the project that is always reassuring. It shows progress, what is done, what is next and
  * the latest from the site, with a short "work in progress" message that only ever talks about the good news.
  */
-export function ProjectOverview({ project, people, members }: SectionProps) {
+export function ProjectOverview({ project, client, people, members, reload }: SectionProps) {
   const { t, locale } = useI18n();
+  const { user } = useAuth();
+  const isAdmin = Boolean(user?.is_admin) && user?.view_as !== "client";
+  const [teamOpen, setTeamOpen] = useState(false);
   const color = projectColor(project);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [shared, setShared] = useState<Note[]>([]);
@@ -53,8 +58,8 @@ export function ProjectOverview({ project, people, members }: SectionProps) {
   const load = useCallback(async () => {
     const [t1, n1, p1] = await Promise.all([
       db.select().from(schema.project_tasks).where(eq(schema.project_tasks.project_id, project.id)).orderBy(asc(schema.project_tasks.end_date)),
-      db.select().from(schema.project_notes).where(eq(schema.project_notes.project_id, project.id)).orderBy(desc(schema.project_notes.created_at)),
-      latestPhotos(project.id, 8),
+      db.select().from(schema.project_notes).where(eq(schema.project_notes.project_id, project.id)).orderBy(desc(schema.project_notes.created_at)).catch(() => [] as Note[]),
+      latestPhotos(project.id, 8).catch(() => [] as Attachment[]),
     ]);
     setTasks(t1);
     setShared(n1.filter((n) => n.visibility === "everyone").slice(0, 3));
@@ -200,6 +205,11 @@ export function ProjectOverview({ project, people, members }: SectionProps) {
           <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             <Users className="size-3.5" />
             {t("ov2.team")}
+            {isAdmin ? (
+              <button type="button" className="ml-auto rounded px-1.5 text-[10px] font-semibold normal-case tracking-normal text-foreground/70 underline-offset-2 hover:text-foreground hover:underline" onClick={() => setTeamOpen(true)}>
+                {t("team.manage")}
+              </button>
+            ) : null}
           </p>
           <ul className="space-y-1.5">
             {team.slice(0, 4).map((m) => (
@@ -213,6 +223,8 @@ export function ProjectOverview({ project, people, members }: SectionProps) {
           </ul>
         </Card>
       </div>
+
+      <ProjectTeamDialog open={teamOpen} project={project} client={client} people={people} members={members} onClose={() => setTeamOpen(false)} onSaved={() => void reload()} />
 
       <div className="grid gap-5 lg:grid-cols-3">
         <Card className="gap-3 p-5">
