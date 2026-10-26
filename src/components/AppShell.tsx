@@ -128,8 +128,8 @@ export function useNavModel(): NavSection[] {
     const isAdmin = Boolean(user?.is_admin) && user?.view_as !== "client";
     // Client section is being rebuilt: only Projects and Documentation remain.
     const clientItems: NavItem[] = [
-      { id: "clientProjects", to: "/projects", label: t("nav.projects"), icon: FolderKanban, end: true, module: "app_client_projects" },
       { id: "clientDocuments", to: "/documents", label: t("nav.documents"), icon: FileText, end: true, tour: "documents", module: "app_client_documents" },
+      { id: "clientProjects", to: "/projects", label: t("nav.projects"), icon: FolderKanban, end: true, module: "app_client_projects" },
     ];
 
     if (isClient) {
