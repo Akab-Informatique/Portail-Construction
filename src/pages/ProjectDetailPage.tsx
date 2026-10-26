@@ -1,3 +1,4 @@
+import { ProjectTopNav } from "@/components/ProjectTopNav";
 import { getAccessibleProjectIds } from "@/lib/access";
 import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
 import { pairPunches } from "@/lib/timeclock";
@@ -5,7 +6,7 @@ import { PunchRuleChip } from "@/components/PunchRule";
 import { PUNCH_RULE_ANCHOR, PunchRuleEditor } from "@/components/project/PunchRuleEditor";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { eq } from "drizzle-orm";
-import { ArrowLeft, FolderKanban, Pencil, Plus, Users } from "lucide-react";
+import { FolderKanban, Pencil, Plus, Users } from "lucide-react";
 import { db, dbReady, schema } from "../db";
 import { useAuth } from "@/lib/auth";
 import { withProjectMoney } from "@/lib/project-money";
@@ -229,12 +230,7 @@ export function ProjectDetailPage() {
 
   return (
     <div>
-      <Button variant="ghost" size="sm" className="-ml-2 mb-3" asChild>
-        <Link to="/documents/projects">
-          <ArrowLeft className="size-4" />
-          {clientName || t("projects.clientFallback")}
-        </Link>
-      </Button>
+      <ProjectTopNav project={project} backLabel={clientName || t("nav.allProjects")} />
 
       <PageHeader
         eyebrow={project.project_number}

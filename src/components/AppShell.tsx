@@ -5,7 +5,6 @@ import { Logo } from "@/components/Logo";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
-  ArrowLeft,
   Check,
   ChevronDown,
   ChevronsLeft,
@@ -48,8 +47,6 @@ import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
 import { useI18n } from "@/lib/i18n";
 import { useWorkspace } from "@/lib/workspace";
-import { PROJECT_NAV_GROUPS, projectSectionPath } from "@/lib/project-nav";
-import { visibleProjectModules } from "@/lib/permissions";
 import { ForcePasswordDialog } from "@/components/ForcePasswordDialog";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PageSkeleton } from "@/components/Skeleton";
@@ -165,7 +162,7 @@ export function useNavModel(): NavSection[] {
         // Job site: projects and documents, then time on site (staff only).
         items: [
           clientItems[0],
-          { id: "allProjects", to: "/documents/projects", label: t("nav.allProjects"), icon: LayoutGrid, end: true, tour: "projectsDocs", module: "app_all_projects" },
+          { id: "allProjects", to: "/documents/projects", label: t("nav.allProjects"), icon: LayoutGrid, end: true, tour: "projectsDocs", module: "app_all_projects", activePrefix: "/projects/" },
           // Punch and timesheets: one entry, two tabs; opens the first tab the user may see.
           ...(allowed("app_timesheets") || allowed("app_expenses") || allowed("app_punch")
             ? [
@@ -271,71 +268,6 @@ function SectionBlock({ section, index }: { section: NavSection; index: number }
   );
 }
 
-function ProjectMenu() {
-  const { t } = useI18n();
-  const navigate = useNavigate();
-  const { collapsed, onNavigate } = useContext(SidebarContext);
-  const { user, permissions } = useAuth();
-  const { activeProject } = useWorkspace();
-  if (!activeProject) return null;
-
-  const allowed = visibleProjectModules(user, permissions, activeProject.id);
-
-  return (
-    <nav className="flex flex-col">
-      <button
-        type="button"
-        onClick={() => {
-          navigate("/documents/projects");
-          onNavigate?.();
-        }}
-        title={collapsed ? t("nav.backToMenu") : undefined}
-        className={itemClass(false, collapsed)}
-      >
-        <ArrowLeft className="size-[17px] shrink-0 opacity-75" />
-        {!collapsed && t("nav.backToMenu")}
-      </button>
-      {!collapsed && (
-        <div className="frx-ticks mx-0 mb-1 mt-3 border border-white/10 bg-white/[0.03] px-3 py-3">
-          <p className="frx-label text-primary">{activeProject.project_number}</p>
-          <p className="mt-1 truncate font-display text-lg font-bold leading-tight text-white">{activeProject.name}</p>
-        </div>
-      )}
-      {PROJECT_NAV_GROUPS.map((group, gi) => {
-        const items = group.items.filter((n) => allowed.includes(n.id));
-        if (items.length === 0) return null;
-        return (
-          <div key={group.id} className="mt-4">
-            {collapsed ? (
-              <div className="mx-auto mb-2 h-px w-6 bg-white/10" aria-hidden />
-            ) : (
-              <p className="frx-label mb-2 flex items-center gap-2 px-3 text-white/35">
-                <span className="text-primary">{String(gi + 1).padStart(2, "0")}</span>
-                <span>{t(group.labelKey as MessageKey)}</span>
-                <span className="h-px flex-1 bg-white/[0.08]" aria-hidden />
-              </p>
-            )}
-            <div className="flex flex-col gap-0.5">
-              {items.map((n) => (
-                <SidebarLink
-                  key={n.id}
-                  item={{
-                    id: n.id,
-                    to: projectSectionPath(activeProject.id, n.id),
-                    label: t(n.labelKey),
-                    icon: n.icon,
-                    end: n.id === "dashboard" ? true : undefined,
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-        );
-      })}
-    </nav>
-  );
-}
-
 function SidebarBody({
   onNavigate,
   collapsed = false,
@@ -351,7 +283,6 @@ function SidebarBody({
   const { t } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
-  const { projectMode } = useWorkspace();
   const sections = useNavModel();
   const [showDev, toggleDev] = useShowDev();
   const clock = useClock();
@@ -418,15 +349,11 @@ function SidebarBody({
 
         <ScrollArea className="min-h-0 flex-1">
           <div className={cn("pb-4 pt-2", collapsed ? "px-2" : "px-3")}>
-            {projectMode ? (
-              <ProjectMenu />
-            ) : (
-              <nav className="flex flex-col">
-                {sections.map((section, i) => (
-                  <SectionBlock key={section.id} section={section} index={i} />
-                ))}
-              </nav>
-            )}
+            <nav className="flex flex-col">
+              {sections.map((section, i) => (
+                <SectionBlock key={section.id} section={section} index={i} />
+              ))}
+            </nav>
           </div>
         </ScrollArea>
 
