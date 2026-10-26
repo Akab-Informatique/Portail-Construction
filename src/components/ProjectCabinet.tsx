@@ -16,7 +16,7 @@ const DAY = 86400000;
 const days = (a: string, b: string) => Math.round((new Date(`${b}T00:00:00`).getTime() - new Date(`${a}T00:00:00`).getTime()) / DAY);
 
 /** Seven phases as one segmented bar: finished ones filled, the current one lit, the rest faint. */
-function PhaseBar({ project, color }: { project: Project; color: string }) {
+export function PhaseBar({ project, color }: { project: Project; color: string }) {
   const { t } = useI18n();
   const finished = project.status === "completed";
   const current = Math.max(0, PROJECT_PHASES.findIndex((p) => p.value === project.phase));

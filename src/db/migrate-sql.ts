@@ -117,6 +117,18 @@ CREATE INDEX IF NOT EXISTS access_group_clients_group_idx ON access_group_client
 CREATE INDEX IF NOT EXISTS projects_client_idx ON projects (client_id);
 CREATE INDEX IF NOT EXISTS billing_documents_client_idx ON billing_documents (client_id);
 CREATE TABLE IF NOT EXISTS expenses (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL, project_id INTEGER, expense_date TEXT NOT NULL, category TEXT NOT NULL, vendor TEXT, description TEXT, amount REAL NOT NULL, status TEXT NOT NULL, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
+ALTER TABLE safety_incidents ADD COLUMN IF NOT EXISTS incident_type TEXT;
+ALTER TABLE safety_incidents ADD COLUMN IF NOT EXISTS location TEXT;
+ALTER TABLE safety_incidents ADD COLUMN IF NOT EXISTS people_involved TEXT;
+ALTER TABLE safety_incidents ADD COLUMN IF NOT EXISTS immediate_action TEXT;
+ALTER TABLE safety_incidents ADD COLUMN IF NOT EXISTS corrective_action TEXT;
+ALTER TABLE safety_incidents ADD COLUMN IF NOT EXISTS reported_by INTEGER;
+CREATE TABLE IF NOT EXISTS task_notes (id SERIAL PRIMARY KEY, project_id INTEGER NOT NULL, task_id INTEGER NOT NULL, user_id INTEGER, body TEXT NOT NULL, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
+CREATE TABLE IF NOT EXISTS task_checklist (id SERIAL PRIMARY KEY, project_id INTEGER NOT NULL, task_id INTEGER NOT NULL, label TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0, sort_order INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
+CREATE TABLE IF NOT EXISTS project_notes (id SERIAL PRIMARY KEY, project_id INTEGER NOT NULL, user_id INTEGER, body TEXT NOT NULL, visibility TEXT NOT NULL, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
+CREATE TABLE IF NOT EXISTS project_qrt (id SERIAL PRIMARY KEY, project_id INTEGER NOT NULL, question TEXT NOT NULL, answer TEXT, origin TEXT NOT NULL, status TEXT NOT NULL, asked_by INTEGER, answered_by INTEGER, answered_at TIMESTAMP, prefilled INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
+CREATE TABLE IF NOT EXISTS project_attachments (id SERIAL PRIMARY KEY, project_id INTEGER NOT NULL, owner_type TEXT NOT NULL, owner_id INTEGER NOT NULL, file_name TEXT NOT NULL, file_type TEXT, file_size INTEGER NOT NULL, data TEXT NOT NULL, uploaded_by INTEGER, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
+CREATE INDEX IF NOT EXISTS project_attachments_owner_idx ON project_attachments (project_id, owner_type, owner_id);
 CREATE INDEX IF NOT EXISTS expenses_user_idx ON expenses (user_id, expense_date DESC);
 CREATE INDEX IF NOT EXISTS time_punches_user_time_idx ON time_punches (user_id, punched_at DESC);
 CREATE INDEX IF NOT EXISTS time_punches_project_idx ON time_punches (project_id);

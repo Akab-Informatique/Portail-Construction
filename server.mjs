@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { brotliCompressSync, gzipSync, constants as zlibConstants } from "node:zlib";
 import sharepointHandler from "./api/sharepoint.ts";
 import mailHandler from "./api/mail/send.ts";
+import notifyHandler from "./api/notify.ts";
 import billingFilesHandler from "./api/billing-files.ts";
 import dbHandler from "./api/db.ts";
 
@@ -321,6 +322,11 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/api/billing-files") {
       const body = req.method === "POST" ? await readJsonBody(req) : {};
       await billingFilesHandler({ method: req.method, query: queryOf(url), body, headers }, adaptRes(res, req));
+      return;
+    }
+    if (url.pathname === "/api/notify") {
+      const body = req.method === "POST" ? await readJsonBody(req) : {};
+      await notifyHandler({ method: req.method, body, headers }, adaptRes(res, req));
       return;
     }
     if (url.pathname === "/api/mail/send") {

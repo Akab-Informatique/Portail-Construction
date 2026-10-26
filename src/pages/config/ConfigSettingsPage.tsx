@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Building2, Cloud, FileText, Mail, Send, Settings, Sparkles, Users, Wallet, X, type LucideIcon } from "lucide-react";
+import { Building2, Cloud, FileText, Mail, MessageSquare, Send, Settings, Sparkles, Users, Wallet, X, type LucideIcon } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -12,6 +12,9 @@ import {
   EMPTY_QUICKBOOKS,
   EMPTY_SHAREPOINT,
   EMPTY_SMTP,
+  EMPTY_SMS,
+  SMS_KEY,
+  getSmsSettings,
   QUICKBOOKS_KEY,
   SHAREPOINT_KEY,
   SMTP_KEY,
@@ -40,9 +43,9 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import type { MessageKey } from "@/lib/i18n/en";
 import { ConfigClientsPage } from "./ConfigClientsPage";
 import { ConfigInternalUsersPage } from "./ConfigInternalUsersPage";
-import type { AiSettings, CompanyProfile, EmailTemplateKey, EmailTemplates, QuickBooksSettings, SharePointSettings, SmtpSettings } from "@/lib/types";
+import type { AiSettings, SmsSettings, CompanyProfile, EmailTemplateKey, EmailTemplates, QuickBooksSettings, SharePointSettings, SmtpSettings } from "@/lib/types";
 
-const TABS = ["company", "email", "templates", "quickbooks", "sharepoint", "ai", "clients", "users"] as const;
+const TABS = ["company", "email", "sms", "templates", "quickbooks", "sharepoint", "ai", "clients", "users"] as const;
 type SetupTab = (typeof TABS)[number];
 
 function isSetupTab(value: string | null): value is SetupTab {
@@ -55,6 +58,7 @@ const GROUPS: { label: MessageKey; items: { id: SetupTab; icon: LucideIcon; labe
     label: "settings.group.communication",
     items: [
       { id: "email", icon: Mail, label: "settings.tab.email" },
+      { id: "sms", icon: MessageSquare, label: "settings.tab.sms" },
       { id: "templates", icon: FileText, label: "settings.tab.templates" },
     ],
   },
@@ -99,6 +103,7 @@ export function ConfigSettingsPage() {
   const [qb, setQb] = useState<QuickBooksSettings>(EMPTY_QUICKBOOKS);
   const [sp, setSp] = useState<SharePointSettings>(EMPTY_SHAREPOINT);
   const [ai, setAi] = useState<AiSettings>(EMPTY_AI);
+  const [sms, setSms] = useState<SmsSettings>(EMPTY_SMS);
   const [templates, setTemplates] = useState<EmailTemplates>(DEFAULT_EMAIL_TEMPLATES);
   const [spTest, setSpTest] = useState<string | null>(null);
 
@@ -115,6 +120,7 @@ export function ConfigSettingsPage() {
         setQb(await getQuickBooksSettings());
         setSp(await getSharePointSettings());
         setAi(await getAiSettings());
+        setSms(await getSmsSettings());
         setTemplates(await getEmailTemplates());
       } catch (err) {
         console.error("settings load failed", err);
@@ -200,6 +206,7 @@ export function ConfigSettingsPage() {
     await setSetting(QUICKBOOKS_KEY, JSON.stringify(qb));
     await setSetting(SHAREPOINT_KEY, JSON.stringify(sp));
     await setSetting(AI_KEY, JSON.stringify(ai));
+    await setSetting(SMS_KEY, JSON.stringify(sms));
     await setSetting(EMAIL_TEMPLATES_KEY, JSON.stringify(templates));
     setSaving(false);
     setSaved(true);
@@ -551,6 +558,32 @@ export function ConfigSettingsPage() {
                 {spTest ? <p className="text-sm text-muted-foreground">{spTest}</p> : null}
               </div>
             </Card>
+          </form>
+        </TabsContent>
+        <TabsContent value="sms">
+          <form onSubmit={onSave} className="grid gap-5">
+            <Card className="gap-4 p-5">
+              <div>
+                <p className="text-sm font-medium">{t("settings.sms.title")}</p>
+              </div>
+              <div className="flex items-center justify-between rounded-md border px-3 py-2.5">
+                <p className="text-sm font-medium">{t("settings.sms.enabled")}</p>
+                <Switch checked={sms.enabled} onCheckedChange={(v) => setSms({ ...sms, enabled: v })} />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label={t("settings.sms.sid")}>
+                  <Input placeholder="AC…" value={sms.account_sid} onChange={(e) => setSms({ ...sms, account_sid: e.target.value })} />
+                </Field>
+                <Field label={t("settings.sms.token")}>
+                  <Input type="password" autoComplete="new-password" value={sms.api_key} onChange={(e) => setSms({ ...sms, api_key: e.target.value })} />
+                </Field>
+                <Field label={t("settings.sms.from")}>
+                  <Input placeholder="+15145550100" value={sms.from} onChange={(e) => setSms({ ...sms, from: e.target.value })} />
+                </Field>
+              </div>
+              <p className="text-xs text-muted-foreground">{t("settings.sms.hint")}</p>
+            </Card>
+            <SaveBar saved={saved} saving={saving} />
           </form>
         </TabsContent>
         <TabsContent value="ai">

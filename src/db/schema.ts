@@ -217,6 +217,12 @@ export const safety_incidents = pgTable("safety_incidents", {
   title: text("title").notNull(),
   description: text("description"),
   status: text("status").notNull(),
+  incident_type: text("incident_type"),
+  location: text("location"),
+  people_involved: text("people_involved"),
+  immediate_action: text("immediate_action"),
+  corrective_action: text("corrective_action"),
+  reported_by: integer("reported_by"),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -477,5 +483,67 @@ export const expenses = pgTable("expenses", {
   description: text("description"),
   amount: real("amount").notNull(),
   status: text("status").notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+/** A note on a task. */
+export const task_notes = pgTable("task_notes", {
+  id: serial("id").primaryKey(),
+  project_id: integer("project_id").notNull(),
+  task_id: integer("task_id").notNull(),
+  user_id: integer("user_id"),
+  body: text("body").notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const task_checklist = pgTable("task_checklist", {
+  id: serial("id").primaryKey(),
+  project_id: integer("project_id").notNull(),
+  task_id: integer("task_id").notNull(),
+  label: text("label").notNull(),
+  done: integer("done").notNull().default(0),
+  sort_order: integer("sort_order").notNull().default(0),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+/** Project notes (a site journal). visibility: "internal" = FRX staff only, "everyone" = shown to the client too. */
+export const project_notes = pgTable("project_notes", {
+  id: serial("id").primaryKey(),
+  project_id: integer("project_id").notNull(),
+  user_id: integer("user_id"),
+  body: text("body").notNull(),
+  visibility: text("visibility").notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+/** QRT: a question and its answer. origin: "staff" or "client". */
+export const project_qrt = pgTable("project_qrt", {
+  id: serial("id").primaryKey(),
+  project_id: integer("project_id").notNull(),
+  question: text("question").notNull(),
+  answer: text("answer"),
+  origin: text("origin").notNull(),
+  status: text("status").notNull(),
+  asked_by: integer("asked_by"),
+  answered_by: integer("answered_by"),
+  answered_at: timestamp("answered_at"),
+  prefilled: integer("prefilled").notNull().default(0),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+/**
+ * Files and photos attached to a task, note, safety incident or QRT entry.
+ * owner_type: "task" | "note" | "sst" | "qrt". The bytes live in `data` (base64); lists never select it.
+ */
+export const project_attachments = pgTable("project_attachments", {
+  id: serial("id").primaryKey(),
+  project_id: integer("project_id").notNull(),
+  owner_type: text("owner_type").notNull(),
+  owner_id: integer("owner_id").notNull(),
+  file_name: text("file_name").notNull(),
+  file_type: text("file_type"),
+  file_size: integer("file_size").notNull(),
+  data: text("data").notNull(),
+  uploaded_by: integer("uploaded_by"),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });

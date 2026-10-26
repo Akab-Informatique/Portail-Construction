@@ -30,7 +30,7 @@ const PRIVATE_TABLES = ["sessions", "app_settings", "password_resets", "billing_
  * Tables only FRX staff may read or write: real project costs and the target margin. Clients get no privilege on them at
  * all, so the database itself refuses them even if someone talks to the API directly.
  */
-const STAFF_ONLY_TABLES = ["project_finance", "project_costs", "budget_items", "expenses"];
+const STAFF_ONLY_TABLES = ["project_finance", "project_costs", "budget_items", "expenses", "task_notes", "task_checklist", "project_notes", "project_qrt", "project_attachments"];
 /** Tables only effective admins may write. */
 const ADMIN_TABLES = [
   "users",
@@ -132,6 +132,11 @@ const PROJECT_SCOPED = [
   "time_punches",
   "project_finance",
   "project_costs",
+  "task_notes",
+  "task_checklist",
+  "project_notes",
+  "project_qrt",
+  "project_attachments",
 ];
 const ME = "NULLIF(current_setting('frx.user_id', true), '')::int";
 const ALL_CLIENTS = "(current_setting('frx.client_ids', true) = '*')";

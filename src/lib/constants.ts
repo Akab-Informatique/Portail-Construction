@@ -13,18 +13,13 @@ export type ModuleDef = {
 };
 
 export const MODULES: ModuleDef[] = [
-  { id: "dashboard", label: "Dashboard", scope: "project", description: "Project overview and KPIs" },
-  { id: "calendar", label: "Calendar", scope: "project", description: "Milestones, inspections, deliveries" },
-  { id: "budget", label: "Budget", scope: "project", description: "Cost codes and committed spend" },
-  { id: "tasks", label: "Schedule", scope: "project", description: "Work packages and task tracking" },
-  { id: "documents", label: "Documents", scope: "project", description: "Drawings, specs, submittals" },
-  { id: "rfis", label: "RFIs", scope: "project", description: "Requests for information" },
-  { id: "change_orders", label: "Change Orders", scope: "project", description: "Scope and cost changes" },
-  { id: "daily_logs", label: "Daily Logs", scope: "project", description: "Site reports and crew counts" },
-  { id: "punch", label: "Punch List", scope: "project", description: "Closeout deficiencies" },
-  { id: "safety", label: "Safety", scope: "project", description: "Incidents and observations" },
-  { id: "team", label: "Team", scope: "project", description: "Project roster and roles" },
-  { id: "reports", label: "Reports", scope: "project", description: "Booklets, summaries, and custom reports" },
+  { id: "dashboard", label: "Overview", scope: "project", description: "Progress and good news for the project" },
+  { id: "documents", label: "Documentation", scope: "project", description: "The project's SharePoint folder" },
+  { id: "tasks", label: "Schedule", scope: "project", description: "Tasks, calendar and Gantt" },
+  { id: "notes", label: "Notes", scope: "project", description: "Site journal, internal or shared" },
+  { id: "safety", label: "SST", scope: "project", description: "Safety incidents and files" },
+  { id: "qrt", label: "QRT", scope: "project", description: "Questions and answers" },
+  { id: "project_billing", label: "Quotes and invoices", scope: "project", description: "Quotes, change requests and invoices" },
   { id: "clients", label: "Clients", scope: "global", description: "Client accounts and companies" },
   { id: "users", label: "Users", scope: "global", description: "Employees and client users" },
   // Sidebar. Each section groups its items; every section and every item has its own rights.

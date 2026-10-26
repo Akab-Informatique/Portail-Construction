@@ -231,6 +231,12 @@ Write 3 to 4 short sentences, 75 words at most, in a warm and direct tone, in th
 Say how the projects are doing overall, name what is late or needs attention first, then the next deadlines worth knowing about.
 Use only the facts given: never invent a project, a number or a date. Do not mention money. Plain text only: no markdown, no lists, no greeting.`;
 
+const PROJECT_SYSTEM = `You write the short "work in progress" message at the top of a construction project's overview page. The client reads it.
+You receive JSON facts about the project: phase, progress, finished work and what comes next.
+Write 2 to 3 short sentences, 60 words at most, in the requested language. The tone is warm, confident and reassuring: celebrate what is done, say what is happening now and what comes next.
+Never mention delays, problems, risks, lateness, money or anything that could worry the client. If something is behind, simply do not mention it.
+Use only the facts given: never invent work, dates or numbers. Plain text only: no markdown, no lists, no greeting.`;
+
 /** Turns the dashboard's facts into a few readable sentences. */
 export async function writeSummary(input: {
   provider: AiProvider;
@@ -238,7 +244,9 @@ export async function writeSummary(input: {
   model?: string;
   language: "fr" | "en";
   facts: unknown;
+  kind?: "dashboard" | "project";
 }): Promise<string> {
+  const system = input.kind === "project" ? PROJECT_SYSTEM : SUMMARY_SYSTEM;
   const model = input.model || DEFAULT_MODELS[input.provider];
   const prompt = `Language: ${input.language === "fr" ? "French (Quebec)" : "English"}\nFacts:\n${JSON.stringify(input.facts)}`;
   const controller = new AbortController();
@@ -249,7 +257,7 @@ export async function writeSummary(input: {
         method: "POST",
         signal: controller.signal,
         headers: { "content-type": "application/json", "x-api-key": input.apiKey, "anthropic-version": "2023-06-01" },
-        body: JSON.stringify({ model, max_tokens: 400, system: SUMMARY_SYSTEM, messages: [{ role: "user", content: prompt }] }),
+        body: JSON.stringify({ model, max_tokens: 400, system, messages: [{ role: "user", content: prompt }] }),
       });
       const payload = (await res.json().catch(() => ({}))) as { content?: { type: string; text?: string }[]; error?: { message?: string } };
       if (!res.ok) throw new Error(payload.error?.message || `AI request failed (${res.status})`);
@@ -262,7 +270,7 @@ export async function writeSummary(input: {
       signal: controller.signal,
       headers: { "content-type": "application/json", "x-goog-api-key": input.apiKey },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SUMMARY_SYSTEM }] },
+        systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { temperature: 0.4, maxOutputTokens: 600 },
       }),

@@ -207,6 +207,15 @@ export type SmtpSettings = {
   portal_url?: string;
 };
 
+/** Text messages go out through a Twilio account. The auth token is kept under api_key so the server redacts it like other secrets. */
+export type SmsSettings = {
+  enabled: boolean;
+  account_sid: string;
+  api_key: string;
+  /** The Twilio number (or sender id) messages come from, e.g. +15145550100. */
+  from: string;
+};
+
 export type AiSettings = {
   enabled: boolean;
   /** gemini (free tier available) or anthropic (Claude). The server's .env overrides this. */
@@ -285,6 +294,9 @@ export type ModuleId =
   | "clients"
   | "users"
   | "billing"
+  | "notes"
+  | "qrt"
+  | "project_billing"
   | "app_overview"
   | "app_dashboard"
   | "app_all_projects"

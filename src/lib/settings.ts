@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db, dbReady, schema } from "../db";
 import { DEFAULT_COMPANY } from "./invoice";
-import type { AiSettings, CompanyProfile, EmailTemplateKey, EmailTemplates, QuickBooksSettings, SharePointSettings, SmtpSettings } from "./types";
+import type { AiSettings, SmsSettings, CompanyProfile, EmailTemplateKey, EmailTemplates, QuickBooksSettings, SharePointSettings, SmtpSettings } from "./types";
 
 export const SMTP_KEY = "smtp";
 export const COMPANY_KEY = "company";
@@ -9,6 +9,7 @@ export const QUICKBOOKS_KEY = "quickbooks";
 export const SHAREPOINT_KEY = "sharepoint";
 export const EMAIL_TEMPLATES_KEY = "email_templates";
 export const AI_KEY = "ai";
+export const SMS_KEY = "sms";
 
 export const EMPTY_SMTP: SmtpSettings = {
   host: "",
@@ -21,6 +22,7 @@ export const EMPTY_SMTP: SmtpSettings = {
   portal_url: "",
 };
 
+export const EMPTY_SMS: SmsSettings = { enabled: true, account_sid: "", api_key: "", from: "" };
 export const EMPTY_AI: AiSettings = { enabled: true, provider: "gemini", api_key: "", model: "" };
 
 export const EMPTY_QUICKBOOKS: QuickBooksSettings = {
@@ -175,6 +177,16 @@ export async function getAiSettings(): Promise<AiSettings> {
     return redactSecret({ ...EMPTY_AI, ...(JSON.parse(raw) as Partial<AiSettings>) }, ["api_key"]) as AiSettings;
   } catch {
     return { ...EMPTY_AI };
+  }
+}
+
+export async function getSmsSettings(): Promise<SmsSettings> {
+  const raw = await getSetting(SMS_KEY);
+  if (!raw) return { ...EMPTY_SMS };
+  try {
+    return redactSecret({ ...EMPTY_SMS, ...(JSON.parse(raw) as Partial<SmsSettings>) }, ["api_key"]) as SmsSettings;
+  } catch {
+    return { ...EMPTY_SMS };
   }
 }
 

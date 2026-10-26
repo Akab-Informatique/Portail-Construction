@@ -163,7 +163,7 @@ export default async function handler(req: Req, res: Res) {
     const { provider, apiKey, model } = await aiConfig(override);
     if (!apiKey) return res.status(200).json({ error: "ai.notConfigured" });
     try {
-      const text = await writeSummary({ provider, apiKey, model, language: body.language === "en" ? "en" : "fr", facts });
+      const text = await writeSummary({ provider, apiKey, model, language: body.language === "en" ? "en" : "fr", facts, kind: body.kind === "project" ? "project" : "dashboard" });
       return res.status(200).json({ text });
     } catch (err) {
       console.error("daily summary failed", err);

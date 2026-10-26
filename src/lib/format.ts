@@ -29,9 +29,15 @@ export function moneyExact(value: number, locale?: Locale) {
   }).format(value);
 }
 
+/** A "YYYY-MM-DD" day is a calendar date, not a moment: read it in local time so it never slips to the day before. */
+function parseDay(value: string) {
+  const m = /^(d{4})-(d{2})-(d{2})$/.exec(value);
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(value);
+}
+
 export function formatDate(value: string | Date | null | undefined, locale?: Locale) {
   if (!value) return "—";
-  const d = typeof value === "string" ? new Date(value) : value;
+  const d = typeof value === "string" ? parseDay(value) : value;
   if (Number.isNaN(d.getTime())) return String(value);
   return new Intl.DateTimeFormat(localeTag(locale), {
     year: "numeric",
@@ -43,7 +49,7 @@ export function formatDate(value: string | Date | null | undefined, locale?: Loc
 export function formatDateTime(value: string | Date | null | undefined, locale?: Locale) {
   if (!value) return "—";
   const d = typeof value === "string" ? new Date(value) : value;
-  if (Number.isNaN(d.getTime())) return String(value);
+  if (Number.isNaN(d.getTime())) return typeof value === "string" ? value : "—";
   return new Intl.DateTimeFormat(localeTag(locale), {
     year: "numeric",
     month: "short",
@@ -68,12 +74,17 @@ export function labelize(value: string) {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/** Today in the user's own time zone (not UTC, which flips to tomorrow in the evening). */
+function localISO(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  return localISO(new Date());
 }
 
 export function isoDate(offsetDays = 0) {
   const d = new Date();
   d.setDate(d.getDate() + offsetDays);
-  return d.toISOString().slice(0, 10);
+  return localISO(d);
 }

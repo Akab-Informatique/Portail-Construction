@@ -1,17 +1,12 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  CalendarDays,
-  ClipboardList,
-  FileText,
-  FileWarning,
-  HardHat,
+  FolderTree,
   LayoutDashboard,
   ListChecks,
-  Presentation,
+  MessagesSquare,
+  NotebookPen,
+  ReceiptText,
   ShieldAlert,
-  TriangleAlert,
-  Users,
-  Wallet,
 } from "lucide-react";
 import type { MessageKey } from "./i18n/en";
 import type { ModuleId } from "./types";
@@ -29,41 +24,19 @@ export type ProjectNavGroup = {
 };
 
 export const PROJECT_NAV: ProjectNavItem[] = [
-  { id: "dashboard", labelKey: "project.nav.dashboard", icon: LayoutDashboard },
-  { id: "calendar", labelKey: "project.nav.calendar", icon: CalendarDays },
-  { id: "tasks", labelKey: "project.nav.schedule", icon: ListChecks },
-  { id: "documents", labelKey: "project.nav.documents", icon: FileText },
-  { id: "daily_logs", labelKey: "project.nav.dailyLogs", icon: HardHat },
-  { id: "punch", labelKey: "project.nav.punch", icon: TriangleAlert },
-  { id: "safety", labelKey: "project.nav.safety", icon: ShieldAlert },
-  { id: "rfis", labelKey: "project.nav.rfis", icon: FileWarning },
-  { id: "change_orders", labelKey: "project.nav.changes", icon: ClipboardList },
-  { id: "budget", labelKey: "project.nav.budget", icon: Wallet },
-  { id: "team", labelKey: "project.nav.team", icon: Users },
-  { id: "reports", labelKey: "project.nav.reports", icon: Presentation },
+  { id: "dashboard", labelKey: "pnav.overview", icon: LayoutDashboard },
+  { id: "documents", labelKey: "pnav.documents", icon: FolderTree },
+  { id: "tasks", labelKey: "pnav.schedule", icon: ListChecks },
+  { id: "notes", labelKey: "pnav.notes", icon: NotebookPen },
+  { id: "safety", labelKey: "pnav.sst", icon: ShieldAlert },
+  { id: "qrt", labelKey: "pnav.qrt", icon: MessagesSquare },
+  { id: "project_billing", labelKey: "pnav.billing", icon: ReceiptText },
 ];
 
 export const PROJECT_NAV_GROUPS: ProjectNavGroup[] = [
-  {
-    id: "overview",
-    labelKey: "project.group.overview",
-    items: PROJECT_NAV.filter((n) => n.id === "dashboard" || n.id === "documents"),
-  },
-  {
-    id: "plan",
-    labelKey: "project.group.plan",
-    items: PROJECT_NAV.filter((n) => n.id === "calendar" || n.id === "tasks"),
-  },
-  {
-    id: "field",
-    labelKey: "project.group.field",
-    items: PROJECT_NAV.filter((n) => n.id === "daily_logs" || n.id === "punch" || n.id === "safety"),
-  },
-  {
-    id: "controls",
-    labelKey: "project.group.controls",
-    items: PROJECT_NAV.filter((n) => n.id === "rfis" || n.id === "change_orders" || n.id === "budget" || n.id === "team" || n.id === "reports"),
-  },
+  { id: "overview", labelKey: "project.group.overview", items: PROJECT_NAV.filter((n) => n.id === "dashboard" || n.id === "documents") },
+  { id: "plan", labelKey: "project.group.plan", items: PROJECT_NAV.filter((n) => n.id === "tasks" || n.id === "notes" || n.id === "safety" || n.id === "qrt") },
+  { id: "controls", labelKey: "project.group.controls", items: PROJECT_NAV.filter((n) => n.id === "project_billing") },
 ];
 
 const MODULE_IDS = new Set<string>(PROJECT_NAV.map((n) => n.id));
