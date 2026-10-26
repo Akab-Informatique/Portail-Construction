@@ -57,6 +57,27 @@ export function DocumentsProjectsPage() {
     };
   }, [projects.length]);
 
+  // Pinned clients, kept per user in this browser.
+  const favKey = `frx.favClients.${user?.id ?? 0}`;
+  const [favorites, setFavorites] = useState<number[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(favKey) || "[]") as number[];
+    } catch {
+      return [];
+    }
+  });
+  function toggleFavorite(id: number) {
+    setFavorites((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      try {
+        localStorage.setItem(favKey, JSON.stringify(next));
+      } catch {
+        /* storage can be unavailable */
+      }
+      return next;
+    });
+  }
+
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
     return [...clients]
@@ -76,11 +97,13 @@ export function DocumentsProjectsPage() {
           })
           .sort((a, b) => a.name.localeCompare(b.name)),
       }))
-      .filter((group) => group.jobs.length > 0 || (!q && projects.some((p) => p.client_id === group.client.id)));
-  }, [clients, projects, query]);
+      .filter((group) => group.jobs.length > 0 || (!q && projects.some((p) => p.client_id === group.client.id)))
+      // Pinned clients first, the rest alphabetical.
+      .sort((a, b) => Number(favorites.includes(b.client.id)) - Number(favorites.includes(a.client.id)));
+  }, [clients, projects, query, favorites]);
 
-  // The cabinet holds ten drawers per page; the page follows the chosen client.
-  const PER_PAGE = 10;
+  // The cabinet holds five drawers per page; the page follows the chosen client.
+  const PER_PAGE = 5;
   const wanted = Number(params.get("client"));
   const current = groups.find((g) => g.client.id === wanted) ?? groups.find((g) => g.client.id === selectedClientId) ?? groups[0];
   const pages = Math.max(1, Math.ceil(groups.length / PER_PAGE));
@@ -162,6 +185,8 @@ export function DocumentsProjectsPage() {
                 jobs={jobs}
                 tasks={tasks}
                 selected={client.id === current.client.id}
+                favorite={favorites.includes(client.id)}
+                onToggleFavorite={() => toggleFavorite(client.id)}
                 onSelect={() => setParams({ client: String(client.id) }, { replace: true })}
               />
             ))}

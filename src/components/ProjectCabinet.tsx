@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Star } from "lucide-react";
 import { PROJECT_PHASES } from "@/lib/constants";
 import { formatDate, todayISO } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
@@ -140,19 +140,24 @@ export function ClientTab({
   tasks,
   selected,
   onSelect,
+  favorite,
+  onToggleFavorite,
 }: {
   client: Client;
   jobs: Project[];
   tasks: TaskLite[];
   selected: boolean;
   onSelect: () => void;
+  favorite: boolean;
+  onToggleFavorite: () => void;
 }) {
   const { t } = useI18n();
   const { running, overall } = useOverall(jobs, tasks);
   return (
     <div className="frx-slot">
-      <button type="button" onClick={onSelect} aria-pressed={selected} className={cn("frx-face", selected && "frx-face-out")}>
-        <span className="frx-label-holder">
+      <div className={cn("frx-face", selected && "frx-face-out")}>
+      <button type="button" onClick={onSelect} aria-pressed={selected} className="block w-full text-left">
+        <span className="frx-label-holder mr-6">
           <span className="block truncate font-display text-[15px] leading-tight tracking-wide">{client.company_name}</span>
         </span>
         <span className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-neutral-600 dark:text-neutral-400">
@@ -168,7 +173,66 @@ export function ClientTab({
         </span>
         <span className="frx-pull" aria-hidden />
       </button>
+      <button
+        type="button"
+        onClick={onToggleFavorite}
+        aria-pressed={favorite}
+        aria-label={favorite ? t("cab.unpin") : t("cab.pin")}
+        title={favorite ? t("cab.unpin") : t("cab.pin")}
+        className="absolute top-1 right-1 flex size-6 items-center justify-center rounded-full text-neutral-500 transition-colors hover:bg-black/10 hover:text-amber-500"
+      >
+        <Star className={cn("size-4", favorite && "fill-amber-400 text-amber-500")} />
+      </button>
+      </div>
     </div>
+  );
+}
+
+/** One section of the drawer: running jobs, or the archive of finished ones. */
+function FolderSection({
+  title,
+  jobs,
+  tasks,
+  open,
+  startIndex,
+  collapsible,
+}: {
+  title: string;
+  jobs: Project[];
+  tasks: TaskLite[];
+  open: boolean;
+  startIndex: number;
+  collapsible?: boolean;
+}) {
+  const { t } = useI18n();
+  const [shown, setShown] = useState(true);
+  if (jobs.length === 0 && collapsible) return null;
+  const expanded = !collapsible || shown;
+  return (
+    <section>
+      <button
+        type="button"
+        onClick={() => collapsible && setShown((v) => !v)}
+        aria-expanded={expanded}
+        className={cn("mb-3 flex w-full items-center gap-2 text-left", collapsible ? "cursor-pointer" : "cursor-default")}
+      >
+        {collapsible ? <ChevronDown className={cn("size-4 text-muted-foreground transition-transform", !shown && "-rotate-90")} /> : null}
+        <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{title}</span>
+        <span className="rounded-full bg-black/10 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground dark:bg-white/10">{jobs.length}</span>
+        <span className="h-px flex-1 bg-border/70" aria-hidden />
+      </button>
+      {expanded ? (
+        jobs.length === 0 ? (
+          <p className="pb-1 text-sm text-muted-foreground">{t("cab.noneHere")}</p>
+        ) : (
+          <div className={cn("grid gap-x-4 gap-y-6 pt-2 xl:grid-cols-2", collapsible && "opacity-80 saturate-75")}>
+            {jobs.map((job, i) => (
+              <ProjectFolder key={job.id} project={job} tasks={tasks} index={startIndex + i} open={open} />
+            ))}
+          </div>
+        )
+      ) : null}
+    </section>
   );
 }
 
@@ -177,6 +241,8 @@ export function ClientFolders({ client, jobs, tasks, noProjects }: { client: Cli
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const { running, overall } = useOverall(jobs, tasks);
+  const active = jobs.filter((j) => j.status !== "completed");
+  const archived = jobs.filter((j) => j.status === "completed");
   // Mount closed, then open, so the folders flip up every time another drawer is chosen.
   useEffect(() => {
     const id = requestAnimationFrame(() => setOpen(true));
@@ -201,10 +267,9 @@ export function ClientFolders({ client, jobs, tasks, noProjects }: { client: Cli
         {jobs.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">{noProjects}</p>
         ) : (
-          <div className="grid gap-x-4 gap-y-6 pt-2 xl:grid-cols-2">
-            {jobs.map((job, i) => (
-              <ProjectFolder key={job.id} project={job} tasks={tasks} index={i} open={open} />
-            ))}
+          <div className="space-y-7">
+            <FolderSection title={t("cab.active")} jobs={active} tasks={tasks} open={open} startIndex={0} />
+            <FolderSection title={t("cab.archived")} jobs={archived} tasks={tasks} open={open} startIndex={active.length} collapsible />
           </div>
         )}
       </div>
