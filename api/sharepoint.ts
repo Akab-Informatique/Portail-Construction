@@ -93,7 +93,8 @@ async function loadGrants(user: ApiUser) {
      ${
        external
          ? `WHERE s.client_id IN (SELECT client_id FROM client_users WHERE user_id = $1
-                                  UNION SELECT client_id FROM user_clients WHERE user_id = $1)`
+                                  UNION SELECT client_id FROM user_clients WHERE user_id = $1)
+              AND (s.user_id IS NULL OR s.user_id = $1)`
          : "WHERE $1::int IS NOT NULL"
      }`,
     [user.id],
@@ -150,7 +151,8 @@ export default async function handler(req: Req, res: Res) {
       if (!(await driveAllowed(user, driveId, () => resolveDrive(token, cfg)))) return res.status(403).json({ error: "err.forbidden" });
       if (!(await allowed(user, token, driveId, itemId, "view"))) return res.status(403).json({ error: "err.forbidden" });
       const name = String(q(req, "name") ?? "file");
-      const { buf, contentType } = await downloadFile(token, driveId, itemId);
+      const asPdf = String(q(req, "format") ?? "") === "pdf";
+      const { buf, contentType } = await downloadFile(token, driveId, itemId, asPdf ? "pdf" : undefined);
       res.setHeader("Content-Type", contentType);
       res.setHeader("X-Content-Type-Options", "nosniff");
       res.setHeader(

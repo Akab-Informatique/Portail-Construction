@@ -165,8 +165,9 @@ export async function uploadSmallFile(
   return json;
 }
 
-export async function downloadFile(token: string, driveId: string, itemId: string) {
-  const res = await fetch(`${GRAPH}/drives/${driveId}/items/${itemId}/content`, {
+/** `format: "pdf"` asks SharePoint to convert an Office document (Word, Excel, PowerPoint…) to PDF on the way out. */
+export async function downloadFile(token: string, driveId: string, itemId: string, format?: "pdf") {
+  const res = await fetch(`${GRAPH}/drives/${driveId}/items/${itemId}/content${format ? `?format=${format}` : ""}`, {
     headers: { Authorization: `Bearer ${token}` },
     redirect: "follow",
   });

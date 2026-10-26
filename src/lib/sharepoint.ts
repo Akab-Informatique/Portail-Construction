@@ -101,7 +101,7 @@ export function shareFor(
 ) {
   if (!clientId) return null;
   return (
-    shares.find((s) => s.folder_id === folderId && s.client_id === clientId && (s.item_id || "") === itemId) ?? null
+    shares.find((s) => s.folder_id === folderId && s.client_id === clientId && !s.user_id && (s.item_id || "") === itemId) ?? null
   );
 }
 
@@ -135,7 +135,7 @@ export async function upsertShare(
     .select()
     .from(schema.sharepoint_shares)
     .where(and(eq(schema.sharepoint_shares.folder_id, folderId), eq(schema.sharepoint_shares.client_id, clientId)));
-  const row = existing.find((s) => (s.item_id || "") === itemId);
+  const row = existing.find((s) => !s.user_id && (s.item_id || "") === itemId);
   const payload = {
     can_view: flags.can_view ? 1 : 0,
     can_upload: flags.can_upload ? 1 : 0,
@@ -147,6 +147,41 @@ export async function upsertShare(
     return;
   }
   await db.insert(schema.sharepoint_shares).values({ folder_id: folderId, client_id: clientId, ...payload });
+}
+
+/** A right for one client user on one folder, on top of what their company has. userId null = the company itself. */
+export async function setShareFlags(input: {
+  folderId: number;
+  clientId: number;
+  userId: number | null;
+  itemId: string;
+  flags: { can_view: boolean; can_upload: boolean; can_edit: boolean };
+}) {
+  await dbReady;
+  const existing = await db
+    .select()
+    .from(schema.sharepoint_shares)
+    .where(and(eq(schema.sharepoint_shares.folder_id, input.folderId), eq(schema.sharepoint_shares.client_id, input.clientId)));
+  const row = existing.find((s) => (s.user_id ?? null) === input.userId && (s.item_id || "") === input.itemId);
+  const payload = {
+    can_view: input.flags.can_view ? 1 : 0,
+    can_upload: input.flags.can_upload ? 1 : 0,
+    can_edit: input.flags.can_edit ? 1 : 0,
+  };
+  if (row) await db.update(schema.sharepoint_shares).set(payload).where(eq(schema.sharepoint_shares.id, row.id));
+  else await db.insert(schema.sharepoint_shares).values({ folder_id: input.folderId, client_id: input.clientId, user_id: input.userId, item_id: input.itemId, ...payload });
+}
+
+/** Back to inheriting: remove the explicit right on this folder. */
+export async function clearShareFlags(input: { folderId: number; clientId: number; userId: number | null; itemId: string }) {
+  await dbReady;
+  const existing = await db
+    .select()
+    .from(schema.sharepoint_shares)
+    .where(and(eq(schema.sharepoint_shares.folder_id, input.folderId), eq(schema.sharepoint_shares.client_id, input.clientId)));
+  for (const row of existing.filter((s) => (s.user_id ?? null) === input.userId && (s.item_id || "") === input.itemId)) {
+    await db.delete(schema.sharepoint_shares).where(eq(schema.sharepoint_shares.id, row.id));
+  }
 }
 
 export async function deleteFolderRecord(folderId: number) {

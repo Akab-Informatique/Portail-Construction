@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS task_checklist (id SERIAL PRIMARY KEY, project_id INT
 CREATE TABLE IF NOT EXISTS project_notes (id SERIAL PRIMARY KEY, project_id INTEGER NOT NULL, user_id INTEGER, body TEXT NOT NULL, visibility TEXT NOT NULL, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
 CREATE TABLE IF NOT EXISTS project_qrt (id SERIAL PRIMARY KEY, project_id INTEGER NOT NULL, question TEXT NOT NULL, answer TEXT, origin TEXT NOT NULL, status TEXT NOT NULL, asked_by INTEGER, answered_by INTEGER, answered_at TIMESTAMP, prefilled INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
 CREATE TABLE IF NOT EXISTS project_attachments (id SERIAL PRIMARY KEY, project_id INTEGER NOT NULL, owner_type TEXT NOT NULL, owner_id INTEGER NOT NULL, file_name TEXT NOT NULL, file_type TEXT, file_size INTEGER NOT NULL, data TEXT NOT NULL, uploaded_by INTEGER, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
+ALTER TABLE sharepoint_shares ADD COLUMN IF NOT EXISTS user_id INTEGER;
 CREATE INDEX IF NOT EXISTS project_attachments_owner_idx ON project_attachments (project_id, owner_type, owner_id);
 CREATE INDEX IF NOT EXISTS expenses_user_idx ON expenses (user_id, expense_date DESC);
 CREATE INDEX IF NOT EXISTS time_punches_user_time_idx ON time_punches (user_id, punched_at DESC);

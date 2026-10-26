@@ -270,6 +270,8 @@ export type SharePointShare = {
   folder_id: number;
   client_id: number;
   item_id: string;
+  /** null = the whole company; otherwise a right for this one client user. */
+  user_id: number | null;
   can_view: number;
   can_upload: number;
   can_edit: number;

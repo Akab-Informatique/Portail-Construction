@@ -157,6 +157,8 @@ export const sharepoint_shares = pgTable("sharepoint_shares", {
   folder_id: integer("folder_id").notNull(),
   client_id: integer("client_id").notNull(),
   item_id: text("item_id").notNull().default(""),
+  /** null = the whole company; a user id = a right for that client user only (added on top of the company's). */
+  user_id: integer("user_id"),
   can_view: integer("can_view").notNull(),
   can_upload: integer("can_upload").notNull(),
   can_edit: integer("can_edit").notNull(),
