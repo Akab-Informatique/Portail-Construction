@@ -559,3 +559,12 @@ export const project_attachments = pgTable("project_attachments", {
   uploaded_by: integer("uploaded_by"),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
+
+/** "task_id can only start once depends_on_id is finished" (finish to start). */
+export const task_dependencies = pgTable("task_dependencies", {
+  id: serial("id").primaryKey(),
+  project_id: integer("project_id").notNull(),
+  task_id: integer("task_id").notNull(),
+  depends_on_id: integer("depends_on_id").notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});

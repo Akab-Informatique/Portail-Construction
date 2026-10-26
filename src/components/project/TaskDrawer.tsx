@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { Plus, Trash2 } from "lucide-react";
 import { db, schema } from "../../db";
 import { useAuth } from "@/lib/auth";
@@ -9,6 +9,7 @@ import { formatDateTime } from "@/lib/format";
 import { PRIORITIES, TASK_STATUSES } from "@/lib/constants";
 import { projectColor } from "@/lib/project-colors";
 import { removeAttachmentsOf } from "@/lib/project-files";
+import { wouldCycle, type Dep } from "@/lib/schedule-forecast";
 import type { Project, User } from "@/lib/types";
 import { Attachments } from "@/components/project/Attachments";
 import { UserAvatar } from "@/components/UserAvatar";
@@ -30,6 +31,8 @@ export function TaskDrawer({
   task,
   people,
   phases = [],
+  allTasks = [],
+  deps = [],
   open,
   onClose,
   onChanged,
@@ -38,6 +41,8 @@ export function TaskDrawer({
   task: Task | null;
   people: User[];
   phases?: Task[];
+  allTasks?: Task[];
+  deps?: Dep[];
   open: boolean;
   onClose: () => void;
   onChanged: () => void;
@@ -49,6 +54,8 @@ export function TaskDrawer({
   const [notes, setNotes] = useState<TaskNote[]>([]);
   const [newItem, setNewItem] = useState("");
   const [newNote, setNewNote] = useState("");
+  const [depPick, setDepPick] = useState("");
+  const [depError, setDepError] = useState<string | null>(null);
   const taskId = task?.id ?? 0;
 
   const load = useCallback(async () => {
@@ -92,10 +99,30 @@ export function TaskDrawer({
     onChanged();
   }
 
+  async function addDep(dependsOn: number) {
+    if (!task) return;
+    if (wouldCycle(deps, task.id, dependsOn)) {
+      setDepError(t("sch.depCycle"));
+      return;
+    }
+    setDepError(null);
+    await db.insert(schema.task_dependencies).values({ project_id: project.id, task_id: task.id, depends_on_id: dependsOn });
+    setDepPick("");
+    onChanged();
+  }
+
+  async function removeDep(dependsOn: number) {
+    if (!task) return;
+    await db.delete(schema.task_dependencies).where(and(eq(schema.task_dependencies.task_id, task.id), eq(schema.task_dependencies.depends_on_id, dependsOn)));
+    onChanged();
+  }
+
   async function remove() {
     if (!task || !window.confirm(t("sch.deleteConfirm"))) return;
     await db.delete(schema.task_checklist).where(eq(schema.task_checklist.task_id, task.id));
     await db.delete(schema.task_notes).where(eq(schema.task_notes.task_id, task.id));
+    await db.delete(schema.task_dependencies).where(eq(schema.task_dependencies.task_id, task.id));
+    await db.delete(schema.task_dependencies).where(eq(schema.task_dependencies.depends_on_id, task.id));
     await removeAttachmentsOf(project.id, "task", task.id);
     await db.delete(schema.project_tasks).where(eq(schema.project_tasks.id, task.id));
     onClose();
@@ -206,6 +233,43 @@ export function TaskDrawer({
               onBlur={(e) => e.target.value !== (task.description ?? "") && void patch({ description: e.target.value.trim() || null })}
             />
           </div>
+
+          {/* depends on */}
+          {task.kind !== "phase" ? (
+            <section className="space-y-3">
+              <h3 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t("sch.dependsOn")}</h3>
+              <ul className="space-y-1.5">
+                {deps
+                  .filter((d) => d.task_id === task.id)
+                  .map((d) => {
+                    const other = allTasks.find((x) => x.id === d.depends_on_id);
+                    if (!other) return null;
+                    const finished = other.status === "completed";
+                    return (
+                      <li key={d.depends_on_id} className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+                        <span className={finished ? "size-2 rounded-full bg-emerald-500" : "size-2 rounded-full bg-red-500"} />
+                        <span className="min-w-0 flex-1 truncate">{other.title}</span>
+                        <span className="text-xs text-muted-foreground">{finished ? t("status.completed") : t("sch.notDone")}</span>
+                        <button type="button" aria-label={t("exp.delete")} onClick={() => void removeDep(d.depends_on_id)}>
+                          <Trash2 className="size-3.5 text-muted-foreground hover:text-destructive" />
+                        </button>
+                      </li>
+                    );
+                  })}
+              </ul>
+              <Select value={depPick} onValueChange={(v) => void addDep(Number(v))}>
+                <SelectTrigger className="w-full"><SelectValue placeholder={t("sch.addDependency")} /></SelectTrigger>
+                <SelectContent>
+                  {allTasks
+                    .filter((x) => x.kind !== "phase" && x.id !== task.id && !deps.some((d) => d.task_id === task.id && d.depends_on_id === x.id))
+                    .map((x) => (
+                      <SelectItem key={x.id} value={String(x.id)}>{x.title}</SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              {depError ? <p className="text-xs text-destructive">{depError}</p> : null}
+            </section>
+          ) : null}
 
           {/* checklist */}
           <section className="space-y-3">

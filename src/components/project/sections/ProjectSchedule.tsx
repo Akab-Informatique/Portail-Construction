@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { asc, eq } from "drizzle-orm";
-import { CalendarDays, CheckCircle2, Circle, GanttChartSquare, ListChecks, MessageSquare, Paperclip, Plus, Rows3, Search } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronDown, ChevronsDownUp, ChevronsUpDown, Circle, GanttChartSquare, ListChecks, Lock, MessageSquare, Paperclip, Plus, Rows3, Search, TrendingUp } from "lucide-react";
 import { db, schema } from "../../../db";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -14,6 +14,8 @@ import { logActivity } from "@/lib/activity";
 import { PortfolioCalendar, marksFromPortfolio } from "@/components/PortfolioCalendar";
 import { TaskDrawer, type Task } from "@/components/project/TaskDrawer";
 import { ScheduleBreakdown } from "@/components/project/ScheduleBreakdown";
+import { ScheduleForecast } from "@/components/project/ScheduleForecast";
+import type { Dep } from "@/lib/schedule-forecast";
 import { StatusBadge } from "@/components/StatusBadge";
 import { UserAvatar } from "@/components/UserAvatar";
 import { Button } from "@/components/ui/button";
@@ -27,7 +29,7 @@ import { cn } from "@/lib/utils";
 import type { SectionProps } from "./types";
 
 type CalEvent = typeof schema.calendar_events.$inferSelect;
-type View = "tasks" | "wbs" | "calendar" | "gantt";
+type View = "tasks" | "wbs" | "forecast" | "calendar" | "gantt";
 const DAY = 86400000;
 const at = (iso: string) => new Date(`${iso}T00:00:00`).getTime();
 const days = (a: string, b: string) => Math.round((at(b) - at(a)) / DAY);
@@ -41,11 +43,29 @@ export function ProjectSchedule({ project, people }: SectionProps) {
   const { user } = useAuth();
   const [params, setParams] = useSearchParams();
   const rawView = params.get("view");
-  const view: View = rawView === "calendar" || rawView === "gantt" || rawView === "wbs" ? rawView : "tasks";
+  const view: View = rawView === "calendar" || rawView === "gantt" || rawView === "wbs" || rawView === "forecast" ? rawView : "tasks";
   const color = projectColor(project);
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [events, setEvents] = useState<CalEvent[]>([]);
+  const [deps, setDeps] = useState<Dep[]>([]);
+  // Folded groups in the task list, remembered per project.
+  const foldKey = `frx.taskGroups.${project.id}`;
+  const [folded, setFolded] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem(foldKey) || "[]") as string[]);
+    } catch {
+      return new Set();
+    }
+  });
+  const setFoldedSaved = (next: Set<string>) => {
+    setFolded(next);
+    try {
+      localStorage.setItem(foldKey, JSON.stringify([...next]));
+    } catch {
+      /* storage unavailable */
+    }
+  };
   const [checkCount, setCheckCount] = useState<Record<number, { done: number; total: number }>>({});
   const [noteCount, setNoteCount] = useState<Record<number, number>>({});
   const [fileCount, setFileCount] = useState<Record<number, number>>({});
@@ -57,13 +77,15 @@ export function ProjectSchedule({ project, people }: SectionProps) {
   const [eventOpen, setEventOpen] = useState(false);
 
   const load = useCallback(async () => {
-    const [taskRows, eventRows, checks, notes, files] = await Promise.all([
+    const [taskRows, eventRows, checks, notes, files, depRows] = await Promise.all([
       db.select().from(schema.project_tasks).where(eq(schema.project_tasks.project_id, project.id)).orderBy(asc(schema.project_tasks.end_date), asc(schema.project_tasks.id)),
       db.select().from(schema.calendar_events).where(eq(schema.calendar_events.project_id, project.id)),
       db.select().from(schema.task_checklist).where(eq(schema.task_checklist.project_id, project.id)),
       db.select({ task_id: schema.task_notes.task_id }).from(schema.task_notes).where(eq(schema.task_notes.project_id, project.id)),
       countAttachments(project.id, "task"),
+      db.select({ task_id: schema.task_dependencies.task_id, depends_on_id: schema.task_dependencies.depends_on_id }).from(schema.task_dependencies).where(eq(schema.task_dependencies.project_id, project.id)),
     ]);
+    setDeps(depRows);
     setTasks(taskRows);
     setEvents(eventRows);
     const cc: Record<number, { done: number; total: number }> = {};
@@ -91,8 +113,26 @@ export function ProjectSchedule({ project, people }: SectionProps) {
       return !q || x.title.toLowerCase().includes(q);
     });
   }, [tasks, filter, query]);
+  // The list is grouped by phase (tasks with no phase go together at the end).
+  const groups = useMemo(() => {
+    const phs = tasks.filter((x) => x.kind === "phase").sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
+    const ordered = (list: Task[]) => [...list].sort((a, b) => a.sort_order - b.sort_order || (a.end_date ?? "").localeCompare(b.end_date ?? "") || a.id - b.id);
+    const out: { key: string; title: string; phase: Task | null; items: Task[] }[] = [];
+    for (const p of phs) {
+      const items = ordered(shown.filter((x) => x.parent_id === p.id));
+      if (items.length) out.push({ key: String(p.id), title: p.title, phase: p, items });
+    }
+    const loose = ordered(shown.filter((x) => x.parent_id === null || !phs.some((p) => p.id === x.parent_id)));
+    if (loose.length) out.push({ key: "none", title: phs.length ? t("sch.noPhaseGroup") : t("sch.allTasks"), phase: null, items: loose });
+    return out;
+  }, [tasks, shown, t]);
+  /** Unfinished tasks that this one waits for. */
+  const blockersOf = (id: number) =>
+    deps
+      .filter((d) => d.task_id === id)
+      .map((d) => tasks.find((x) => x.id === d.depends_on_id))
+      .filter((x): x is Task => Boolean(x) && x!.status !== "completed");
   const phases = tasks.filter((x) => x.kind === "phase").sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
-  const phaseName = (id: number | null) => phases.find((p) => p.id === id)?.title ?? "";
   const openTask = tasks.find((x) => x.id === openId) ?? null;
   const who = (id: number | null) => people.find((p) => p.id === id)?.name ?? "";
   const today = todayISO();
@@ -105,6 +145,7 @@ export function ProjectSchedule({ project, people }: SectionProps) {
   const tabs: { id: View; label: string; icon: typeof ListChecks }[] = [
     { id: "tasks", label: t("sch.tasks"), icon: ListChecks },
     { id: "wbs", label: t("sch.wbs"), icon: Rows3 },
+    { id: "forecast", label: t("sch.forecast"), icon: TrendingUp },
     { id: "calendar", label: t("sch.calendar"), icon: CalendarDays },
     { id: "gantt", label: t("sch.gantt"), icon: GanttChartSquare },
   ];
@@ -127,22 +168,7 @@ export function ProjectSchedule({ project, people }: SectionProps) {
           ))}
         </div>
         <div className="flex items-center gap-2">
-          {view === "wbs" ? (
-        <ScheduleBreakdown
-          project={project}
-          tasks={tasks}
-          check={checkCount}
-          people={people}
-          onOpen={setOpenId}
-          onAdd={(kind, parentId) => {
-            setAddPreset({ kind, parentId });
-            setAddOpen(true);
-          }}
-          onChanged={() => void load()}
-        />
-      ) : null}
-
-      {view === "calendar" ? (
+          {view === "calendar" ? (
             <Button variant="outline" onClick={() => setEventOpen(true)}>
               <Plus className="size-4" />
               {t("sch.addEvent")}
@@ -179,72 +205,143 @@ export function ProjectSchedule({ project, people }: SectionProps) {
           {shown.length === 0 ? (
             <Card className="p-10 text-center text-sm text-muted-foreground">{t("sch.empty")}</Card>
           ) : (
-            <ul className="space-y-2">
-              {shown.map((task) => {
-                const done = task.status === "completed";
-                const c = checkCount[task.id];
-                const late = !done && task.end_date !== null && task.end_date < today;
-                return (
-                  <li key={task.id}>
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => setOpenId(task.id)}
-                      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setOpenId(task.id)}
-                      className="frx-glass group flex cursor-pointer items-center gap-3 border border-[color:var(--glass-edge)] px-4 py-3 transition-all hover:-translate-y-0.5"
-                      style={{ boxShadow: `var(--glass-shadow), inset 3px 0 0 ${done ? "transparent" : color}` }}
-                    >
+            <>
+              <div className="flex justify-end gap-1">
+                <Button size="sm" variant="ghost" onClick={() => setFoldedSaved(new Set())}>
+                  <ChevronsUpDown className="size-4" />
+                  {t("sch.expandAll")}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setFoldedSaved(new Set(groups.map((g) => g.key)))}>
+                  <ChevronsDownUp className="size-4" />
+                  {t("sch.collapseAll")}
+                </Button>
+              </div>
+              <div className="space-y-4">
+                {groups.map((g) => {
+                  const isFolded = folded.has(g.key);
+                  const doneCount = g.items.filter((x) => x.status === "completed").length;
+                  const pctDone = g.items.length ? Math.round((doneCount / g.items.length) * 100) : 0;
+                  return (
+                    <section key={g.key}>
                       <button
                         type="button"
-                        aria-label={t("sch.toggleDone")}
-                        className="shrink-0"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void toggleDone(task);
+                        aria-expanded={!isFolded}
+                        onClick={() => {
+                          const next = new Set(folded);
+                          if (next.has(g.key)) next.delete(g.key);
+                          else next.add(g.key);
+                          setFoldedSaved(next);
                         }}
+                        className="mb-2 flex w-full items-center gap-3 rounded-xl border px-4 py-2.5 text-left transition-colors hover:brightness-95"
+                        style={{ background: g.phase ? `color-mix(in srgb, ${color} 14%, var(--card))` : "var(--muted)", borderColor: `color-mix(in srgb, ${color} 28%, var(--border))` }}
                       >
-                        {done ? <CheckCircle2 className="size-5" style={{ color }} /> : <Circle className="size-5 text-muted-foreground transition-colors group-hover:text-foreground" />}
+                        <ChevronDown className={cn("size-4 shrink-0 transition-transform duration-300", isFolded && "-rotate-90")} />
+                        <span className="min-w-0 flex-1 truncate font-semibold">{g.title}</span>
+                        <span className="hidden h-1.5 w-24 overflow-hidden rounded-full sm:block" style={{ background: `color-mix(in srgb, ${color} 18%, transparent)` }}>
+                          <span className="block h-full rounded-full" style={{ width: `${pctDone}%`, background: color }} />
+                        </span>
+                        <span className="text-xs tabular-nums text-muted-foreground">
+                          {doneCount}/{g.items.length}
+                        </span>
                       </button>
-                      <div className="min-w-0 flex-1">
-                        <p className={cn("truncate font-medium", done && "text-muted-foreground line-through")}>{task.title}</p>
-                        <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                          {task.start_date || task.end_date ? (
-                            <span className={cn("tabular-nums", late && "font-semibold text-destructive")}>
-                              {task.start_date ? formatDate(task.start_date, locale) : "…"} → {task.end_date ? formatDate(task.end_date, locale) : "…"}
-                            </span>
-                          ) : null}
-                          {phaseName(task.parent_id) ? <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider">{phaseName(task.parent_id)}</span> : null}
-                          {c ? (
-                            <span className="inline-flex items-center gap-1 tabular-nums">
-                              <ListChecks className="size-3.5" />
-                              {c.done}/{c.total}
-                            </span>
-                          ) : null}
-                          {noteCount[task.id] ? (
-                            <span className="inline-flex items-center gap-1">
-                              <MessageSquare className="size-3.5" />
-                              {noteCount[task.id]}
-                            </span>
-                          ) : null}
-                          {fileCount[task.id] ? (
-                            <span className="inline-flex items-center gap-1">
-                              <Paperclip className="size-3.5" />
-                              {fileCount[task.id]}
-                            </span>
-                          ) : null}
-                        </p>
+                      <div className="grid transition-[grid-template-rows] duration-300" style={{ gridTemplateRows: isFolded ? "0fr" : "1fr" }}>
+                        <div className="min-h-0 overflow-hidden">
+                          <ul className="space-y-2 pb-1">
+                            {g.items.map((task) => {
+                              const done = task.status === "completed";
+                              const c = checkCount[task.id];
+                              const late = !done && task.end_date !== null && task.end_date < today;
+                              const blockers = blockersOf(task.id);
+                              return (
+                                <li key={task.id}>
+                                  <div
+                                    role="button"
+                                    tabIndex={isFolded ? -1 : 0}
+                                    onClick={() => setOpenId(task.id)}
+                                    onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setOpenId(task.id)}
+                                    className="frx-glass group flex cursor-pointer items-center gap-3 border border-[color:var(--glass-edge)] px-4 py-3 transition-all hover:-translate-y-0.5"
+                                    style={{ boxShadow: `var(--glass-shadow), inset 3px 0 0 ${done ? "transparent" : blockers.length ? "#ef4444" : color}` }}
+                                  >
+                                    <button
+                                      type="button"
+                                      aria-label={t("sch.toggleDone")}
+                                      className="shrink-0"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        void toggleDone(task);
+                                      }}
+                                    >
+                                      {done ? <CheckCircle2 className="size-5" style={{ color }} /> : <Circle className="size-5 text-muted-foreground transition-colors group-hover:text-foreground" />}
+                                    </button>
+                                    <div className="min-w-0 flex-1">
+                                      <p className={cn("truncate font-medium", done && "text-muted-foreground line-through")}>{task.title}</p>
+                                      <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                                        {task.start_date || task.end_date ? (
+                                          <span className={cn("tabular-nums", late && "font-semibold text-destructive")}>
+                                            {task.start_date ? formatDate(task.start_date, locale) : "…"} → {task.end_date ? formatDate(task.end_date, locale) : "…"}
+                                          </span>
+                                        ) : null}
+                                        {blockers.length ? (
+                                          <span className="inline-flex items-center gap-1 font-medium text-red-600 dark:text-red-400">
+                                            <Lock className="size-3.5" />
+                                            {t("sch.blockedBy", { names: blockers.map((b) => b.title).join(", ") })}
+                                          </span>
+                                        ) : null}
+                                        {c ? (
+                                          <span className="inline-flex items-center gap-1 tabular-nums">
+                                            <ListChecks className="size-3.5" />
+                                            {c.done}/{c.total}
+                                          </span>
+                                        ) : null}
+                                        {noteCount[task.id] ? (
+                                          <span className="inline-flex items-center gap-1">
+                                            <MessageSquare className="size-3.5" />
+                                            {noteCount[task.id]}
+                                          </span>
+                                        ) : null}
+                                        {fileCount[task.id] ? (
+                                          <span className="inline-flex items-center gap-1">
+                                            <Paperclip className="size-3.5" />
+                                            {fileCount[task.id]}
+                                          </span>
+                                        ) : null}
+                                      </p>
+                                    </div>
+                                    <span className={cn("size-2 shrink-0 rounded-full", PRIORITY_DOT[task.priority] ?? "bg-slate-400")} title={t(`sch.priority.${task.priority}` as MessageKey)} />
+                                    <StatusBadge value={task.status} />
+                                    {task.assigned_to ? <UserAvatar name={who(task.assigned_to)} size="sm" /> : null}
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
                       </div>
-                      <span className={cn("size-2 shrink-0 rounded-full", PRIORITY_DOT[task.priority] ?? "bg-slate-400")} title={t(`sch.priority.${task.priority}` as MessageKey)} />
-                      <StatusBadge value={task.status} />
-                      {task.assigned_to ? <UserAvatar name={who(task.assigned_to)} size="sm" /> : null}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+                    </section>
+                  );
+                })}
+              </div>
+            </>
           )}
         </>
       ) : null}
+
+      {view === "wbs" ? (
+        <ScheduleBreakdown
+          project={project}
+          tasks={tasks}
+          check={checkCount}
+          people={people}
+          onOpen={setOpenId}
+          onAdd={(kind, parentId) => {
+            setAddPreset({ kind, parentId });
+            setAddOpen(true);
+          }}
+          onChanged={() => void load()}
+        />
+      ) : null}
+
+      {view === "forecast" ? <ScheduleForecast project={project} tasks={tasks} deps={deps} check={checkCount} onOpen={setOpenId} /> : null}
 
       {view === "calendar" ? (
         <Card className="p-5">
@@ -258,7 +355,7 @@ export function ProjectSchedule({ project, people }: SectionProps) {
 
       {view === "gantt" ? <TaskGantt tasks={tasks} color={color} checkCount={checkCount} onOpen={setOpenId} /> : null}
 
-      <TaskDrawer project={project} task={openTask} people={people} phases={phases} open={openTask !== null} onClose={() => setOpenId(null)} onChanged={() => void load()} />
+      <TaskDrawer project={project} task={openTask} people={people} phases={phases} allTasks={tasks} deps={deps} open={openTask !== null} onClose={() => setOpenId(null)} onChanged={() => void load()} />
 
       <AddTaskDialog
         open={addOpen}

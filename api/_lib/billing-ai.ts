@@ -237,6 +237,11 @@ Write 2 to 3 short sentences, 60 words at most, in the requested language. The t
 Never mention delays, problems, risks, lateness, money or anything that could worry the client. If something is behind, simply do not mention it.
 Use only the facts given: never invent work, dates or numbers. Plain text only: no markdown, no lists, no greeting.`;
 
+const FORECAST_SYSTEM = `You are a scheduling assistant for a general contractor. You receive JSON about a project's tasks: planned dates, a computed forecast, progress, and which tasks wait on others (dependencies).
+Write a short, practical analysis for the project manager in the requested language: 4 to 7 lines, each starting with "- ".
+Say whether the project is likely to finish on its planned end date; name the specific tasks or chains that hold things up and why (an unfinished predecessor, work not started past its date, slow progress); and give one concrete action for each main problem (for example start X earlier, add crew on Y, confirm the delivery of Z).
+Use only the facts given: never invent tasks, dates or numbers. Plain text only: no markdown other than the leading "- ".`;
+
 /** Turns the dashboard's facts into a few readable sentences. */
 export async function writeSummary(input: {
   provider: AiProvider;
@@ -244,9 +249,9 @@ export async function writeSummary(input: {
   model?: string;
   language: "fr" | "en";
   facts: unknown;
-  kind?: "dashboard" | "project";
+  kind?: "dashboard" | "project" | "forecast";
 }): Promise<string> {
-  const system = input.kind === "project" ? PROJECT_SYSTEM : SUMMARY_SYSTEM;
+  const system = input.kind === "project" ? PROJECT_SYSTEM : input.kind === "forecast" ? FORECAST_SYSTEM : SUMMARY_SYSTEM;
   const model = input.model || DEFAULT_MODELS[input.provider];
   const prompt = `Language: ${input.language === "fr" ? "French (Quebec)" : "English"}\nFacts:\n${JSON.stringify(input.facts)}`;
   const controller = new AbortController();
@@ -257,7 +262,7 @@ export async function writeSummary(input: {
         method: "POST",
         signal: controller.signal,
         headers: { "content-type": "application/json", "x-api-key": input.apiKey, "anthropic-version": "2023-06-01" },
-        body: JSON.stringify({ model, max_tokens: 400, system, messages: [{ role: "user", content: prompt }] }),
+        body: JSON.stringify({ model, max_tokens: input.kind === "forecast" ? 900 : 400, system, messages: [{ role: "user", content: prompt }] }),
       });
       const payload = (await res.json().catch(() => ({}))) as { content?: { type: string; text?: string }[]; error?: { message?: string } };
       if (!res.ok) throw new Error(payload.error?.message || `AI request failed (${res.status})`);
@@ -272,7 +277,7 @@ export async function writeSummary(input: {
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.4, maxOutputTokens: 600 },
+        generationConfig: { temperature: 0.3, maxOutputTokens: input.kind === "forecast" ? 1200 : 600 },
       }),
     });
     const payload = (await res.json().catch(() => ({}))) as { candidates?: { content?: { parts?: { text?: string }[] } }[]; error?: { message?: string } };

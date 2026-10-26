@@ -95,7 +95,7 @@ export function cacheSummary(userId: number | undefined, locale: string, text: s
 }
 
 /** Asks the AI for the briefing. Resolves to null when no AI is set up or it fails. */
-export async function fetchAiSummary(facts: unknown, locale: string, kind: "dashboard" | "project" = "dashboard"): Promise<string | null> {
+export async function fetchAiSummary(facts: unknown, locale: string, kind: "dashboard" | "project" | "forecast" = "dashboard"): Promise<string | null> {
   try {
     // Local development keeps its AI settings in the browser, so it sends them along; the live server uses its own.
     const ai = import.meta.env.PROD ? undefined : await getSetting(AI_KEY).then((raw) => (raw ? JSON.parse(raw) : undefined)).catch(() => undefined);

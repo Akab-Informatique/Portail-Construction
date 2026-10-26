@@ -43,6 +43,7 @@ async function seedDemoDataInner() {
     await ensureDemoCabinet();
     await ensureDemoEmployee();
     await ensureDemoBreakdown();
+    await ensureDemoDependencies();
     return;
   }
 
@@ -400,6 +401,7 @@ async function seedDemoDataInner() {
   await ensureDemoCabinet();
   await ensureDemoEmployee();
   await ensureDemoBreakdown();
+  await ensureDemoDependencies();
   console.info("[demo] Fake local demo data created (dev only, never synced to production).");
 }
 
@@ -863,5 +865,27 @@ async function ensureDemoBreakdown() {
         progress: phase.progress >= 100 ? 100 : null,
       });
     }
+  }
+}
+
+/** A few "this waits for that" links on the lobby schedule, so the Forecast has something to point at. */
+async function ensureDemoDependencies() {
+  const [lobby] = await db.select().from(schema.projects).where(eq(schema.projects.project_number, "FRX-2601"));
+  if (!lobby) return;
+  const have = await db.select().from(schema.task_dependencies).where(eq(schema.task_dependencies.project_id, lobby.id));
+  if (have.length > 0) return;
+  const tasks = await db.select().from(schema.project_tasks).where(eq(schema.project_tasks.project_id, lobby.id));
+  const byTitle = (title: string) => tasks.find((t) => t.title === title);
+  const links: [string, string][] = [
+    ["Fermeture des cloisons", "Électricité et systèmes de sécurité"],
+    ["Joints et plafonds suspendus", "Fermeture des cloisons"],
+    ["Peinture, plafonds et revêtements", "Joints et plafonds suspendus"],
+    ["Ébénisterie, comptoirs et accessoires", "Peinture, plafonds et revêtements"],
+    ["Mise en service des systèmes", "Ébénisterie, comptoirs et accessoires"],
+  ];
+  for (const [task, on] of links) {
+    const a = byTitle(task);
+    const b = byTitle(on);
+    if (a && b) await db.insert(schema.task_dependencies).values({ project_id: lobby.id, task_id: a.id, depends_on_id: b.id });
   }
 }
