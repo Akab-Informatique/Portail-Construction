@@ -255,7 +255,8 @@ export default async function handler(req: Req, res: Res) {
       const name = String(body.name ?? "").trim();
       const parentId = String(body.parentId ?? "");
       const content = String(body.content ?? "");
-      if (!name || !content) return res.status(400).json({ error: "err.badRequest" });
+      // An empty body is allowed only when asked for (a new blank document).
+      if (!name || (!content && body.blank !== true)) return res.status(400).json({ error: "err.badRequest" });
       if (/[\\/]|^\.\.?$/.test(name)) return res.status(400).json({ error: "sp.error.badFileName" });
       if (!(await allowed(user, token, driveId, parentId, "upload"))) return deny();
       const bytes = Buffer.from(content, "base64");

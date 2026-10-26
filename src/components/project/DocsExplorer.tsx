@@ -7,6 +7,10 @@ import {
   File as FileIcon,
   FileImage,
   FileOutput,
+  FilePlus2,
+  ChevronsUpDown,
+  Trash2,
+  Plus,
   FileSpreadsheet,
   FileText,
   Folder,
@@ -28,6 +32,7 @@ import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 const MAX_BYTES = 4 * 1024 * 1024;
@@ -58,7 +63,10 @@ export function DocsExplorer({ root, settings, color, rootLabel }: { root: SpRoo
   const [busy, setBusy] = useState(false);
   const [listing, setListing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [folderDialog, setFolderDialog] = useState(false);
+  /** What the "new" dialog is creating: a folder or a blank document. */
+  const [newKind, setNewKind] = useState<"folder" | "docx" | "xlsx" | "txt" | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [lastIdx, setLastIdx] = useState<number | null>(null);
   const [newName, setNewName] = useState("");
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -68,7 +76,9 @@ export function DocsExplorer({ root, settings, color, rootLabel }: { root: SpRoo
   const items = tree.cache[currentId] ?? [];
   const folders = useMemo(() => items.filter((i) => i.isFolder).sort((a, b) => a.name.localeCompare(b.name)), [items]);
   const files = useMemo(() => items.filter((i) => !i.isFolder).sort((a, b) => a.name.localeCompare(b.name)), [items]);
+  const ordered = useMemo(() => [...folders, ...files], [folders, files]);
   const selectedFiles = files.filter((f) => selected.includes(f.id));
+  const selectedItems = ordered.filter((i) => selected.includes(i.id));
 
   // Load the folder being looked at (and the root, so the tree can open).
   useEffect(() => {
@@ -135,18 +145,39 @@ export function DocsExplorer({ root, settings, color, rootLabel }: { root: SpRoo
     }
   }
 
-  async function createFolder() {
-    const name = newName.trim();
-    if (!name) return;
+  async function createNew() {
+    const base = newName.trim();
+    if (!base || !newKind) return;
     setBusy(true);
     setError(null);
     try {
-      await callSharePoint("mkdir", { driveId: drive, parentId: currentId, name });
+      if (newKind === "folder") {
+        await callSharePoint("mkdir", { driveId: drive, parentId: currentId, name: base });
+      } else {
+        const name = /\.\w{2,4}$/.test(base) ? base : `${base}.${newKind}`;
+        await callSharePoint("upload", { driveId: drive, parentId: currentId, name, content: "", blank: true });
+      }
       setNewName("");
-      setFolderDialog(false);
+      setNewKind(null);
       await tree.list(currentId, true);
     } catch (err) {
-      setError(tr(err, "sp.error.createFolder"));
+      setError(tr(err, newKind === "folder" ? "sp.error.createFolder" : "sp.error.upload"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Deletes everything ticked: files and folders (a folder goes with its content). */
+  async function deleteSelected() {
+    setBusy(true);
+    setError(null);
+    try {
+      for (const item of selectedItems) await callSharePoint("delete", { driveId: drive, itemId: item.id });
+      setDeleteOpen(false);
+      setSelected([]);
+      await tree.list(currentId, true);
+    } catch (err) {
+      setError(tr(err, "sp.error.delete"));
     } finally {
       setBusy(false);
     }
@@ -266,8 +297,12 @@ export function DocsExplorer({ root, settings, color, rootLabel }: { root: SpRoo
   }
 
   const crumbs: Crumb[] = [{ id: root.id, name: rootLabel }, ...trail];
-  const all = files.length > 0 && selectedFiles.length === files.length;
+  const all = ordered.length > 0 && selectedItems.length === ordered.length;
   const needsSelection = busy || selectedFiles.length === 0;
+  const openNew = (kind: "folder" | "docx" | "xlsx" | "txt") => {
+    setNewName(kind === "folder" ? "" : t(`pdoc.new.${kind}Name` as never));
+    setNewKind(kind);
+  };
 
   return (
     <div className="space-y-3">
@@ -286,6 +321,33 @@ export function DocsExplorer({ root, settings, color, rootLabel }: { root: SpRoo
             e.target.value = "";
           }}
         />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" variant="outline" disabled={busy}>
+              <Plus className="size-4" />
+              {t("pdoc.new")}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="min-w-52">
+            <DropdownMenuItem onSelect={() => openNew("folder")}>
+              <FolderPlus className="size-4" />
+              {t("pdoc.newFolder")}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => openNew("docx")}>
+              <FileText className="size-4" />
+              {t("pdoc.new.docx")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => openNew("xlsx")}>
+              <FileSpreadsheet className="size-4" />
+              {t("pdoc.new.xlsx")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => openNew("txt")}>
+              <FilePlus2 className="size-4" />
+              {t("pdoc.new.txt")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Button size="sm" variant="outline" onClick={() => void download()} disabled={needsSelection}>
           <Download className="size-4" />
           {t("pdoc.download")}
@@ -298,11 +360,17 @@ export function DocsExplorer({ root, settings, color, rootLabel }: { root: SpRoo
           <Printer className="size-4" />
           {t("pdoc.print")}
         </Button>
+        <Button size="sm" variant="outline" onClick={() => setDeleteOpen(true)} disabled={busy || selectedItems.length === 0} className="text-destructive hover:text-destructive">
+          <Trash2 className="size-4" />
+          {t("pdoc.delete")}
+        </Button>
         <span className="mx-1 h-6 w-px bg-border" aria-hidden />
-        <Button size="sm" variant="ghost" onClick={() => setSelected(all ? [] : files.map((f) => f.id))} disabled={files.length === 0}>
+        <Button size="sm" variant="ghost" onClick={() => setSelected(all ? [] : ordered.map((i) => i.id))} disabled={ordered.length === 0}>
+          <ChevronsUpDown className="size-4" />
           {all ? t("pdoc.clear") : t("pdoc.selectAll")}
         </Button>
-        <span className="text-xs tabular-nums text-muted-foreground">{t("pdoc.selected", { n: selectedFiles.length })}</span>
+        <span className="text-xs tabular-nums text-muted-foreground">{t("pdoc.selected", { n: selectedItems.length })}</span>
+        <span className="hidden text-[11px] text-muted-foreground xl:inline">{t("pdoc.selectHint")}</span>
         {busy ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : null}
       </Card>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -312,7 +380,7 @@ export function DocsExplorer({ root, settings, color, rootLabel }: { root: SpRoo
           <div className="flex items-center justify-between px-2 pt-1 pb-1.5">
             <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t("pdoc.folders")}</span>
             <span className="flex items-center gap-0.5">
-              <Button size="icon-sm" variant="ghost" aria-label={t("pdoc.newFolder")} title={t("pdoc.newFolder")} onClick={() => setFolderDialog(true)} disabled={busy}>
+              <Button size="icon-sm" variant="ghost" aria-label={t("pdoc.newFolder")} title={t("pdoc.newFolder")} onClick={() => openNew("folder")} disabled={busy}>
                 <FolderPlus className="size-4" />
               </Button>
               <Button size="icon-sm" variant="ghost" aria-label={t("pdoc.refresh")} title={t("pdoc.refresh")} onClick={() => void reload()}>
@@ -365,10 +433,19 @@ export function DocsExplorer({ root, settings, color, rootLabel }: { root: SpRoo
             <p className="py-16 text-center text-sm text-muted-foreground">{t("pdoc.empty")}</p>
           ) : (
             <ul className="max-h-[58vh] divide-y divide-border/60 overflow-y-auto">
-              {[...folders, ...files].map((item) => {
+              {ordered.map((item, idx) => {
                 const Icon = iconFor(item);
                 const on = selected.includes(item.id);
-                const toggle = () => setSelected((prev) => (prev.includes(item.id) ? prev.filter((x) => x !== item.id) : [...prev, item.id]));
+                const toggle = (range = false) => {
+                  if (range && lastIdx !== null) {
+                    const [from, to] = lastIdx < idx ? [lastIdx, idx] : [idx, lastIdx];
+                    const ids = ordered.slice(from, to + 1).map((i) => i.id);
+                    setSelected((prev) => [...new Set([...prev, ...ids])]);
+                  } else {
+                    setSelected((prev) => (prev.includes(item.id) ? prev.filter((x) => x !== item.id) : [...prev, item.id]));
+                  }
+                  setLastIdx(idx);
+                };
                 const openFolder = () => {
                   tree.open(currentId);
                   goTo([...trail, { id: item.id, name: item.name }]);
@@ -378,10 +455,12 @@ export function DocsExplorer({ root, settings, color, rootLabel }: { root: SpRoo
                     key={item.id}
                     className={cn("grid cursor-default grid-cols-[28px_minmax(0,1fr)_120px_90px] items-center gap-3 px-4 py-2.5 text-sm transition-colors max-sm:grid-cols-[28px_minmax(0,1fr)_70px]", !on && "hover:bg-foreground/5")}
                     style={on ? { background: `color-mix(in srgb, ${color} 14%, transparent)`, boxShadow: `inset 3px 0 0 ${color}` } : undefined}
-                    onClick={() => (item.isFolder ? undefined : toggle())}
+                    onClick={(e) => toggle(e.shiftKey)}
                     onDoubleClick={() => (item.isFolder ? openFolder() : item.webUrl ? window.open(item.webUrl, "_blank", "noopener") : undefined)}
                   >
-                    <span onClick={(e) => e.stopPropagation()}>{item.isFolder ? null : <Checkbox checked={on} onCheckedChange={toggle} aria-label={item.name} />}</span>
+                    <span onClick={(e) => e.stopPropagation()}>
+                      <Checkbox checked={on} onCheckedChange={() => toggle()} aria-label={item.name} />
+                    </span>
                     <span className="flex min-w-0 items-center gap-3">
                       <Icon className="size-5 shrink-0" style={item.isFolder ? { color } : undefined} />
                       {item.isFolder ? (
@@ -409,18 +488,44 @@ export function DocsExplorer({ root, settings, color, rootLabel }: { root: SpRoo
         </Card>
       </div>
 
-      <Dialog open={folderDialog} onOpenChange={setFolderDialog}>
+      <Dialog open={newKind !== null} onOpenChange={(o) => !o && setNewKind(null)}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>{t("pdoc.newFolder")}</DialogTitle>
+            <DialogTitle>{newKind === "folder" ? t("pdoc.newFolder") : newKind ? t(`pdoc.new.${newKind}` as never) : ""}</DialogTitle>
           </DialogHeader>
-          <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={t("pdoc.folderName")} autoFocus onKeyDown={(e) => e.key === "Enter" && void createFolder()} />
+          <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={newKind === "folder" ? t("pdoc.folderName") : t("pdoc.fileName")} autoFocus onKeyDown={(e) => e.key === "Enter" && void createNew()} />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setFolderDialog(false)}>
+            <Button variant="outline" onClick={() => setNewKind(null)}>
               {t("clients.cancel")}
             </Button>
-            <Button onClick={() => void createFolder()} disabled={busy || !newName.trim()}>
+            <Button onClick={() => void createNew()} disabled={busy || !newName.trim()}>
               {t("pdoc.create")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("pdoc.deleteTitle", { n: selectedItems.length })}</DialogTitle>
+          </DialogHeader>
+          <ul className="max-h-48 space-y-1 overflow-y-auto rounded-lg border bg-muted/30 p-2 text-sm">
+            {selectedItems.map((i) => (
+              <li key={i.id} className="flex items-center gap-2 truncate">
+                {i.isFolder ? <Folder className="size-4 shrink-0" style={{ color }} /> : <FileIcon className="size-4 shrink-0 text-muted-foreground" />}
+                <span className="truncate">{i.name}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-sm text-muted-foreground">{t("pdoc.deleteWarn")}</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)}>
+              {t("clients.cancel")}
+            </Button>
+            <Button variant="destructive" onClick={() => void deleteSelected()} disabled={busy}>
+              {busy ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+              {t("pdoc.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
