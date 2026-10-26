@@ -1,5 +1,6 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { PROJECT_PHASES } from "@/lib/constants";
 import { formatDate, todayISO } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
@@ -126,68 +127,95 @@ function ProjectFolder({ project, tasks, index, open }: { project: Project; task
   );
 }
 
-/**
- * One client = one cabinet drawer. Pull it open and its project folders flip up one after the other,
- * each in the project's own color.
- */
-export function ClientDrawer({
+function useOverall(jobs: Project[], tasks: TaskLite[]) {
+  const running = jobs.filter((j) => j.status !== "completed");
+  const overall = running.length ? Math.round(running.reduce((sum, j) => sum + projectAchievement(j, tasks).percent, 0) / running.length) : 0;
+  return { running: running.length, overall };
+}
+
+/** A drawer front in the cabinet list. The chosen one is pulled out and lit. */
+export function ClientTab({
   client,
   jobs,
   tasks,
-  open,
-  onToggle,
-  noProjects,
+  selected,
+  onSelect,
 }: {
   client: Client;
   jobs: Project[];
   tasks: TaskLite[];
-  open: boolean;
-  onToggle: () => void;
-  noProjects: string;
+  selected: boolean;
+  onSelect: () => void;
 }) {
   const { t } = useI18n();
-  const running = jobs.filter((j) => j.status !== "completed");
-  const overall = running.length ? Math.round(running.reduce((s, j) => s + projectAchievement(j, tasks).percent, 0) / running.length) : 0;
+  const { running, overall } = useOverall(jobs, tasks);
   return (
-    <section className={cn("frx-drawer", open && "frx-drawer-open")}>
-      <div className="frx-drawer-front frx-glass border border-[color:var(--glass-edge)]">
-        <div className="flex items-center gap-2 pr-2">
-          <button type="button" onClick={onToggle} aria-expanded={open} className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3.5 text-left">
-            <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform duration-300", !open && "-rotate-90")} />
-            {/* label plate */}
-            <span className="min-w-0 rounded-md border border-border/70 bg-background/60 px-3 py-1.5 shadow-[inset_0_1px_2px_rgba(0,0,0,0.12)]">
-              <span className="block truncate font-display text-lg leading-tight tracking-wide">{client.company_name}</span>
-            </span>
-            <span className="hidden items-center gap-1 sm:flex">
-              {jobs.slice(0, 10).map((j) => (
-                <span key={j.id} className="size-2.5 rounded-full" style={{ background: projectColor(j), boxShadow: `0 0 0 2px color-mix(in srgb, ${projectColor(j)} 25%, transparent)` }} />
-              ))}
-            </span>
-            <span className="ml-auto flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
-              <span>{t("sp.projectCount", { n: jobs.length })}</span>
-              {running.length > 0 ? <span className="font-semibold tabular-nums text-foreground">{overall}%</span> : null}
-            </span>
-          </button>
-          {/* the drawer handle */}
-          <span className="hidden h-2 w-14 rounded-full bg-gradient-to-b from-foreground/25 to-foreground/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_2px_3px_rgba(0,0,0,0.25)] sm:block" aria-hidden />
-        </div>
-      </div>
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      className={cn(
+        "frx-glass frx-tab relative flex w-full flex-col gap-2 border border-[color:var(--glass-edge)] px-4 py-3 text-left",
+        selected && "frx-tab-selected",
+      )}
+    >
+      <span className="flex items-center justify-between gap-2">
+        <span className="min-w-0 truncate rounded-md border border-border/70 bg-background/60 px-2.5 py-1 font-display text-base leading-tight tracking-wide shadow-[inset_0_1px_2px_rgba(0,0,0,0.12)]">
+          {client.company_name}
+        </span>
+        <span className="h-1.5 w-9 shrink-0 rounded-full bg-gradient-to-b from-foreground/25 to-foreground/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_1px_2px_rgba(0,0,0,0.25)]" aria-hidden />
+      </span>
+      <span className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1">
+          {jobs.slice(0, 10).map((j) => (
+            <span key={j.id} className="size-2.5 rounded-full" style={{ background: projectColor(j), boxShadow: `0 0 0 2px color-mix(in srgb, ${projectColor(j)} 25%, transparent)` }} />
+          ))}
+        </span>
+        <span className="flex items-center gap-2">
+          <span>{t("sp.projectCount", { n: jobs.length })}</span>
+          {running > 0 ? <span className="font-semibold tabular-nums text-foreground">{overall}%</span> : null}
+        </span>
+      </span>
+    </button>
+  );
+}
 
-      <div className="frx-drawer-body">
-        <div className="min-h-0 overflow-hidden">
-          <div className="frx-drawer-inside">
-            {jobs.length === 0 ? (
-              <p className="py-4 text-sm text-muted-foreground">{noProjects}</p>
-            ) : (
-              <div className="grid gap-x-4 gap-y-5 pt-2 lg:grid-cols-2">
-                {jobs.map((job, i) => (
-                  <ProjectFolder key={job.id} project={job} tasks={tasks} index={i} open={open} />
-                ))}
-              </div>
-            )}
-          </div>
+/** The open drawer: the client's projects laid out as folders you can flip through. */
+export function ClientFolders({ client, jobs, tasks, noProjects }: { client: Client; jobs: Project[]; tasks: TaskLite[]; noProjects: string }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const { running, overall } = useOverall(jobs, tasks);
+  // Mount closed, then open, so the folders flip up every time another drawer is chosen.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setOpen(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  return (
+    <div className="frx-drawer-open">
+      <div className="frx-glass mb-3 flex flex-wrap items-center justify-between gap-3 border border-[color:var(--glass-edge)] px-4 py-3">
+        <div className="min-w-0">
+          <p className="truncate font-display text-xl leading-tight tracking-wide">{client.company_name}</p>
+          <p className="text-xs text-muted-foreground">
+            {t("sp.projectCount", { n: jobs.length })}
+            {running > 0 ? ` · ${overall}% ${t("gantt.achievement").toLowerCase()}` : ""}
+          </p>
         </div>
+        <Link to={`/clients/${client.id}`} className="flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-muted/60">
+          {t("cab.clientPage")}
+          <ChevronRight className="size-3.5" />
+        </Link>
       </div>
-    </section>
+      <div className="frx-drawer-inside" style={{ borderRadius: "var(--radius-xl)", marginTop: 0 }}>
+        {jobs.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">{noProjects}</p>
+        ) : (
+          <div className="grid gap-x-4 gap-y-6 pt-2 xl:grid-cols-2">
+            {jobs.map((job, i) => (
+              <ProjectFolder key={job.id} project={job} tasks={tasks} index={i} open={open} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

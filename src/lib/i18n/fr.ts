@@ -196,6 +196,7 @@ export const fr: Record<MessageKey, string> = {
   "phase.interiors": "Intérieurs",
   "phase.finishing": "Finition",
   "phase.closeout": "Clôture",
+  "cab.clientPage": "Page du client",
   "clients.usage.ofBudget": "{pct} % du budget",
   "clients.stat.external": "Utilisateurs externes",
   "clients.stat.primaryHint": "{n} principal",

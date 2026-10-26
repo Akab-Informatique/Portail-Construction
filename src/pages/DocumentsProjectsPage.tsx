@@ -1,7 +1,7 @@
 import { nextProjectColor } from "@/lib/project-colors";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { ChevronsDownUp, ChevronsUpDown, Plus, Search } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Plus, Search } from "lucide-react";
 import { db, schema } from "../db";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -17,7 +17,7 @@ import {
   type ProjectFormValues,
 } from "@/components/ProjectFormFields";
 import { PageHeader } from "@/components/PageHeader";
-import { ClientDrawer } from "@/components/ProjectCabinet";
+import { ClientFolders, ClientTab } from "@/components/ProjectCabinet";
 import type { TaskLite } from "@/lib/project-progress";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,8 +42,8 @@ export function DocumentsProjectsPage() {
   const [busy, setBusy] = useState(false);
   const folders = useSharePointFolders(open);
   const canCreate = Boolean(user?.is_admin || user?.user_type === "internal") && user?.view_as !== "client";
-  // Drawers: the first client starts open; a search opens every drawer that has a match.
-  const [openDrawers, setOpenDrawers] = useState<Record<number, boolean>>({});
+  // The chosen drawer lives in the address (?client=) so Back and shared links land on it.
+  const [params, setParams] = useSearchParams();
   const [tasks, setTasks] = useState<TaskLite[]>([]);
 
   useEffect(() => {
@@ -78,6 +78,9 @@ export function DocumentsProjectsPage() {
       }))
       .filter((group) => group.jobs.length > 0 || (!q && projects.some((p) => p.client_id === group.client.id)));
   }, [clients, projects, query]);
+
+  const wanted = Number(params.get("client"));
+  const current = groups.find((g) => g.client.id === wanted) ?? groups.find((g) => g.client.id === selectedClientId) ?? groups[0];
 
   async function createProject() {
     if (!form.name.trim() || !clientId) return;
@@ -143,31 +146,21 @@ export function DocumentsProjectsPage() {
       {groups.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted-foreground">{t("sp.projectsEmpty")}</p>
       ) : (
-        <>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => setOpenDrawers(Object.fromEntries(groups.map((g) => [g.client.id, true])))}>
-              <ChevronsUpDown className="size-4" />
-              {t("cab.expandAll")}
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setOpenDrawers(Object.fromEntries(groups.map((g) => [g.client.id, false])))}>
-              <ChevronsDownUp className="size-4" />
-              {t("cab.collapseAll")}
-            </Button>
-          </div>
-          <div className="space-y-4">
-            {groups.map(({ client, jobs }: { client: Client; jobs: Project[] }, i) => (
-              <ClientDrawer
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(240px,320px)_minmax(0,1fr)]">
+          <nav aria-label={t("sp.projectsTitle")} className="space-y-2.5 lg:sticky lg:top-20">
+            {groups.map(({ client, jobs }: { client: Client; jobs: Project[] }) => (
+              <ClientTab
                 key={client.id}
                 client={client}
                 jobs={jobs}
                 tasks={tasks}
-                open={openDrawers[client.id] ?? (query.trim() ? true : i === 0)}
-                onToggle={() => setOpenDrawers((prev) => ({ ...prev, [client.id]: !(prev[client.id] ?? (query.trim() ? true : i === 0)) }))}
-                noProjects={t("nav.noProjectsYet")}
+                selected={client.id === current.client.id}
+                onSelect={() => setParams({ client: String(client.id) }, { replace: true })}
               />
             ))}
-          </div>
-        </>
+          </nav>
+          <ClientFolders key={current.client.id} client={current.client} jobs={current.jobs} tasks={tasks} noProjects={t("nav.noProjectsYet")} />
+        </div>
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>

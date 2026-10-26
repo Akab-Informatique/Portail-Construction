@@ -339,6 +339,18 @@
     opacity: 1;
     transform: none;
   }
+  .frx-tab {
+    border-radius: var(--radius-xl);
+    transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s, background-color 0.3s;
+  }
+  .frx-tab:hover {
+    transform: translateX(3px);
+  }
+  .frx-tab-selected {
+    transform: translateX(10px);
+    border-color: var(--primary);
+    box-shadow: var(--glass-shadow-hover), inset 4px 0 0 var(--primary);
+  }
   .frx-phase-now {
     animation: frx-pulse 2.2s ease-in-out infinite;
   }

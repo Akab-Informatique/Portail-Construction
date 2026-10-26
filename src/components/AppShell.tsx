@@ -155,7 +155,6 @@ export function useNavModel(): NavSection[] {
         label: t("nav.section.overview"),
         items: [
           { id: "dashboard", to: "/", label: t("nav.dashboard"), icon: LayoutDashboard, end: true, tour: "dashboard", module: "app_dashboard" },
-          { id: "allProjects", to: "/documents/projects", label: t("nav.allProjects"), icon: LayoutGrid, tour: "projectsDocs", module: "app_all_projects" },
           { id: "reports", to: "/reports", label: t("nav.reports"), icon: Presentation, end: true, tour: "reports", module: "app_reports" },
         ],
       },
@@ -165,7 +164,8 @@ export function useNavModel(): NavSection[] {
         tour: "operations",
         // Job site: projects and documents, then time on site (staff only).
         items: [
-          ...clientItems,
+          clientItems[0],
+          { id: "allProjects", to: "/documents/projects", label: t("nav.allProjects"), icon: LayoutGrid, end: true, tour: "projectsDocs", module: "app_all_projects" },
           // Punch and timesheets: one entry, two tabs; opens the first tab the user may see.
           ...(allowed("app_punch") || allowed("app_timesheets")
             ? [

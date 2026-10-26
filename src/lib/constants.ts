@@ -30,9 +30,9 @@ export const MODULES: ModuleDef[] = [
   // Sidebar. Each section groups its items; every section and every item has its own rights.
   { id: "app_overview", label: "Overview", scope: "global", description: "", group: "menu", labelKey: "nav.section.overview" },
   { id: "app_dashboard", label: "Dashboard", scope: "global", description: "", group: "menu", parent: "app_overview", labelKey: "nav.dashboard" },
-  { id: "app_all_projects", label: "All projects", scope: "global", description: "", group: "menu", parent: "app_overview", labelKey: "nav.allProjects" },
   { id: "app_reports", label: "Reports", scope: "global", description: "", group: "menu", parent: "app_overview", labelKey: "nav.reports" },
   { id: "app_client", label: "Job site", scope: "global", description: "", group: "menu", labelKey: "nav.section.client" },
+  { id: "app_all_projects", label: "All projects", scope: "global", description: "", group: "menu", parent: "app_client", labelKey: "nav.allProjects" },
   { id: "app_client_documents", label: "Documentation", scope: "global", description: "", group: "menu", parent: "app_client", labelKey: "nav.documents" },
   { id: "app_client_projects", label: "Projects", scope: "global", description: "", group: "menu", parent: "app_client", labelKey: "nav.projects" },
   { id: "app_punch", label: "Punch", scope: "global", description: "", group: "menu", parent: "app_client", labelKey: "nav.punch" },
