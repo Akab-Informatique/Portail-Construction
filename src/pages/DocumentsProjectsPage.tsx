@@ -1,7 +1,7 @@
 import { nextProjectColor } from "@/lib/project-colors";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Plus, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Search } from "lucide-react";
 import { db, schema } from "../db";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -79,8 +79,15 @@ export function DocumentsProjectsPage() {
       .filter((group) => group.jobs.length > 0 || (!q && projects.some((p) => p.client_id === group.client.id)));
   }, [clients, projects, query]);
 
+  // The cabinet holds ten drawers per page; the page follows the chosen client.
+  const PER_PAGE = 10;
   const wanted = Number(params.get("client"));
   const current = groups.find((g) => g.client.id === wanted) ?? groups.find((g) => g.client.id === selectedClientId) ?? groups[0];
+  const pages = Math.max(1, Math.ceil(groups.length / PER_PAGE));
+  const [pageIndex, setPageIndex] = useState<number | null>(null);
+  const currentIndex = current ? groups.indexOf(current) : 0;
+  const page = Math.min(pageIndex ?? Math.floor(currentIndex / PER_PAGE), pages - 1);
+  const visible = groups.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE);
 
   async function createProject() {
     if (!form.name.trim() || !clientId) return;
@@ -147,8 +154,8 @@ export function DocumentsProjectsPage() {
         <p className="py-10 text-center text-sm text-muted-foreground">{t("sp.projectsEmpty")}</p>
       ) : (
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(240px,320px)_minmax(0,1fr)]">
-          <nav aria-label={t("sp.projectsTitle")} className="space-y-2.5 lg:sticky lg:top-20">
-            {groups.map(({ client, jobs }: { client: Client; jobs: Project[] }) => (
+          <nav aria-label={t("sp.projectsTitle")} className="frx-cabinet lg:sticky lg:top-20">
+            {visible.map(({ client, jobs }: { client: Client; jobs: Project[] }) => (
               <ClientTab
                 key={client.id}
                 client={client}
@@ -158,6 +165,17 @@ export function DocumentsProjectsPage() {
                 onSelect={() => setParams({ client: String(client.id) }, { replace: true })}
               />
             ))}
+            {pages > 1 ? (
+              <div className="mt-2 flex items-center justify-between rounded-md bg-black/10 px-2 py-1.5 text-xs text-neutral-700 dark:text-neutral-300">
+                <Button type="button" size="icon-sm" variant="ghost" disabled={page === 0} onClick={() => setPageIndex(page - 1)} aria-label={t("project.cal.prev")}>
+                  <ChevronLeft className="size-4" />
+                </Button>
+                <span className="tabular-nums">{t("cab.page", { n: page + 1, total: pages })}</span>
+                <Button type="button" size="icon-sm" variant="ghost" disabled={page >= pages - 1} onClick={() => setPageIndex(page + 1)} aria-label={t("project.cal.next")}>
+                  <ChevronRight className="size-4" />
+                </Button>
+              </div>
+            ) : null}
           </nav>
           <ClientFolders key={current.client.id} client={current.client} jobs={current.jobs} tasks={tasks} noProjects={t("nav.noProjectsYet")} />
         </div>

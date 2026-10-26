@@ -133,7 +133,7 @@ function useOverall(jobs: Project[], tasks: TaskLite[]) {
   return { running: running.length, overall };
 }
 
-/** A drawer front in the cabinet list. The chosen one is pulled out and lit. */
+/** One drawer of the cabinet: a metal front with a label holder and a pull. The chosen one is slid out. */
 export function ClientTab({
   client,
   jobs,
@@ -150,33 +150,25 @@ export function ClientTab({
   const { t } = useI18n();
   const { running, overall } = useOverall(jobs, tasks);
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-pressed={selected}
-      className={cn(
-        "frx-glass frx-tab relative flex w-full flex-col gap-2 border border-[color:var(--glass-edge)] px-4 py-3 text-left",
-        selected && "frx-tab-selected",
-      )}
-    >
-      <span className="flex items-center justify-between gap-2">
-        <span className="min-w-0 truncate rounded-md border border-border/70 bg-background/60 px-2.5 py-1 font-display text-base leading-tight tracking-wide shadow-[inset_0_1px_2px_rgba(0,0,0,0.12)]">
-          {client.company_name}
+    <div className="frx-slot">
+      <button type="button" onClick={onSelect} aria-pressed={selected} className={cn("frx-face", selected && "frx-face-out")}>
+        <span className="frx-label-holder">
+          <span className="block truncate font-display text-[15px] leading-tight tracking-wide">{client.company_name}</span>
         </span>
-        <span className="h-1.5 w-9 shrink-0 rounded-full bg-gradient-to-b from-foreground/25 to-foreground/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_1px_2px_rgba(0,0,0,0.25)]" aria-hidden />
-      </span>
-      <span className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1">
-          {jobs.slice(0, 10).map((j) => (
-            <span key={j.id} className="size-2.5 rounded-full" style={{ background: projectColor(j), boxShadow: `0 0 0 2px color-mix(in srgb, ${projectColor(j)} 25%, transparent)` }} />
-          ))}
+        <span className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-neutral-600 dark:text-neutral-400">
+          <span className="flex items-center gap-1">
+            {jobs.slice(0, 8).map((j) => (
+              <span key={j.id} className="size-2 rounded-full" style={{ background: projectColor(j), boxShadow: `0 0 0 1.5px color-mix(in srgb, ${projectColor(j)} 30%, transparent)` }} />
+            ))}
+          </span>
+          <span className="flex items-center gap-2">
+            <span>{t("sp.projectCount", { n: jobs.length })}</span>
+            {running > 0 ? <span className="font-semibold tabular-nums text-neutral-800 dark:text-neutral-200">{overall}%</span> : null}
+          </span>
         </span>
-        <span className="flex items-center gap-2">
-          <span>{t("sp.projectCount", { n: jobs.length })}</span>
-          {running > 0 ? <span className="font-semibold tabular-nums text-foreground">{overall}%</span> : null}
-        </span>
-      </span>
-    </button>
+        <span className="frx-pull" aria-hidden />
+      </button>
+    </div>
   );
 }
 

@@ -195,6 +195,7 @@ export const en = {
   "phase.finishing": "Finishing",
   "phase.closeout": "Closeout",
   "cab.clientPage": "Client page",
+  "cab.page": "Page {n} of {total}",
   "clients.usage.ofBudget": "{pct}% of the budget",
   "clients.stat.external": "External users",
   "clients.stat.primaryHint": "{n} primary",

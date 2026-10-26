@@ -339,17 +339,68 @@
     opacity: 1;
     transform: none;
   }
-  .frx-tab {
-    border-radius: var(--radius-xl);
-    transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s, background-color 0.3s;
+  /* The cabinet on the left: a metal body, dark slots, drawer fronts with a label holder and a pull. */
+  .frx-cabinet {
+    padding: 12px 10px;
+    border-radius: 14px;
+    background: linear-gradient(180deg, #e3e6e9, #b8bdc2 60%, #a9aeb4);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85), inset 0 -2px 0 rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.18), 0 22px 40px -22px rgba(0, 0, 0, 0.55);
   }
-  .frx-tab:hover {
-    transform: translateX(3px);
+  .dark .frx-cabinet {
+    background: linear-gradient(180deg, #3a3d40, #25272a 60%, #1c1d1f);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 -2px 0 rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.6), 0 22px 40px -22px rgba(0, 0, 0, 0.9);
   }
-  .frx-tab-selected {
-    transform: translateX(10px);
-    border-color: var(--primary);
-    box-shadow: var(--glass-shadow-hover), inset 4px 0 0 var(--primary);
+  .frx-slot {
+    margin-bottom: 7px;
+    border-radius: 7px;
+    background: #17181a;
+    box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.7), 0 1px 0 rgba(255, 255, 255, 0.5);
+  }
+  .frx-face {
+    position: relative;
+    display: block;
+    width: calc(100% - 16px);
+    padding: 9px 12px 18px;
+    text-align: left;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 0, 0, 0.28);
+    background: linear-gradient(180deg, #f6f7f8, #dfe2e5 55%, #cfd3d7);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), inset 0 -2px 0 rgba(0, 0, 0, 0.1), 0 3px 5px -2px rgba(0, 0, 0, 0.5);
+    transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.4s, filter 0.3s;
+  }
+  .dark .frx-face {
+    border-color: rgba(0, 0, 0, 0.6);
+    background: linear-gradient(180deg, #55595d, #44474b 55%, #393c3f);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 -2px 0 rgba(0, 0, 0, 0.35), 0 3px 5px -2px rgba(0, 0, 0, 0.7);
+  }
+  .frx-face:hover {
+    transform: translateX(4px);
+    filter: brightness(1.04);
+  }
+  .frx-face-out,
+  .frx-face-out:hover {
+    transform: translateX(16px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), inset 0 -2px 0 rgba(0, 0, 0, 0.1), 0 14px 16px -6px rgba(0, 0, 0, 0.6), inset 0 3px 0 var(--primary);
+  }
+  .frx-label-holder {
+    display: block;
+    padding: 3px 9px;
+    border-radius: 3px;
+    background: #fffdf6;
+    color: #111;
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18), 0 0 0 2px rgba(150, 156, 162, 0.9), 0 1px 0 3px rgba(255, 255, 255, 0.6);
+  }
+  .frx-pull {
+    position: absolute;
+    left: 50%;
+    bottom: 5px;
+    width: 46px;
+    height: 7px;
+    transform: translateX(-50%);
+    border-radius: 4px;
+    background: linear-gradient(180deg, #f4f5f6, #8e949a);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.8);
   }
   .frx-phase-now {
     animation: frx-pulse 2.2s ease-in-out infinite;
