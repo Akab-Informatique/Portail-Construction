@@ -40,6 +40,7 @@ async function seedDemoDataInner() {
   if (existing.length > 0) {
     await seedQuoteChanges();
     await seedBillingFiles();
+    await ensureDemoCabinet();
     return;
   }
 
@@ -394,6 +395,7 @@ async function seedDemoDataInner() {
 
   await seedQuoteChanges();
   await seedBillingFiles();
+  await ensureDemoCabinet();
   console.info("[demo] Fake local demo data created (dev only, never synced to production).");
 }
 
@@ -695,4 +697,80 @@ async function seedQuoteChanges() {
       staff_seen: 1,
     },
   ]);
+}
+
+/**
+ * Twelve more fake clients with one to three jobs each, so the All projects cabinet fills more than one page.
+ * Safe to run on an existing local database: it only adds them once.
+ */
+async function ensureDemoCabinet() {
+  const clientRows = await db.select().from(schema.clients);
+  if (clientRows.some((c) => (c.notes ?? "").startsWith("Fake demo client (cabinet)"))) return;
+
+  const phases = ["preconstruction", "foundation", "structure", "envelope", "interiors", "finishing", "closeout"];
+  const cities = ["Montréal", "Laval", "Longueuil", "Québec", "Gatineau", "Sherbrooke", "Brossard", "Saint-Jérôme"];
+  const companies = [
+    "Aréna Gadbois", "Brasserie Griffintown", "Cégep Lionel-Groulx", "Domaine des Érables", "Entrepôts Lachine",
+    "Fromagerie Saint-Laurent", "Garage Boileau", "Hôtel Le Soleil", "Immeubles Beaubien", "Jardin Botanique Plus",
+    "Logis Rive-Sud", "Manufacture Dufresne",
+  ];
+  const jobs = ["Lobby renovation", "Tenant fit-out", "Roof replacement", "Parking structure", "Kitchen build-out", "Warehouse extension", "Facade repair", "Office expansion"];
+
+  let n = 0;
+  for (const [i, company] of companies.entries()) {
+    const [client] = await db
+      .insert(schema.clients)
+      .values({
+        name: `Contact ${i + 1}`,
+        company_name: company,
+        email: `contact${i + 1}@demo.example`,
+        phone: "514-555-01" + String(20 + i),
+        city: cities[i % cities.length],
+        state: "QC",
+        notes: "Fake demo client (cabinet). Local only.",
+        status: i % 5 === 4 ? "prospect" : "active",
+      })
+      .returning();
+    const count = 1 + (i % 3);
+    for (let k = 0; k < count; k++) {
+      n++;
+      const phase = phases[(i + k * 2) % phases.length];
+      const done = (i + k) % 7 === 6;
+      const start = -90 + ((i * 11 + k * 23) % 120);
+      const [job] = await db
+        .insert(schema.projects)
+        .values({
+          client_id: client.id,
+          name: `${company} — ${jobs[(i + k) % jobs.length]}`,
+          project_number: `FRX-27${String(n).padStart(2, "0")}`,
+          description: "Fake demo job.",
+          status: done ? "completed" : (i + k) % 4 === 0 ? "planning" : "active",
+          phase: done ? "closeout" : phase,
+          project_type: "Commercial",
+          address: `${100 + n} rue Demo`,
+          city: cities[(i + k) % cities.length],
+          start_date: isoDate(start),
+          end_date: isoDate(start + 70 + ((i * 7 + k * 13) % 90)),
+          budget: 0,
+          spent: 0,
+          sort_order: 100 + n,
+        })
+        .returning();
+      // A few tasks so the achievement percentage means something.
+      const total = 3 + ((i + k) % 4);
+      const finished = done ? total : Math.min(total, (i * 2 + k) % (total + 1));
+      for (let t = 0; t < total; t++) {
+        await db.insert(schema.project_tasks).values({
+          project_id: job.id,
+          title: `Work package ${t + 1}`,
+          description: null,
+          start_date: isoDate(start + t * 8),
+          end_date: isoDate(start + t * 8 + 14),
+          status: t < finished ? "completed" : t === finished ? "in_progress" : "not_started",
+          priority: "medium",
+          assigned_to: null,
+        });
+      }
+    }
+  }
 }
