@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Building2, Cloud, FileText, Mail, MessageSquare, Send, Settings, Sparkles, Users, Wallet, X, type LucideIcon } from "lucide-react";
+import { Building2, Cloud, FileText, Mail, MessageSquare, Presentation, Send, Settings, Sparkles, Users, Wallet, X, type LucideIcon } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -42,10 +42,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import type { MessageKey } from "@/lib/i18n/en";
 import { ConfigClientsPage } from "./ConfigClientsPage";
+import { ReportAccessPanel } from "./ReportAccessPanel";
 import { ConfigInternalUsersPage } from "./ConfigInternalUsersPage";
 import type { AiSettings, SmsSettings, CompanyProfile, EmailTemplateKey, EmailTemplates, QuickBooksSettings, SharePointSettings, SmtpSettings } from "@/lib/types";
 
-const TABS = ["company", "email", "sms", "templates", "quickbooks", "sharepoint", "ai", "clients", "users"] as const;
+const TABS = ["company", "email", "sms", "templates", "quickbooks", "sharepoint", "ai", "clients", "users", "reports"] as const;
 type SetupTab = (typeof TABS)[number];
 
 function isSetupTab(value: string | null): value is SetupTab {
@@ -75,6 +76,7 @@ const GROUPS: { label: MessageKey; items: { id: SetupTab; icon: LucideIcon; labe
     items: [
       { id: "clients", icon: Building2, label: "settings.tab.clients" },
       { id: "users", icon: Users, label: "settings.tab.users" },
+      { id: "reports", icon: Presentation, label: "settings.tab.reports" },
     ],
   },
 ];
@@ -630,6 +632,9 @@ export function ConfigSettingsPage() {
         </TabsContent>
         <TabsContent value="users">
           <ConfigInternalUsersPage embedded />
+        </TabsContent>
+        <TabsContent value="reports">
+          <ReportAccessPanel />
         </TabsContent>
           </div>
         </div>

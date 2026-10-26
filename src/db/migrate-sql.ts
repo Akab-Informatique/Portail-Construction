@@ -146,6 +146,8 @@ CREATE INDEX IF NOT EXISTS personal_notes_user_idx ON personal_notes (user_id, u
 CREATE TABLE IF NOT EXISTS user_prefs (user_id INTEGER PRIMARY KEY, morning_email INTEGER NOT NULL DEFAULT 0, o365_calendar INTEGER NOT NULL DEFAULT 0, morning_sent_on TEXT);
 CREATE TABLE IF NOT EXISTS note_comments (id SERIAL PRIMARY KEY, note_id INTEGER NOT NULL, project_id INTEGER NOT NULL, user_id INTEGER NOT NULL, body TEXT NOT NULL, created_on TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS note_comments_note_idx ON note_comments (note_id);
+CREATE TABLE IF NOT EXISTS report_access (id SERIAL PRIMARY KEY, report_key TEXT NOT NULL, subject_type TEXT NOT NULL, subject_id INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS report_access_key_idx ON report_access (report_key);
 CREATE INDEX IF NOT EXISTS form_entries_project_idx ON form_entries (project_id, entry_date DESC);
 CREATE INDEX IF NOT EXISTS project_attachments_owner_idx ON project_attachments (project_id, owner_type, owner_id);
 CREATE INDEX IF NOT EXISTS expenses_user_idx ON expenses (user_id, expense_date DESC);

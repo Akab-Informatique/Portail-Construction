@@ -632,3 +632,14 @@ export const note_comments = pgTable("note_comments", {
   body: text("body").notNull(),
   created_on: text("created_on").notNull(),
 });
+
+/**
+ * Who may generate which report. report_key is "report:<standard report>", "report:custom" (the custom generator) or
+ * "section:<chapter>" (a chapter the custom generator may use). subject_type is "user" or "group". Nothing here = administrators only.
+ */
+export const report_access = pgTable("report_access", {
+  id: serial("id").primaryKey(),
+  report_key: text("report_key").notNull(),
+  subject_type: text("subject_type").notNull(),
+  subject_id: integer("subject_id").notNull(),
+});

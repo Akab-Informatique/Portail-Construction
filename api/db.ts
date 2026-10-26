@@ -41,6 +41,7 @@ const ADMIN_TABLES = [
   "user_access_groups",
   "user_clients",
   "client_users",
+  "report_access",
 ];
 /** Columns a non-admin may change on their own users row. */
 const USER_SELF_COLUMNS = ["name", "title", "phone", "avatar_initials", "locale", "theme", "tutorial_done"];
@@ -215,6 +216,8 @@ async function ensureApiRoles() {
          EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO ${ROLE_ADMIN}', t);
        END LOOP;
      END $$`,
+    // Project money is for administrators: budgets and costs are read by nobody else, whatever SQL is sent.
+    `REVOKE ALL ON project_finance, project_costs, budget_items FROM ${ROLE_USER}, ${ROLE_CLIENT}`,
     // A client account reads the notes shared with it, the QRT and the files on them; it may comment and ask questions.
     `GRANT SELECT ON project_notes, project_attachments, project_qrt TO ${ROLE_CLIENT}`,
     `GRANT INSERT ON note_comments, project_qrt TO ${ROLE_CLIENT}`,
