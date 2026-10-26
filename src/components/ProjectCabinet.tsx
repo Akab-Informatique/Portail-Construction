@@ -258,10 +258,6 @@ export function ClientFolders({ client, jobs, tasks, noProjects }: { client: Cli
             {running > 0 ? ` · ${overall}% ${t("gantt.achievement").toLowerCase()}` : ""}
           </p>
         </div>
-        <Link to={`/clients/${client.id}`} className="flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-muted/60">
-          {t("cab.clientPage")}
-          <ChevronRight className="size-3.5" />
-        </Link>
       </div>
       <div className="frx-drawer-inside" style={{ borderRadius: "var(--radius-xl)", marginTop: 0 }}>
         {jobs.length === 0 ? (

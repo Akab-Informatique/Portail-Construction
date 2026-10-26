@@ -194,7 +194,6 @@ export const en = {
   "phase.interiors": "Interiors",
   "phase.finishing": "Finishing",
   "phase.closeout": "Closeout",
-  "cab.clientPage": "Client page",
   "cab.page": "Page {n} of {total}",
   "cab.pin": "Pin as favorite",
   "cab.unpin": "Remove from favorites",

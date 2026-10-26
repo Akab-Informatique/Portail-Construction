@@ -196,7 +196,6 @@ export const fr: Record<MessageKey, string> = {
   "phase.interiors": "Intérieurs",
   "phase.finishing": "Finition",
   "phase.closeout": "Clôture",
-  "cab.clientPage": "Page du client",
   "cab.page": "Page {n} sur {total}",
   "cab.pin": "Épingler en favori",
   "cab.unpin": "Retirer des favoris",
