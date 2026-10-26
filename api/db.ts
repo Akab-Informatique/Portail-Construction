@@ -987,7 +987,7 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       return res.status(200).json({ ok: true });
     }
     if (req.method !== "POST") {
-      res.status(405).json({ error: "Method not allowed" });
+      res.status(405).json({ error: "err.badRequest" });
       return;
     }
     if (action === "login") {
@@ -1029,7 +1029,7 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       }
       const session = await loadSessionUser(req);
       if (!session) {
-        res.status(401).json({ error: "Unauthorized" });
+        res.status(401).json({ error: "err.unauthorized" });
         return;
       }
       if (Number(session.must_change_password) === 1) {
@@ -1037,7 +1037,7 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
         return;
       }
       if (Number(session.is_admin) !== 1) {
-        res.status(403).json({ error: "Forbidden" });
+        res.status(403).json({ error: "err.forbidden" });
         return;
       }
       await ensureSchema();
@@ -1056,7 +1056,7 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       }
       const session = await loadSessionUser(req);
       if (!session) {
-        res.status(401).json({ error: "Unauthorized" });
+        res.status(401).json({ error: "err.unauthorized" });
         return;
       }
       if (Number(session.must_change_password) === 1) {
@@ -1064,7 +1064,7 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
         return;
       }
       if (Number(session.is_admin) !== 1) {
-        res.status(403).json({ error: "Forbidden" });
+        res.status(403).json({ error: "err.forbidden" });
         return;
       }
       const name = String(req.body?.name ?? "").trim();
@@ -1078,12 +1078,12 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
         ? req.body.groupIds.map((id: unknown) => Number(id)).filter((id: number) => Number.isInteger(id) && id > 0)
         : [];
       if (!name || !email || !password) {
-        res.status(400).json({ error: "Name, email, and password are required" });
+        res.status(400).json({ error: "users.error.required" });
         return;
       }
       const existing = await getPool().query("SELECT id FROM users WHERE lower(email) = $1 LIMIT 1", [email]);
       if (existing.rows[0]) {
-        res.status(409).json({ error: "A user with this email already exists." });
+        res.status(409).json({ error: "users.error.emailTaken" });
         return;
       }
       const storedPassword = password.startsWith("pbkdf2$") ? password : hashPassword(password);
@@ -1120,7 +1120,7 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       }
       const session = await loadSessionUser(req);
       if (!session) {
-        res.status(401).json({ error: "Unauthorized" });
+        res.status(401).json({ error: "err.unauthorized" });
         return;
       }
       if (Number(session.must_change_password) === 1) {
@@ -1128,14 +1128,14 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
         return;
       }
       if (Number(session.is_admin) !== 1) {
-        res.status(403).json({ error: "Forbidden" });
+        res.status(403).json({ error: "err.forbidden" });
         return;
       }
       const id = Number(req.body?.id);
       const name = String(req.body?.name ?? "").trim();
       const email = String(req.body?.email ?? "").trim().toLowerCase();
       if (!id || !name || !email) {
-        res.status(400).json({ error: "Name and email are required" });
+        res.status(400).json({ error: "users.error.required" });
         return;
       }
       const title = String(req.body?.title ?? "").trim() || null;
@@ -1193,23 +1193,31 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       if (!hasRemoteDb()) return res.status(200).json({ local: true });
       const session = await loadSessionUser(req);
       if (!session) {
-        res.status(401).json({ error: "Unauthorized" });
+        res.status(401).json({ error: "err.unauthorized" });
         return;
       }
       if (!effectiveAdmin(session)) {
-        res.status(403).json({ error: "Forbidden" });
+        res.status(403).json({ error: "err.forbidden" });
         return;
       }
       const to = String(req.body?.to ?? session.email ?? "").trim();
       if (!/^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]+$/.test(to)) {
-        res.status(400).json({ error: "Invalid recipient email." });
+        res.status(400).json({ error: "mail.error.badRecipient" });
         return;
       }
       try {
-        await sendSystemMail(to, "SMTP test", "This is a test message from your FRX portal. Your email settings work.");
+        const fr = session.locale === "fr";
+        await sendSystemMail(
+          to,
+          fr ? "Test SMTP" : "SMTP test",
+          fr
+            ? "Ceci est un message de test de votre portail FRX. Vos réglages de courriel fonctionnent."
+            : "This is a test message from your FRX portal. Your email settings work.",
+        );
         return res.status(200).json({ ok: true });
       } catch (err) {
-        return res.status(400).json({ error: err instanceof Error ? err.message : "Send failed" });
+        // Translated message, with the SMTP server's own (technical) reply as detail.
+        return res.status(400).json({ error: `mail.error.sendFailed|${err instanceof Error ? err.message : "?"}` });
       }
     }
     if (action === "change_password") {
@@ -1218,7 +1226,7 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       }
       const session = await loadSessionUser(req);
       if (!session) {
-        res.status(401).json({ error: "Unauthorized" });
+        res.status(401).json({ error: "err.unauthorized" });
         return;
       }
       const current = String(req.body?.current ?? "");
@@ -1247,7 +1255,7 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       }
       const session = await loadSessionUser(req);
       if (!session) {
-        res.status(401).json({ error: "Unauthorized" });
+        res.status(401).json({ error: "err.unauthorized" });
         return;
       }
       const done =
@@ -1263,7 +1271,7 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       }
       const session = await loadSessionUser(req);
       if (!session) {
-        res.status(401).json({ error: "Unauthorized" });
+        res.status(401).json({ error: "err.unauthorized" });
         return;
       }
       if (Number(session.must_change_password) === 1) {
@@ -1271,7 +1279,7 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
         return;
       }
       if (Number(session.is_admin) !== 1) {
-        res.status(403).json({ error: "Forbidden" });
+        res.status(403).json({ error: "err.forbidden" });
         return;
       }
       const mode = String(req.body?.view_as ?? "admin");
@@ -1288,7 +1296,7 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       }
       const session = await loadSessionUser(req);
       if (!session) {
-        res.status(401).json({ error: "Unauthorized" });
+        res.status(401).json({ error: "err.unauthorized" });
         return;
       }
       if (Number(session.must_change_password) === 1) {
@@ -1306,7 +1314,7 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       }
       const session = await loadSessionUser(req);
       if (!session) {
-        res.status(401).json({ error: "Unauthorized" });
+        res.status(401).json({ error: "err.unauthorized" });
         return;
       }
       if (Number(session.must_change_password) === 1) {
@@ -1315,7 +1323,7 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       }
       const key = String(req.body?.key ?? "").trim();
       if (!key) {
-        res.status(400).json({ error: "key is required" });
+        res.status(400).json({ error: "err.badRequest" });
         return;
       }
       const stored = await readStoredSetting(key);
@@ -1343,7 +1351,7 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
         return res.status(200).json({ value: redactSettingValue(stored) });
       }
       if (!effectiveAdmin(session)) {
-        res.status(403).json({ error: "Forbidden" });
+        res.status(403).json({ error: "err.forbidden" });
         return;
       }
       const value = keepStoredSecrets(stored, String(req.body?.value ?? ""));
@@ -1359,7 +1367,7 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
     }
     const session = await loadSessionUser(req);
     if (!session) {
-      res.status(401).json({ error: "Unauthorized" });
+      res.status(401).json({ error: "err.unauthorized" });
       return;
     }
     if (Number(session.must_change_password) === 1) {
@@ -1369,15 +1377,15 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
     const sql = String(req.body?.sql ?? "");
     const params = Array.isArray(req.body?.params) ? req.body.params : [];
     if (!sql.trim()) {
-      res.status(400).json({ error: "sql is required" });
+      res.status(400).json({ error: "err.badRequest" });
       return;
     }
     if (sql.length > MAX_SQL_CHARS || params.length > MAX_SQL_PARAMS) {
-      res.status(413).json({ error: "Query too large" });
+      res.status(413).json({ error: "err.tooLarge" });
       return;
     }
     if (!isAllowedSql(sql)) {
-      res.status(400).json({ error: "Query not allowed" });
+      res.status(400).json({ error: "err.notAllowed" });
       return;
     }
     const mutating = /^\s*(insert|update|delete)\b/i.test(sql);
@@ -1392,7 +1400,7 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
         setColumns.every((col) => USER_SELF_COLUMNS.includes(col)) &&
         updatesOnlyOwnRow(sql, params, session.id);
       if (!selfProfile) {
-        res.status(403).json({ error: "Forbidden" });
+        res.status(403).json({ error: "err.forbidden" });
         return;
       }
     }
@@ -1405,7 +1413,7 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
     res.status(200).json({ rows });
   } catch (err) {
     console.error("db api error", err);
-    res.status(500).json({ error: "Query failed" });
+    res.status(500).json({ error: "err.server" });
   } finally {
     if (changesAuth) invalidateAuthCache();
   }

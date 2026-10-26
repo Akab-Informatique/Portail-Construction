@@ -28,7 +28,7 @@ export function ConfigUserPage() {
   const id = Number(userId);
   const { user: me, refreshPermissions } = useAuth();
   const { refresh } = useWorkspace();
-  const { t } = useI18n();
+  const { t, tr } = useI18n();
 
   const [loading, setLoading] = useState(true);
   const [target, setTarget] = useState<User | null>(null);
@@ -140,7 +140,7 @@ export function ConfigUserPage() {
       });
       setProfileSaved(true);
     } catch (err) {
-      setProfileError(err instanceof Error ? err.message : "Could not update user");
+      setProfileError(tr(err, "users.error.updateFailed"));
     } finally {
       setSavingProfile(false);
     }
@@ -164,7 +164,7 @@ export function ConfigUserPage() {
       setTarget(updated);
     } catch (err) {
       setActive(!next);
-      setProfileError(err instanceof Error ? err.message : "Could not update user");
+      setProfileError(tr(err, "users.error.updateFailed"));
     }
   }
 
@@ -185,7 +185,7 @@ export function ConfigUserPage() {
       setTarget(updated);
     } catch (err) {
       setIsAdmin(!next);
-      setProfileError(err instanceof Error ? err.message : "Could not update user");
+      setProfileError(tr(err, "users.error.updateFailed"));
     }
   }
 

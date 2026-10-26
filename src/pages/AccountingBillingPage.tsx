@@ -96,7 +96,7 @@ function formFromDoc(doc: BillingDocument): BillingForm {
 export function AccountingBillingPage() {
   const { user, can, permissions } = useAuth();
   const { clients } = useWorkspace();
-  const { t, locale } = useI18n();
+  const { t, locale, tr } = useI18n();
   const [loading, setLoading] = useState(true);
   const [docs, setDocs] = useState<BillingDocument[]>([]);
   const [allClients, setAllClients] = useState<Client[]>([]);
@@ -290,7 +290,7 @@ export function AccountingBillingPage() {
       setEditorOpen(false);
       await load();
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : t("billing.sendFailed"));
+      setNotice(tr(err, "billing.sendFailed"));
     } finally {
       setSaving(false);
     }
@@ -379,7 +379,7 @@ export function AccountingBillingPage() {
       setEditorOpen(false);
       await load();
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : t("billing.sendFailed"));
+      setNotice(tr(err, "billing.sendFailed"));
     } finally {
       setBusyId(null);
     }

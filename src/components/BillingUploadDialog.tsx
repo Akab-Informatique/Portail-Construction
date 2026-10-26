@@ -64,7 +64,7 @@ export function BillingUploadDialog({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const { t } = useI18n();
+  const { t, tr } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<Phase>("pick");
   const [file, setFile] = useState<File | null>(null);
@@ -169,7 +169,7 @@ export function BillingUploadDialog({
         const notConfigured = result.aiError === "ai.notConfigured";
         setAiMessage({
           tone: "warn",
-          text: notConfigured ? t("billing.ai.notConfigured") : `${t("billing.ai.failed")}${result.aiError ? ` (${result.aiError})` : ""}`,
+          text: notConfigured ? t("billing.ai.notConfigured") : `${t("billing.ai.failed")}${result.aiError ? ` (${String(result.aiError).split("|")[1] ?? result.aiError})` : ""}`,
         });
       }
       setPhase("review");
@@ -226,7 +226,7 @@ export function BillingUploadDialog({
       await saveFileDetails(record, details, publish);
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("billing.upload.failed"));
+      setError(tr(err, "billing.upload.failed"));
     } finally {
       setBusy(false);
     }

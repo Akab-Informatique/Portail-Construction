@@ -136,19 +136,19 @@ async function allowed(
 export default async function handler(req: Req, res: Res) {
   try {
     const user = await requireApiUser(req);
-    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    if (!user) return res.status(401).json({ error: "err.unauthorized" });
 
     const action = String(req.body?.action ?? q(req, "action") ?? "");
     if (req.method === "GET" && action === "download") {
       const cfg = await storedConfig();
-      if (!sharePointConfigured(cfg)) return res.status(400).json({ error: "SharePoint is not configured." });
+      if (!sharePointConfigured(cfg)) return res.status(400).json({ error: "sp.error.notConfigured" });
       const token = await getGraphToken(cfg);
       const driveId = String(q(req, "driveId") || "") || (await resolveDrive(token, cfg));
       const itemId = String(q(req, "itemId") ?? "");
-      if (!itemId) return res.status(400).json({ error: "itemId is required." });
-      if (!validIds(driveId, itemId)) return res.status(400).json({ error: "Invalid id." });
-      if (!(await driveAllowed(user, driveId, () => resolveDrive(token, cfg)))) return res.status(403).json({ error: "Forbidden" });
-      if (!(await allowed(user, token, driveId, itemId, "view"))) return res.status(403).json({ error: "Forbidden" });
+      if (!itemId) return res.status(400).json({ error: "err.badRequest" });
+      if (!validIds(driveId, itemId)) return res.status(400).json({ error: "err.badRequest" });
+      if (!(await driveAllowed(user, driveId, () => resolveDrive(token, cfg)))) return res.status(403).json({ error: "err.forbidden" });
+      if (!(await allowed(user, token, driveId, itemId, "view"))) return res.status(403).json({ error: "err.forbidden" });
       const name = String(q(req, "name") ?? "file");
       const { buf, contentType } = await downloadFile(token, driveId, itemId);
       res.setHeader("Content-Type", contentType);
@@ -162,7 +162,7 @@ export default async function handler(req: Req, res: Res) {
     }
 
     if (req.method !== "POST") {
-      return res.status(405).json({ error: "Method not allowed" });
+      return res.status(405).json({ error: "err.badRequest" });
     }
 
     const body = req.body ?? {};
@@ -171,20 +171,20 @@ export default async function handler(req: Req, res: Res) {
       action === "test" && admin
         ? withOverrides(await storedConfig(), body.config as SharePointConfig | undefined)
         : await storedConfig();
-    if (action === "test" && !admin) return res.status(403).json({ error: "Forbidden" });
+    if (action === "test" && !admin) return res.status(403).json({ error: "err.forbidden" });
     if (!sharePointConfigured(cfg)) {
       if (action === "list") {
         return res.status(200).json({ configured: false, driveId: "", items: [] });
       }
       return res.status(400).json({
-        error: "SharePoint is not configured. Add tenant ID, client ID, secret, and site URL under Setup → SharePoint.",
+        error: "sp.error.notConfigured",
       });
     }
     const token = await getGraphToken(cfg);
     const driveId = String(body.driveId || "") || (await resolveDrive(token, cfg));
-    const deny = () => res.status(403).json({ error: "Forbidden" });
+    const deny = () => res.status(403).json({ error: "err.forbidden" });
     const idFields = ["itemId", "parentId"].map((k) => (body[k] == null ? undefined : String(body[k])));
-    if (!validIds(driveId, ...idFields)) return res.status(400).json({ error: "Invalid id." });
+    if (!validIds(driveId, ...idFields)) return res.status(400).json({ error: "err.badRequest" });
     if (!(await driveAllowed(user, driveId, () => resolveDrive(token, cfg)))) return deny();
 
     if (action === "test") {
@@ -211,7 +211,7 @@ export default async function handler(req: Req, res: Res) {
     }
     if (action === "mkdir") {
       const name = String(body.name ?? "").trim();
-      if (!name) return res.status(400).json({ error: "Folder name is required." });
+      if (!name) return res.status(400).json({ error: "sp.error.folderName" });
       const parentId = body.parentId ? String(body.parentId) : undefined;
       if (!(await allowed(user, token, driveId, parentId, "upload"))) return deny();
       const folder = await createFolder(token, driveId, name, parentId);
@@ -223,14 +223,14 @@ export default async function handler(req: Req, res: Res) {
     if (action === "rename") {
       const itemId = String(body.itemId ?? "").trim();
       const name = String(body.name ?? "").trim();
-      if (!itemId || !name) return res.status(400).json({ error: "itemId and name are required." });
+      if (!itemId || !name) return res.status(400).json({ error: "err.badRequest" });
       if (!(await allowed(user, token, driveId, itemId, "edit"))) return deny();
       const item = await renameItem(token, driveId, itemId, name);
       return res.status(200).json({ item: { id: item.id, name: item.name } });
     }
     if (action === "delete") {
       const itemId = String(body.itemId ?? "").trim();
-      if (!itemId) return res.status(400).json({ error: "itemId is required." });
+      if (!itemId) return res.status(400).json({ error: "err.badRequest" });
       if (!(await allowed(user, token, driveId, itemId, "edit"))) return deny();
       await deleteItem(token, driveId, itemId);
       return res.status(200).json({ ok: true });
@@ -238,7 +238,7 @@ export default async function handler(req: Req, res: Res) {
     if (action === "copy" || action === "move") {
       const itemId = String(body.itemId ?? "").trim();
       const parentId = String(body.parentId ?? "").trim();
-      if (!itemId || !parentId) return res.status(400).json({ error: "itemId and parentId are required." });
+      if (!itemId || !parentId) return res.status(400).json({ error: "err.badRequest" });
       const sourceNeed: Need = action === "move" ? "edit" : "view";
       if (!(await allowed(user, token, driveId, itemId, sourceNeed))) return deny();
       if (!(await allowed(user, token, driveId, parentId, "upload"))) return deny();
@@ -253,12 +253,12 @@ export default async function handler(req: Req, res: Res) {
       const name = String(body.name ?? "").trim();
       const parentId = String(body.parentId ?? "");
       const content = String(body.content ?? "");
-      if (!name || !parentId || !content) return res.status(400).json({ error: "name, parentId, and content are required." });
-      if (/[\\/]|^\.\.?$/.test(name)) return res.status(400).json({ error: "Invalid file name." });
+      if (!name || !parentId || !content) return res.status(400).json({ error: "err.badRequest" });
+      if (/[\\/]|^\.\.?$/.test(name)) return res.status(400).json({ error: "sp.error.badFileName" });
       if (!(await allowed(user, token, driveId, parentId, "upload"))) return deny();
       const bytes = Buffer.from(content, "base64");
       if (bytes.length > 4 * 1024 * 1024) {
-        return res.status(400).json({ error: "Files over 4 MB need a larger upload session. Split or compress the file." });
+        return res.status(400).json({ error: "sp.error.tooBig" });
       }
       const file = await uploadSmallFile(token, driveId, parentId, name, bytes);
       return res.status(200).json({
@@ -270,9 +270,9 @@ export default async function handler(req: Req, res: Res) {
         },
       });
     }
-    return res.status(400).json({ error: "Unknown action." });
+    return res.status(400).json({ error: "err.badRequest" });
   } catch (err) {
     console.error("sharepoint api error", err);
-    return res.status(500).json({ error: err instanceof Error ? err.message : "SharePoint error" });
+    return res.status(500).json({ error: `sp.error.failed|${err instanceof Error ? err.message : "?"}` });
   }
 }

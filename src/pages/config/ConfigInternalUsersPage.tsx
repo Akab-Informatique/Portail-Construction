@@ -42,7 +42,7 @@ const empty = {
 
 export function ConfigInternalUsersPage({ embedded = false }: { embedded?: boolean }) {
   const { realUser } = useAuth();
-  const { t } = useI18n();
+  const { t, tr } = useI18n();
   const [loading, setLoading] = useState(true);
   const [people, setPeople] = useState<User[]>([]);
   const [groups, setGroups] = useState<AccessGroup[]>([]);
@@ -112,7 +112,7 @@ export function ConfigInternalUsersPage({ embedded = false }: { embedded?: boole
       await load();
     } catch (err) {
       console.error("create user failed", err);
-      setFormError(err instanceof Error ? err.message : "Could not create user");
+      setFormError(tr(err, "users.error.createFailed"));
     } finally {
       setSaving(false);
     }

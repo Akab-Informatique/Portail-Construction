@@ -93,7 +93,7 @@ function Grid() {
 
 /** Full-screen branded backdrop with logo, language switch and a centred slot. */
 export function AuthScreen({ children }: { children: ReactNode }) {
-  const { locale, setLocale } = useI18n();
+  const { t, locale, setLocale } = useI18n();
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -143,7 +143,7 @@ export function AuthScreen({ children }: { children: ReactNode }) {
         <Logo inverted className="h-11 sm:h-14" />
         <div className="flex items-center gap-2">
         <InstallAppButton tone="dark" />
-        <div className="flex overflow-hidden rounded-none border border-[#2e2e2c] bg-black/60" role="group" aria-label="Language">
+        <div className="flex overflow-hidden rounded-none border border-[#2e2e2c] bg-black/60" role="group" aria-label={t("a11y.language")}>
           {(["en", "fr"] as const).map((code) => (
             <button
               key={code}

@@ -718,7 +718,7 @@ export function AppShell() {
             </SheetContent>
           </Sheet>
 
-          <nav aria-label="Breadcrumb" className="frx-label hidden min-w-0 items-center gap-2 text-muted-foreground sm:flex">
+          <nav aria-label={t("a11y.breadcrumb")} className="frx-label hidden min-w-0 items-center gap-2 text-muted-foreground sm:flex">
             <span className="text-foreground">FRX</span>
             {showClientCrumb ? (
               <>

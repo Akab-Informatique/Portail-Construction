@@ -36,7 +36,7 @@ export function ProjectCostDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const { t } = useI18n();
+  const { t, tr } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
   const [projectId, setProjectId] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -94,11 +94,10 @@ export function ProjectCostDialog({
         if (before !== undefined) setAmount(String(before));
         setNote(t("cost.aiRead"));
       } else {
-        setNote(result.aiError === "ai.notConfigured" ? t("billing.ai.notConfigured") : `${t("billing.ai.failed")}${result.aiError ? ` (${result.aiError})` : ""}`);
+        setNote(result.aiError === "ai.notConfigured" ? t("billing.ai.notConfigured") : `${t("billing.ai.failed")}${result.aiError ? ` (${String(result.aiError).split("|")[1] ?? result.aiError})` : ""}`);
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message.split("|")[0] : "billing.upload.failed";
-      setError(t(msg as "billing.upload.failed") === msg ? msg : t(msg as "billing.upload.failed"));
+      setError(tr(err, "billing.upload.failed"));
     } finally {
       setReading(false);
     }
@@ -123,7 +122,7 @@ export function ProjectCostDialog({
       });
       onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("billing.upload.failed"));
+      setError(tr(err, "billing.upload.failed"));
     } finally {
       setBusy(false);
     }

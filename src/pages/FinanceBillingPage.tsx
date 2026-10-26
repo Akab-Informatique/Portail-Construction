@@ -524,7 +524,7 @@ function Summary({
 
 /** Correct the figures of a document that is already saved. */
 function EditDialog({ file, onClose, onSaved }: { file: BillingFile | null; onClose: () => void; onSaved: () => void }) {
-  const { t } = useI18n();
+  const { t, tr } = useI18n();
   const [form, setForm] = useState<Record<string, string>>({});
   const [publish, setPublish] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -579,7 +579,7 @@ function EditDialog({ file, onClose, onSaved }: { file: BillingFile | null; onCl
       );
       onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("billing.upload.failed"));
+      setError(tr(err, "billing.upload.failed"));
     } finally {
       setBusy(false);
     }

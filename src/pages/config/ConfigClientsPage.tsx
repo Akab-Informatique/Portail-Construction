@@ -193,7 +193,7 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
       });
       const createdRows = (await db.select().from(schema.users).where(eq(schema.users.email, email))) as User[];
       const created = createdRows[0];
-      if (!created) throw new Error("User was not saved");
+      if (!created) throw new Error("users.error.createFailed");
       await db.insert(schema.client_users).values({
         client_id: inviteFor.id,
         user_id: created.id,

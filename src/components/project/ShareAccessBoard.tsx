@@ -14,7 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { FolderTreePanel, type BrowseFolder } from "@/components/project/FolderTreePanel";
 
 export function ShareAccessBoard() {
-  const { t } = useI18n();
+  const { t, tr } = useI18n();
   const { clients } = useWorkspace();
   const [settings, setSettings] = useState<SharePointSettings | null>(null);
   const [folders, setFolders] = useState<SharePointFolder[]>([]);
@@ -51,7 +51,7 @@ export function ShareAccessBoard() {
           path: "/",
         });
       } catch (err) {
-        setError(err instanceof Error ? err.message : "SharePoint error");
+        setError(tr(err, "sp.error.failed"));
       } finally {
         setLoading(false);
       }

@@ -115,11 +115,11 @@ export async function createUser(input: {
     });
     const rows = await selectUsersFallback();
     const created = rows.find((u) => u.email === input.email);
-    if (!created) throw new Error("User was not saved");
+    if (!created) throw new Error("users.error.createFailed");
     return created;
   }
   if (ok && data.user) return rowToUser(data.user);
-  if (!ok && data.error && data.error !== "sql is required" && data.error !== "Query not allowed") {
+  if (!ok && data.error && data.error !== "err.badRequest" && data.error !== "err.notAllowed") {
     throw new Error(data.error);
   }
   await db.insert(schema.users).values({
@@ -140,7 +140,7 @@ export async function createUser(input: {
   });
   const rows = await selectUsersFallback();
   const created = rows.find((u) => u.email === input.email);
-  if (!created) throw new Error(data.error || "User was not saved");
+  if (!created) throw new Error(data.error || "users.error.createFailed");
   return created;
 }
 
@@ -174,9 +174,9 @@ export async function updateUser(input: {
       .where(eq(schema.users.id, input.id));
     const rows = await selectUsersFallback();
     const updated = rows.find((u) => u.id === input.id);
-    if (!updated) throw new Error("User was not saved");
+    if (!updated) throw new Error("users.error.createFailed");
     return updated;
   }
   if (ok && data.user) return rowToUser(data.user);
-  throw new Error(data.error || "Could not update user");
+  throw new Error(data.error || "users.error.updateFailed");
 }

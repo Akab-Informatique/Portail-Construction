@@ -16,7 +16,7 @@ async function remoteQuery(sql: string, params: unknown[]) {
   });
   const data = (await res.json().catch(() => ({}))) as { rows?: unknown[][]; error?: string };
   if (!res.ok) {
-    throw new Error(data.error || `Database error (${res.status})`);
+    throw new Error(data.error || `err.server:${res.status}`);
   }
   return { rows: data.rows ?? [] };
 }

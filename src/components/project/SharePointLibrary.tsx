@@ -73,7 +73,7 @@ export function SharePointLibrary({
   scopeProjectIds?: number[];
 }) {
   const { user } = useAuth();
-  const { t, locale } = useI18n();
+  const { t, locale, tr } = useI18n();
   const { clients } = useWorkspace();
   const manager = canManageLibrary(user);
   const [settings, setSettings] = useState<SharePointSettings | null>(null);
@@ -207,7 +207,7 @@ export function SharePointLibrary({
         setBrowse(null);
         setTrail([]);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "SharePoint error");
+        setError(tr(err, "sp.error.failed"));
       } finally {
         setLoading(false);
       }
@@ -222,7 +222,7 @@ export function SharePointLibrary({
   useEffect(() => {
     if (loading || !active || !settings || !sharepointReady(settings)) return;
     void loadItems(active, settings.drive_id, browse?.id).catch((err) =>
-      setError(err instanceof Error ? err.message : "SharePoint error"),
+      setError(tr(err, "sp.error.failed")),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, active?.id, active?.sp_item_id, browse?.id, settings?.connected, settings?.site_url]);
@@ -249,7 +249,7 @@ export function SharePointLibrary({
       await reloadMeta();
       if (active) await loadItems(active, settings?.drive_id, browse?.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create folder");
+      setError(tr(err, "sp.error.createFolder"));
     } finally {
       setBusy(false);
     }
@@ -278,7 +278,7 @@ export function SharePointLibrary({
       await reloadMeta();
       if (active) await loadItems(active, settings?.drive_id, browse?.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not rename");
+      setError(tr(err, "sp.error.rename"));
     } finally {
       setBusy(false);
     }
@@ -310,7 +310,7 @@ export function SharePointLibrary({
       await reloadMeta();
       if (active) await loadItems(active, settings?.drive_id, browse?.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not delete");
+      setError(tr(err, "sp.error.delete"));
     } finally {
       setBusy(false);
     }
@@ -347,7 +347,7 @@ export function SharePointLibrary({
       await reloadMeta();
       if (active) await loadItems(active);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not delete");
+      setError(tr(err, "sp.error.delete"));
     } finally {
       setBusy(false);
     }
@@ -383,7 +383,7 @@ export function SharePointLibrary({
       await reloadMeta();
       if (active) await loadItems(active);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not complete transfer");
+      setError(tr(err, "sp.error.transfer"));
     } finally {
       setBusy(false);
     }
@@ -413,7 +413,7 @@ export function SharePointLibrary({
       });
       await loadItems(active, settings?.drive_id, browse?.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
+      setError(tr(err, "sp.error.upload"));
     } finally {
       setBusy(false);
     }
@@ -435,7 +435,7 @@ export function SharePointLibrary({
     const res = await fetch(`/api/sharepoint?${params.toString()}`);
     if (!res.ok) {
       const payload = (await res.json().catch(() => ({}))) as { error?: string };
-      setError(payload.error || "Download failed");
+      setError(tr(payload.error, "sp.error.download"));
       return;
     }
     downloadBlob(await res.blob(), item.name);

@@ -79,7 +79,7 @@ async function settingsApi(body: Record<string, unknown>): Promise<{ value?: str
   });
   const data = (await res.json().catch(() => ({}))) as { value?: string | null; local?: boolean; error?: string };
   if (data.local) return undefined;
-  if (!res.ok) throw new Error(data.error || `Settings error (${res.status})`);
+  if (!res.ok) throw new Error(data.error || `err.server:${res.status}`);
   return data;
 }
 

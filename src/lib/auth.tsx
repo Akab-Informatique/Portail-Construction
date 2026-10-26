@@ -339,7 +339,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ current, next }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string; local?: boolean; ok?: boolean };
-      if (data.error === "sql is required") {
+      if (data.error === "err.badRequest") {
         const retry = await fetch("/api/db?action=change_password", {
           method: "POST",
           credentials: "include",

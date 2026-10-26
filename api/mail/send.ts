@@ -13,12 +13,12 @@ export default async function handler(
   },
 ) {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return res.status(405).json({ error: "err.badRequest" });
   }
   const user = await requireApiUser(req);
-  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  if (!user) return res.status(401).json({ error: "err.unauthorized" });
   // Clients must not be able to send arbitrary mail through the company SMTP account.
-  if (!isInternalStaff(user)) return res.status(403).json({ error: "Forbidden" });
+  if (!isInternalStaff(user)) return res.status(403).json({ error: "err.forbidden" });
 
   let stored: Smtp | undefined;
   try {
@@ -39,11 +39,11 @@ export default async function handler(
   const pdfBase64 = String(req.body?.pdfBase64 ?? "");
 
   if (!smtp.host || !smtp.from_email) {
-    return res.status(400).json({ error: "SMTP is not configured." });
+    return res.status(400).json({ error: "mail.error.notConfigured" });
   }
-  if (!recipients.length) return res.status(400).json({ error: "Recipient email is required." });
+  if (!recipients.length) return res.status(400).json({ error: "mail.error.noRecipient" });
   if (recipients.length > MAX_RECIPIENTS || !recipients.every((r) => EMAIL.test(r))) {
-    return res.status(400).json({ error: "Invalid recipient email." });
+    return res.status(400).json({ error: "mail.error.badRecipient" });
   }
 
   const port = Number(smtp.port) || 587;
@@ -66,6 +66,6 @@ export default async function handler(
     return res.status(200).json({ ok: true });
   } catch (err) {
     console.error("mail send failed", err);
-    return res.status(500).json({ error: "Send failed" });
+    return res.status(500).json({ error: "mail.error.sendFailed" });
   }
 }

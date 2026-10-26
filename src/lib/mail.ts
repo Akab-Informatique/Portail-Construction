@@ -29,7 +29,7 @@ export async function sendInvoiceEmail(input: {
   });
   const payload = (await res.json().catch(() => ({}))) as { error?: string; ok?: boolean };
   if (!res.ok) {
-    throw new Error(payload.error || `Send failed (${res.status})`);
+    throw new Error(payload.error || `mail.error.sendFailed:${res.status}`);
   }
   return payload;
 }

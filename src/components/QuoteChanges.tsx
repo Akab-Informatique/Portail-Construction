@@ -388,7 +388,7 @@ export function RequestDialog({
   onClose: () => void;
   onSubmit: (input: { title: string; description: string }) => Promise<void>;
 }) {
-  const { t } = useI18n();
+  const { t, tr } = useI18n();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -411,7 +411,7 @@ export function RequestDialog({
     try {
       await onSubmit({ title, description });
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("qc.request.failed"));
+      setError(tr(err, "qc.request.failed"));
     } finally {
       setBusy(false);
     }
@@ -462,7 +462,7 @@ function AnnexEditorDialog({
   onClose: () => void;
   onSubmit: (input: { title: string; description: string; lines: InvoiceLine[] }) => Promise<void>;
 }) {
-  const { t, locale } = useI18n();
+  const { t, locale, tr } = useI18n();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [lines, setLines] = useState<InvoiceLine[]>([emptyLine()]);
@@ -498,7 +498,7 @@ function AnnexEditorDialog({
     try {
       await onSubmit({ title, description, lines });
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("qc.request.failed"));
+      setError(tr(err, "qc.request.failed"));
     } finally {
       setBusy(false);
     }

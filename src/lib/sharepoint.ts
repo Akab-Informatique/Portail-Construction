@@ -30,7 +30,7 @@ export async function callSharePoint<T>(
 ): Promise<T> {
   const settings = await getSharePointSettings();
   if (!settings.tenant_id || !settings.client_id || !settings.site_url) {
-    throw new Error("SharePoint is not configured. Open Setup → SharePoint and save tenant, app ID, secret, and site URL.");
+    throw new Error("sp.error.notConfigured");
   }
   const res = await fetch("/api/sharepoint", {
     method: "POST",
@@ -43,7 +43,7 @@ export async function callSharePoint<T>(
     }),
   });
   const payload = (await res.json().catch(() => ({}))) as T & { error?: string };
-  if (!res.ok) throw new Error(payload.error || `SharePoint ${res.status}`);
+  if (!res.ok) throw new Error(payload.error || `sp.error.failed:${res.status}`);
   return payload;
 }
 

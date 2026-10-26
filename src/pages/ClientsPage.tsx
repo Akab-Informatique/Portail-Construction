@@ -132,13 +132,13 @@ export function ClientsPage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Accounts"
-        title="Clients"
+        eyebrow={t("clients.eyebrow")}
+        title={t("clients.title")}
         actions={
           canCreate ? (
             <Button onClick={() => setOpen(true)}>
               <Plus className="size-4" />
-              New client
+              {t("clients.new")}
             </Button>
           ) : null
         }
@@ -149,7 +149,7 @@ export function ClientsPage() {
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search companies, contacts, cities…"
+          placeholder={t("clients.search")}
           className="pl-9"
         />
       </div>
@@ -157,17 +157,17 @@ export function ClientsPage() {
       {filtered.length === 0 ? (
         <EmptyState
           icon={<Building2 className="size-5" />}
-          title={clients.length === 0 ? "No clients yet" : "No matches"}
+          title={clients.length === 0 ? t("clients.empty.title") : t("clients.noMatches")}
           description={
             clients.length === 0
-              ? "Add the first company you work with. Projects live inside each client."
-              : "Try a different name or city."
+              ? t("clients.empty.desc")
+              : t("clients.tryDifferent")
           }
           action={
             canCreate && clients.length === 0 ? (
               <Button onClick={() => setOpen(true)}>
                 <Plus className="size-4" />
-                New client
+                {t("clients.new")}
               </Button>
             ) : null
           }
@@ -190,16 +190,18 @@ export function ClientsPage() {
                     <StatusBadge value={c.status} />
                   </div>
                   <div className="px-5 text-sm text-muted-foreground">
-                    {[c.city, c.state].filter(Boolean).join(", ") || "No address on file"}
+                    {[c.city, c.state].filter(Boolean).join(", ") || t("clients.noAddress")}
                     {c.email ? <span className="mt-0.5 block truncate">{c.email}</span> : null}
                   </div>
                   <div className="mx-5 flex items-center justify-between border-t pt-3 text-xs text-muted-foreground">
                     <span>
-                      <span className="font-medium text-foreground tabular-nums">{jobs.length}</span>{" "}
-                      project{jobs.length === 1 ? "" : "s"}
+                      <BoldCount
+                        template={t(jobs.length === 1 ? "clients.projectCount" : "clients.projectCount_plural")}
+                        n={jobs.length}
+                      />
                     </span>
                     <span>
-                      <span className="font-medium text-foreground tabular-nums">{active}</span> active
+                      <BoldCount template={t("clients.activeCount")} n={active} />
                     </span>
                   </div>
                 </Card>
@@ -216,14 +218,14 @@ export function ClientsPage() {
           </DialogHeader>
           <form onSubmit={onCreate} className="grid gap-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Company" required>
+              <Field label={t("clients.company")} required>
                 <Input
                   value={form.company_name}
                   onChange={(e) => setForm({ ...form, company_name: e.target.value })}
                   required
                 />
               </Field>
-              <Field label="Primary contact" required>
+              <Field label={t("clients.primaryContact")} required>
                 <Input
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -232,14 +234,14 @@ export function ClientsPage() {
               </Field>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Email">
+              <Field label={t("clients.email")}>
                 <Input
                   type="email"
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                 />
               </Field>
-              <Field label="Phone">
+              <Field label={t("clients.phone")}>
                 <Input
                   value={form.phone}
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
@@ -253,29 +255,29 @@ export function ClientsPage() {
               />
             </Field>
             <div className="grid gap-4 sm:grid-cols-3">
-              <Field label="City">
+              <Field label={t("clients.city")}>
                 <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
               </Field>
               <Field label={t("clients.province")}>
                 <Input value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} />
               </Field>
-              <Field label="Postal">
+              <Field label={t("clients.postal")}>
                 <Input value={form.zip} onChange={(e) => setForm({ ...form, zip: e.target.value })} />
               </Field>
             </div>
-            <Field label="Status">
+            <Field label={t("clients.status")}>
               <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="prospect">Prospect</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="active">{t("status.active")}</SelectItem>
+                  <SelectItem value="prospect">{t("status.prospect")}</SelectItem>
+                  <SelectItem value="inactive">{t("status.inactive")}</SelectItem>
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="Notes">
+            <Field label={t("clients.notes")}>
               <Textarea
                 rows={3}
                 value={form.notes}
@@ -294,6 +296,18 @@ export function ClientsPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/** Renders a "{n} …" message with the number in bold, keeping the translated word order. */
+function BoldCount({ template, n }: { template: string; n: number }) {
+  const [before, after = ""] = template.split("{n}");
+  return (
+    <>
+      {before}
+      <span className="font-medium text-foreground tabular-nums">{n}</span>
+      {after}
+    </>
   );
 }
 

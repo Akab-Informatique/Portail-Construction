@@ -44,7 +44,7 @@ export function ProjectReportsSection({
   onSaveCustom: (name: string, sections: ReportSectionId[]) => Promise<void>;
   onDeleteCustom: (id: number) => Promise<void>;
 }) {
-  const { t, locale } = useI18n();
+  const { t, locale, tr } = useI18n();
   const [customName, setCustomName] = useState("");
   const [picked, setPicked] = useState<ReportSectionId[]>(["snapshot", "schedule", "budget"]);
   const [saving, setSaving] = useState(false);
@@ -104,7 +104,7 @@ export function ProjectReportsSection({
       setNotice(t("reports.sent", { email: compose.draft.to.join(", ") }));
       setCompose(null);
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : t("reports.sendFailed"));
+      setNotice(tr(err, "reports.sendFailed"));
     } finally {
       setBusy(false);
     }

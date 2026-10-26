@@ -81,7 +81,7 @@ async function runAnalysis(kind: "invoice" | "quote" | "supplier", mime: Mime, b
     return { extracted: await analyzeDocument({ provider, apiKey, model, mime, base64, kind }) };
   } catch (err) {
     console.error("billing analysis failed", err);
-    return { error: err instanceof Error ? err.message : "ai.failed" };
+    return { error: `ai.failed|${err instanceof Error ? err.message : "?"}` };
   }
 }
 
@@ -104,19 +104,19 @@ export default async function handler(req: Req, res: Res) {
     const user = await requireApiUser(req);
     if (!user) return res.status(401).json({ error: "billing.upload.signedOut" });
     const id = int(req.query?.id);
-    if (!id) return res.status(400).json({ error: "id is required" });
+    if (!id) return res.status(400).json({ error: "err.badRequest" });
     const row = (await serverQuery("SELECT client_id, published, file_name, file_type FROM billing_files WHERE id = $1", [id])).rows[0] as
       | { client_id: number; published: number; file_name: string | null; file_type: string | null }
       | undefined;
-    if (!row) return res.status(404).json({ error: "Not found" });
+    if (!row) return res.status(404).json({ error: "err.notFound" });
     const staff = canManageBilling(user);
     if (!staff) {
       const scope = await clientScopeOf(user);
       const allowed = scope === "*" || scope.split(",").includes(String(row.client_id));
-      if (!allowed || Number(row.published) !== 1) return res.status(404).json({ error: "Not found" });
+      if (!allowed || Number(row.published) !== 1) return res.status(404).json({ error: "err.notFound" });
     }
     const blob = (await serverQuery("SELECT data FROM billing_file_blobs WHERE file_id = $1", [id])).rows[0] as { data: string } | undefined;
-    if (!blob) return res.status(404).json({ error: "Not found" });
+    if (!blob) return res.status(404).json({ error: "err.notFound" });
     const name = String(row.file_name || "document").replace(/[\r\n"\\/]+/g, "_");
     res.setHeader("Content-Type", row.file_type || "application/octet-stream");
     res.setHeader("Content-Disposition", `inline; filename="${name}"`);
@@ -128,7 +128,7 @@ export default async function handler(req: Req, res: Res) {
     return res.status(200).end(Buffer.from(blob.data, "base64"));
   }
 
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== "POST") return res.status(405).json({ error: "err.badRequest" });
   const body = req.body ?? {};
   const action = String(body.action ?? "");
 
@@ -136,7 +136,7 @@ export default async function handler(req: Req, res: Res) {
   if (action === "analyze_data") {
     if (hasDatabase()) {
       const user = await requireApiUser(req);
-      if (!user) return res.status(401).json({ error: "Unauthorized" });
+      if (!user) return res.status(401).json({ error: "err.unauthorized" });
       if (!canManageBilling(user)) return res.status(403).json({ error: "billing.upload.forbidden" });
     }
     const bytes = Buffer.from(String(body.data ?? ""), "base64");
@@ -154,12 +154,12 @@ export default async function handler(req: Req, res: Res) {
     let override: StoredAi | undefined;
     if (hasDatabase()) {
       const who = await requireApiUser(req);
-      if (!who) return res.status(401).json({ error: "Unauthorized" });
+      if (!who) return res.status(401).json({ error: "err.unauthorized" });
     } else {
       override = body.ai && typeof body.ai === "object" ? (body.ai as StoredAi) : undefined;
     }
     const facts = body.facts;
-    if (!facts || typeof facts !== "object" || JSON.stringify(facts).length > 12000) return res.status(400).json({ error: "Invalid facts" });
+    if (!facts || typeof facts !== "object" || JSON.stringify(facts).length > 12000) return res.status(400).json({ error: "err.badRequest" });
     const { provider, apiKey, model } = await aiConfig(override);
     if (!apiKey) return res.status(200).json({ error: "ai.notConfigured" });
     try {
@@ -167,7 +167,7 @@ export default async function handler(req: Req, res: Res) {
       return res.status(200).json({ text });
     } catch (err) {
       console.error("daily summary failed", err);
-      return res.status(200).json({ error: err instanceof Error ? err.message : "ai.failed" });
+      return res.status(200).json({ error: `ai.failed|${err instanceof Error ? err.message : "?"}` });
     }
   }
 
@@ -176,8 +176,8 @@ export default async function handler(req: Req, res: Res) {
     let override: StoredAi | undefined;
     if (hasDatabase()) {
       const admin = await requireApiUser(req);
-      if (!admin) return res.status(401).json({ error: "Unauthorized" });
-      if (!isEffectiveAdmin(admin)) return res.status(403).json({ error: "Forbidden" });
+      if (!admin) return res.status(401).json({ error: "err.unauthorized" });
+      if (!isEffectiveAdmin(admin)) return res.status(403).json({ error: "err.forbidden" });
     } else {
       override = body.ai && typeof body.ai === "object" ? (body.ai as StoredAi) : undefined;
     }
@@ -186,7 +186,7 @@ export default async function handler(req: Req, res: Res) {
     try {
       return res.status(200).json({ ok: true, ...(await testConnection({ provider, apiKey, model })) });
     } catch (err) {
-      return res.status(200).json({ error: err instanceof Error ? err.message : "ai.failed" });
+      return res.status(200).json({ error: `ai.failed|${err instanceof Error ? err.message : "?"}` });
     }
   }
 
@@ -205,13 +205,13 @@ export default async function handler(req: Req, res: Res) {
   if (action === "upload") {
     const kind = body.kind === "invoice" ? "invoice" : body.kind === "quote" ? "quote" : body.kind === "supplier" ? "supplier" : null;
     const clientId = int(body.client_id);
-    if (!kind || !clientId) return res.status(400).json({ error: "kind and client_id are required" });
+    if (!kind || !clientId) return res.status(400).json({ error: "err.badRequest" });
     const bytes = Buffer.from(String(body.data ?? ""), "base64");
     const mime = sniff(bytes);
     if (!mime || bytes.length === 0 || bytes.length > MAX_FILE_BYTES) return res.status(400).json({ error: "billing.upload.badFile" });
 
     const client = (await serverQuery("SELECT id FROM clients WHERE id = $1", [clientId])).rows[0];
-    if (!client) return res.status(400).json({ error: "Unknown client" });
+    if (!client) return res.status(400).json({ error: "err.notFound" });
 
     let parentId: number | null = int(body.parent_id);
     if (parentId) {
@@ -220,7 +220,7 @@ export default async function handler(req: Req, res: Res) {
         | undefined;
       // New versions and add-ons only hang off an original quote of the same client.
       if (!parent || parent.kind !== "quote" || parent.parent_id || Number(parent.client_id) !== clientId || kind !== "quote") {
-        return res.status(400).json({ error: "Invalid parent quote" });
+        return res.status(400).json({ error: "err.badRequest" });
       }
       // Once a version is final, only add-ons are allowed; before that, only versions.
       const finals = Number(
@@ -277,10 +277,10 @@ export default async function handler(req: Req, res: Res) {
 
   if (action === "analyze") {
     const id = int(body.id);
-    if (!id) return res.status(400).json({ error: "id is required" });
+    if (!id) return res.status(400).json({ error: "err.badRequest" });
     const row = (await serverQuery("SELECT kind, file_type FROM billing_files WHERE id = $1", [id])).rows[0] as { kind: string; file_type: string } | undefined;
     const blob = (await serverQuery("SELECT data FROM billing_file_blobs WHERE file_id = $1", [id])).rows[0] as { data: string } | undefined;
-    if (!row || !blob) return res.status(404).json({ error: "Not found" });
+    if (!row || !blob) return res.status(404).json({ error: "err.notFound" });
     const bytes = Buffer.from(blob.data, "base64");
     const mime = sniff(bytes);
     if (!mime) return res.status(400).json({ error: "billing.upload.badFile" });
@@ -290,7 +290,7 @@ export default async function handler(req: Req, res: Res) {
 
   if (action === "delete") {
     const id = int(body.id);
-    if (!id) return res.status(400).json({ error: "id is required" });
+    if (!id) return res.status(400).json({ error: "err.badRequest" });
     const ids = [id, ...((await serverQuery("SELECT id FROM billing_files WHERE parent_id = $1", [id])).rows as { id: number }[]).map((r) => r.id)];
     await serverQuery("DELETE FROM billing_file_blobs WHERE file_id = ANY($1::int[])", [ids]);
     await serverQuery("DELETE FROM billing_requests WHERE file_id = ANY($1::int[])", [ids]);
@@ -298,5 +298,5 @@ export default async function handler(req: Req, res: Res) {
     return res.status(200).json({ ok: true });
   }
 
-  return res.status(400).json({ error: "Unknown action" });
+  return res.status(400).json({ error: "err.badRequest" });
 }

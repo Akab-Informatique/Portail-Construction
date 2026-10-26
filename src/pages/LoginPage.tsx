@@ -12,7 +12,7 @@ const labelClass = "font-display text-[13px] font-medium uppercase tracking-[0.2
 
 export function LoginPage() {
   const { user, ready, login, needsSetup, setupAdmin } = useAuth();
-  const { t, locale } = useI18n();
+  const { t, locale, tr } = useI18n();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from ?? "/";
 
@@ -40,7 +40,7 @@ export function LoginPage() {
       const msg = needsSetup ? await setupAdmin({ name, email, password }) : await login(email, password);
       if (msg) setError(translate(msg));
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("login.error.invalid"));
+      setError(tr(err, "login.error.invalid"));
     } finally {
       setSubmitting(false);
     }
@@ -96,7 +96,7 @@ export function LoginPage() {
                 id="forgot-email"
                 type="email"
                 autoComplete="username"
-                placeholder={locale === "fr" ? "nom@entreprise.ca" : "name@company.ca"}
+                placeholder={t("login.emailPlaceholder")}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -150,7 +150,7 @@ export function LoginPage() {
                   id="email"
                   type="email"
                   autoComplete="username"
-                  placeholder={locale === "fr" ? "nom@entreprise.ca" : "name@company.ca"}
+                  placeholder={t("login.emailPlaceholder")}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required

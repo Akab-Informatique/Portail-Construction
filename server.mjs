@@ -289,7 +289,7 @@ const server = createServer(async (req, res) => {
       if (!type.toLowerCase().startsWith("application/json")) {
         res.statusCode = 415;
         res.setHeader("Content-Type", "application/json");
-        res.end(JSON.stringify({ error: "Expected application/json" }));
+        res.end(JSON.stringify({ error: "err.badRequest" }));
         return;
       }
     }
@@ -308,7 +308,7 @@ const server = createServer(async (req, res) => {
         res.statusCode = 429;
         res.setHeader("Content-Type", "application/json");
         res.setHeader("Retry-After", "60");
-        res.end(JSON.stringify({ error: "Too many requests" }));
+        res.end(JSON.stringify({ error: "err.tooMany" }));
         return;
       }
     }
@@ -364,7 +364,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname.startsWith("/api/") || url.pathname === "/api") {
       res.statusCode = 404;
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ error: "Not found" }));
+      res.end(JSON.stringify({ error: "err.notFound" }));
       return;
     }
     if (url.pathname === "/healthz") {
@@ -377,13 +377,13 @@ const server = createServer(async (req, res) => {
     res.setHeader("Content-Type", "application/json");
     if (err instanceof BodyTooLarge) {
       res.statusCode = 413;
-      res.end(JSON.stringify({ error: "Request too large" }));
+      res.end(JSON.stringify({ error: "err.tooLarge" }));
       req.destroy();
       return;
     }
     res.statusCode = 500;
     console.error(err);
-    res.end(JSON.stringify({ error: "Server error" }));
+    res.end(JSON.stringify({ error: "err.server" }));
   }
 });
 

@@ -54,6 +54,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useI18n } from "@/lib/i18n";
+import { en, type MessageKey } from "@/lib/i18n/en";
 import { CalendarSection, ScheduleSection } from "@/components/project/ProjectPlanViews";
 import { SharePointLibrary } from "@/components/project/SharePointLibrary";
 import { ProjectReportsSection } from "@/components/project/ProjectReportsSection";
@@ -210,11 +211,11 @@ export function ProjectDetailPage() {
     return (
       <EmptyState
         icon={<FolderKanban className="size-5" />}
-        title="Project not found"
-        description="This job may have been removed."
+        title={t("projects.notFound")}
+        description={t("projects.notFoundDesc")}
         action={
           <Button asChild variant="outline">
-            <Link to="/projects">Back to projects</Link>
+            <Link to="/projects">{t("projects.back")}</Link>
           </Button>
         }
       />
@@ -236,7 +237,7 @@ export function ProjectDetailPage() {
       <PageHeader
         eyebrow={project.project_number}
         title={project.name}
-        description={project.description || `${project.city ?? ""} · ${project.project_type ?? ""}`}
+        description={project.description || `${project.city ?? ""} · ${project.project_type ? tOr(t, `type.${project.project_type}`, project.project_type) : ""}`}
         actions={
           <>
             <PunchRuleChip
@@ -348,8 +349,8 @@ export function ProjectDetailPage() {
           )}
           {section === "change_orders" && (
             <ListSection
-              title="Change orders"
-              empty="No change orders."
+              title={t("reports.sec.changes")}
+              empty={t("project.cosEmpty")}
               canCreate={can("change_orders", "create", scope)}
               onAdd={() => setDialog("co")}
               rows={cos.map((c) => ({
@@ -357,20 +358,20 @@ export function ProjectDetailPage() {
                 title: `${c.number} · ${c.title}`,
                 meta: c.description || "",
                 status: c.status,
-                extra: money(c.amount),
+                extra: money(c.amount, locale),
               }))}
             />
           )}
           {section === "daily_logs" && (
             <ListSection
-              title="Daily logs"
-              empty="No site reports yet."
+              title={t("project.nav.dailyLogs")}
+              empty={t("project.logsEmpty")}
               canCreate={can("daily_logs", "create", scope)}
               onAdd={() => setDialog("log")}
               rows={logs.map((l) => ({
                 id: l.id,
-                title: formatDate(l.log_date),
-                meta: `${l.weather ?? "—"} · ${l.crew_count} on site`,
+                title: formatDate(l.log_date, locale),
+                meta: t("project.onSite", { weather: l.weather ?? "—", n: l.crew_count }),
                 status: "in_progress",
                 extra: l.notes ?? "",
               }))}
@@ -378,8 +379,8 @@ export function ProjectDetailPage() {
           )}
           {section === "punch" && (
             <ListSection
-              title="Punch list"
-              empty="No deficiencies recorded."
+              title={t("project.nav.punch")}
+              empty={t("project.punchEmpty")}
               canCreate={can("punch", "create", scope)}
               onAdd={() => setDialog("punch")}
               rows={punch.map((p) => ({
@@ -387,22 +388,22 @@ export function ProjectDetailPage() {
                 title: p.title,
                 meta: p.location || "",
                 status: p.status,
-                extra: p.priority,
+                extra: tOr(t, `status.${p.priority}`, p.priority),
               }))}
             />
           )}
           {section === "safety" && (
             <ListSection
-              title="Safety"
-              empty="No incidents or observations."
+              title={t("project.nav.safety")}
+              empty={t("project.safetyEmpty")}
               canCreate={can("safety", "create", scope)}
               onAdd={() => setDialog("safety")}
               rows={incidents.map((s) => ({
                 id: s.id,
                 title: s.title,
-                meta: `${formatDate(s.incident_date)} · ${s.description ?? ""}`,
+                meta: `${formatDate(s.incident_date, locale)} · ${s.description ?? ""}`,
                 status: s.severity,
-                extra: s.status,
+                extra: tOr(t, `status.${s.status}`, s.status),
               }))}
             />
           )}
@@ -696,7 +697,7 @@ function Dashboard({
       <div className="grid gap-5 lg:grid-cols-2">
         <Card className="py-0">
           <CardHeader className="border-b px-5 py-4">
-            <CardTitle className="text-base">Upcoming on the calendar</CardTitle>
+            <CardTitle className="text-base">{t("project.upcoming")}</CardTitle>
           </CardHeader>
           <CardContent className="px-0 py-0">
             {upcoming.length === 0 ? (
@@ -708,7 +709,7 @@ function Dashboard({
                     <span className="min-w-0 truncate">{e.title}</span>
                     <span className="flex items-center gap-2">
                       <StatusBadge value={e.event_type} />
-                      <span className="text-xs text-muted-foreground tabular-nums">{formatDate(e.event_date)}</span>
+                      <span className="text-xs text-muted-foreground tabular-nums">{formatDate(e.event_date, locale)}</span>
                     </span>
                   </li>
                 ))}
@@ -718,30 +719,30 @@ function Dashboard({
         </Card>
         <Card className="gap-3 py-5">
           <CardHeader className="px-5">
-            <CardTitle className="text-base">Contract</CardTitle>
+            <CardTitle className="text-base">{t("project.contract")}</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-2 px-5 text-sm">
             <p className="flex justify-between">
-              <span className="text-muted-foreground">Value</span>
-              <span className="tabular-nums">{money(project.budget)}</span>
+              <span className="text-muted-foreground">{t("project.value")}</span>
+              <span className="tabular-nums">{money(project.budget, locale)}</span>
             </p>
             <p className="flex justify-between">
-              <span className="text-muted-foreground">Spent</span>
-              <span className="tabular-nums">{money(project.spent)}</span>
+              <span className="text-muted-foreground">{t("project.spent")}</span>
+              <span className="tabular-nums">{money(project.spent, locale)}</span>
             </p>
             <p className="flex justify-between">
-              <span className="text-muted-foreground">Remaining</span>
-              <span className="tabular-nums">{money(Math.max(project.budget - project.spent, 0))}</span>
+              <span className="text-muted-foreground">{t("project.remaining")}</span>
+              <span className="tabular-nums">{money(Math.max(project.budget - project.spent, 0), locale)}</span>
             </p>
             <p className="flex justify-between">
-              <span className="text-muted-foreground">Window</span>
+              <span className="text-muted-foreground">{t("project.window")}</span>
               <span>
-                {formatDate(project.start_date)} – {formatDate(project.end_date)}
+                {formatDate(project.start_date, locale)} – {formatDate(project.end_date, locale)}
               </span>
             </p>
             <p className="flex justify-between">
-              <span className="text-muted-foreground">Tasks in flight</span>
-              <span className="tabular-nums">{tasks.filter((t) => t.status === "in_progress").length}</span>
+              <span className="text-muted-foreground">{t("project.tasksInFlight")}</span>
+              <span className="tabular-nums">{tasks.filter((task) => task.status === "in_progress").length}</span>
             </p>
           </CardContent>
         </Card>
@@ -808,10 +809,10 @@ function BudgetSection({
           <tbody className="divide-y">
             {items.map((i) => (
               <tr key={i.id}>
-                <td className="px-4 py-3">{i.category}</td>
+                <td className="px-4 py-3">{tOr(t, `budget.${i.category}`, i.category)}</td>
                 <td className="px-4 py-3 text-muted-foreground">{i.description}</td>
-                <td className="px-4 py-3 text-right tabular-nums">{moneyExact(i.estimated)}</td>
-                <td className="px-4 py-3 text-right tabular-nums">{moneyExact(i.actual)}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{moneyExact(i.estimated, locale)}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{moneyExact(i.actual, locale)}</td>
                 <td className="px-4 py-3">
                   <StatusBadge value={i.status} />
                 </td>
@@ -844,11 +845,12 @@ function ListSection({
   canCreate: boolean;
   onAdd: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <div>
-      <SectionHead title={title} action={canCreate ? onAdd : undefined} actionLabel="Add" />
+      <SectionHead title={title} action={canCreate ? onAdd : undefined} actionLabel={t("project.add")} />
       {rows.length === 0 ? (
-        <EmptyState icon={<FolderKanban className="size-5" />} title={empty} description="Use Add when you have permission." />
+        <EmptyState icon={<FolderKanban className="size-5" />} title={empty} description={t("project.useAdd")} />
       ) : (
         <ul className="divide-y rounded-xl border bg-card">
           {rows.map((r) => (
@@ -880,11 +882,12 @@ function TeamSection({
   canCreate: boolean;
   onAdd: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <div>
-      <SectionHead title="Project team" action={canCreate ? onAdd : undefined} actionLabel="Add member" />
+      <SectionHead title={t("project.teamTitle")} action={canCreate ? onAdd : undefined} actionLabel={t("project.addMember")} />
       {members.length === 0 ? (
-        <EmptyState icon={<Users className="size-5" />} title="No one assigned" description="Add internal staff or client contacts." />
+        <EmptyState icon={<Users className="size-5" />} title={t("project.noAssigned")} description={t("project.addStaff")} />
       ) : (
         <ul className="divide-y rounded-xl border bg-card">
           {members.map((m) => {
@@ -896,7 +899,7 @@ function TeamSection({
                 <div className="min-w-0 flex-1">
                   <p className="font-medium">{u.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {m.role} · {u.email}
+                    {tOr(t, `role.${m.role}`, m.role)} · {u.email}
                   </p>
                 </div>
                 <StatusBadge value={u.user_type} />
@@ -949,6 +952,7 @@ function EventDialog({
   onClose: () => void;
   onSave: (v: { title: string; event_date: string; end_date: string | null; event_type: string; description: string | null }) => Promise<void>;
 }) {
+  const { t } = useI18n();
   const [form, setForm] = useState({ title: "", event_date: todayISO(), end_date: "", event_type: "milestone", description: "" });
   const [saving, setSaving] = useState(false);
   async function submit(e: FormEvent) {
@@ -968,40 +972,40 @@ function EventDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New event</DialogTitle>
+          <DialogTitle>{t("project.newEvent")}</DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="grid gap-4">
-          <Field label="Title">
+          <Field label={t("project.title")}>
             <Input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Date">
+            <Field label={t("project.date")}>
               <Input type="date" required value={form.event_date} onChange={(e) => setForm({ ...form, event_date: e.target.value })} />
             </Field>
-            <Field label="Type">
+            <Field label={t("project.type")}>
               <Select value={form.event_type} onValueChange={(v) => setForm({ ...form, event_type: v })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {EVENT_TYPES.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
+                  {EVENT_TYPES.map((et) => (
+                    <SelectItem key={et.value} value={et.value}>
+                      {t(`status.${et.value}` as MessageKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </Field>
           </div>
-          <Field label="Notes">
+          <Field label={t("project.notes")}>
             <Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </Field>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
+              {t("project.cancel")}
             </Button>
             <Button type="submit" disabled={saving}>
-              Save
+              {t("project.save")}
             </Button>
           </DialogFooter>
         </form>
@@ -1019,6 +1023,7 @@ function BudgetDialog({
   onClose: () => void;
   onSave: (v: { category: string; description: string; estimated: number; actual: number; status: string }) => Promise<void>;
 }) {
+  const { t } = useI18n();
   const [form, setForm] = useState({ category: "General conditions", description: "", estimated: "", actual: "0", status: "planned" });
   const [saving, setSaving] = useState(false);
   async function submit(e: FormEvent) {
@@ -1038,10 +1043,10 @@ function BudgetDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Budget line</DialogTitle>
+          <DialogTitle>{t("project.budgetLine")}</DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="grid gap-4">
-          <Field label="Category">
+          <Field label={t("project.category")}>
             <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
               <SelectTrigger>
                 <SelectValue />
@@ -1049,24 +1054,24 @@ function BudgetDialog({
               <SelectContent>
                 {BUDGET_CATEGORIES.map((c) => (
                   <SelectItem key={c} value={c}>
-                    {c}
+                    {t(`budget.${c}` as MessageKey)}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </Field>
-          <Field label="Description">
+          <Field label={t("project.description")}>
             <Input required value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Estimated">
+            <Field label={t("project.estimated")}>
               <Input type="number" min="0" value={form.estimated} onChange={(e) => setForm({ ...form, estimated: e.target.value })} />
             </Field>
-            <Field label="Actual">
+            <Field label={t("project.actual")}>
               <Input type="number" min="0" value={form.actual} onChange={(e) => setForm({ ...form, actual: e.target.value })} />
             </Field>
           </div>
-          <Field label="Status">
+          <Field label={t("project.status")}>
             <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
               <SelectTrigger>
                 <SelectValue />
@@ -1074,7 +1079,7 @@ function BudgetDialog({
               <SelectContent>
                 {BUDGET_STATUSES.map((s) => (
                   <SelectItem key={s.value} value={s.value}>
-                    {s.label}
+                    {t(`status.${s.value}` as MessageKey)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1082,10 +1087,10 @@ function BudgetDialog({
           </Field>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
+              {t("project.cancel")}
             </Button>
             <Button type="submit" disabled={saving}>
-              Save
+              {t("project.save")}
             </Button>
           </DialogFooter>
         </form>
@@ -1105,6 +1110,7 @@ function TaskDialog({
   people: User[];
   onSave: (v: { title: string; description: string | null; start_date: string | null; end_date: string | null; status: string; priority: string; assigned_to: number | null }) => Promise<void>;
 }) {
+  const { t } = useI18n();
   const [form, setForm] = useState({ title: "", description: "", start_date: todayISO(), end_date: "", status: "not_started", priority: "medium", assigned_to: "" });
   const [saving, setSaving] = useState(false);
   async function submit(e: FormEvent) {
@@ -1126,25 +1132,25 @@ function TaskDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Work package</DialogTitle>
+          <DialogTitle>{t("project.workPackage")}</DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="grid gap-4">
-          <Field label="Title">
+          <Field label={t("project.title")}>
             <Input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
           </Field>
-          <Field label="Description">
+          <Field label={t("project.description")}>
             <Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Start">
+            <Field label={t("project.start")}>
               <Input type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
             </Field>
-            <Field label="End">
+            <Field label={t("project.end")}>
               <Input type="date" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} />
             </Field>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Status">
+            <Field label={t("project.status")}>
               <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
                 <SelectTrigger>
                   <SelectValue />
@@ -1152,13 +1158,13 @@ function TaskDialog({
                 <SelectContent>
                   {TASK_STATUSES.map((s) => (
                     <SelectItem key={s.value} value={s.value}>
-                      {s.label}
+                      {t(`status.${s.value}` as MessageKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="Priority">
+            <Field label={t("project.priority")}>
               <Select value={form.priority} onValueChange={(v) => setForm({ ...form, priority: v })}>
                 <SelectTrigger>
                   <SelectValue />
@@ -1166,20 +1172,20 @@ function TaskDialog({
                 <SelectContent>
                   {PRIORITIES.map((s) => (
                     <SelectItem key={s.value} value={s.value}>
-                      {s.label}
+                      {t(`status.${s.value}` as MessageKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </Field>
           </div>
-          <Field label="Assignee">
+          <Field label={t("project.assignee")}>
             <Select value={form.assigned_to || "none"} onValueChange={(v) => setForm({ ...form, assigned_to: v === "none" ? "" : v })}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">Unassigned</SelectItem>
+                <SelectItem value="none">{t("project.unassigned")}</SelectItem>
                 {people.map((p) => (
                   <SelectItem key={p.id} value={String(p.id)}>
                     {p.name}
@@ -1190,10 +1196,10 @@ function TaskDialog({
           </Field>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
+              {t("project.cancel")}
             </Button>
             <Button type="submit" disabled={saving}>
-              Save
+              {t("project.save")}
             </Button>
           </DialogFooter>
         </form>
@@ -1211,6 +1217,7 @@ function DocDialog({
   onClose: () => void;
   onSave: (v: { name: string; category: string; notes: string | null }) => Promise<void>;
 }) {
+  const { t } = useI18n();
   const [form, setForm] = useState({ name: "", category: "Drawings", notes: "" });
   const [saving, setSaving] = useState(false);
   async function submit(e: FormEvent) {
@@ -1224,13 +1231,13 @@ function DocDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Document</DialogTitle>
+          <DialogTitle>{t("project.document")}</DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="grid gap-4">
-          <Field label="Name">
+          <Field label={t("project.name")}>
             <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
-          <Field label="Category">
+          <Field label={t("project.category")}>
             <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
               <SelectTrigger>
                 <SelectValue />
@@ -1238,21 +1245,21 @@ function DocDialog({
               <SelectContent>
                 {DOC_CATEGORIES.map((c) => (
                   <SelectItem key={c} value={c}>
-                    {c}
+                    {t(`doc.${c}` as MessageKey)}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </Field>
-          <Field label="Notes">
+          <Field label={t("project.notes")}>
             <Textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
           </Field>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
+              {t("project.cancel")}
             </Button>
             <Button type="submit" disabled={saving}>
-              Save
+              {t("project.save")}
             </Button>
           </DialogFooter>
         </form>
@@ -1274,6 +1281,7 @@ function RfiDialog({
   nextNumber: string;
   onSave: (v: { number: string; title: string; description: string | null; status: string; assigned_to: number | null; due_date: string | null }) => Promise<void>;
 }) {
+  const { t } = useI18n();
   const [form, setForm] = useState({ number: nextNumber, title: "", description: "", status: "open", assigned_to: "", due_date: "" });
   const [saving, setSaving] = useState(false);
   useEffect(() => {
@@ -1297,25 +1305,25 @@ function RfiDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New RFI</DialogTitle>
+          <DialogTitle>{t("project.newRfi")}</DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="grid gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Number">
+            <Field label={t("project.number")}>
               <Input required value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value })} />
             </Field>
-            <Field label="Due">
+            <Field label={t("billing.due")}>
               <Input type="date" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
             </Field>
           </div>
-          <Field label="Title">
+          <Field label={t("project.title")}>
             <Input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
           </Field>
-          <Field label="Question">
+          <Field label={t("project.question")}>
             <Textarea rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Status">
+            <Field label={t("project.status")}>
               <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
                 <SelectTrigger>
                   <SelectValue />
@@ -1323,19 +1331,19 @@ function RfiDialog({
                 <SelectContent>
                   {RFI_STATUSES.map((s) => (
                     <SelectItem key={s.value} value={s.value}>
-                      {s.label}
+                      {t(`status.${s.value}` as MessageKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="Assigned">
+            <Field label={t("project.assigned")}>
               <Select value={form.assigned_to || "none"} onValueChange={(v) => setForm({ ...form, assigned_to: v === "none" ? "" : v })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Unassigned</SelectItem>
+                  <SelectItem value="none">{t("project.unassigned")}</SelectItem>
                   {people.map((p) => (
                     <SelectItem key={p.id} value={String(p.id)}>
                       {p.name}
@@ -1347,10 +1355,10 @@ function RfiDialog({
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
+              {t("project.cancel")}
             </Button>
             <Button type="submit" disabled={saving}>
-              Save
+              {t("project.save")}
             </Button>
           </DialogFooter>
         </form>
@@ -1370,6 +1378,7 @@ function CoDialog({
   nextNumber: string;
   onSave: (v: { number: string; title: string; description: string | null; amount: number; status: string }) => Promise<void>;
 }) {
+  const { t } = useI18n();
   const [form, setForm] = useState({ number: nextNumber, title: "", description: "", amount: "", status: "draft" });
   const [saving, setSaving] = useState(false);
   useEffect(() => {
@@ -1392,24 +1401,24 @@ function CoDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Change order</DialogTitle>
+          <DialogTitle>{t("project.changeOrder")}</DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="grid gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Number">
+            <Field label={t("project.number")}>
               <Input required value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value })} />
             </Field>
-            <Field label="Amount">
+            <Field label={t("project.amount")}>
               <Input type="number" min="0" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
             </Field>
           </div>
-          <Field label="Title">
+          <Field label={t("project.title")}>
             <Input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
           </Field>
-          <Field label="Description">
+          <Field label={t("project.description")}>
             <Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </Field>
-          <Field label="Status">
+          <Field label={t("project.status")}>
             <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
               <SelectTrigger>
                 <SelectValue />
@@ -1417,7 +1426,7 @@ function CoDialog({
               <SelectContent>
                 {CO_STATUSES.map((s) => (
                   <SelectItem key={s.value} value={s.value}>
-                    {s.label}
+                    {t(`status.${s.value}` as MessageKey)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1425,10 +1434,10 @@ function CoDialog({
           </Field>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
+              {t("project.cancel")}
             </Button>
             <Button type="submit" disabled={saving}>
-              Save
+              {t("project.save")}
             </Button>
           </DialogFooter>
         </form>
@@ -1446,6 +1455,7 @@ function LogDialog({
   onClose: () => void;
   onSave: (v: { log_date: string; weather: string | null; crew_count: number; notes: string | null }) => Promise<void>;
 }) {
+  const { t } = useI18n();
   const [form, setForm] = useState({ log_date: todayISO(), weather: "", crew_count: "0", notes: "" });
   const [saving, setSaving] = useState(false);
   async function submit(e: FormEvent) {
@@ -1464,29 +1474,29 @@ function LogDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Daily log</DialogTitle>
+          <DialogTitle>{t("project.dailyLog")}</DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="grid gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Date">
+            <Field label={t("project.date")}>
               <Input type="date" required value={form.log_date} onChange={(e) => setForm({ ...form, log_date: e.target.value })} />
             </Field>
-            <Field label="Crew count">
+            <Field label={t("project.crewCount")}>
               <Input type="number" min="0" value={form.crew_count} onChange={(e) => setForm({ ...form, crew_count: e.target.value })} />
             </Field>
           </div>
-          <Field label="Weather">
+          <Field label={t("project.weather")}>
             <Input value={form.weather} onChange={(e) => setForm({ ...form, weather: e.target.value })} />
           </Field>
-          <Field label="Notes">
+          <Field label={t("project.notes")}>
             <Textarea rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
           </Field>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
+              {t("project.cancel")}
             </Button>
             <Button type="submit" disabled={saving}>
-              Save
+              {t("project.save")}
             </Button>
           </DialogFooter>
         </form>
@@ -1506,6 +1516,7 @@ function PunchDialog({
   people: User[];
   onSave: (v: { title: string; location: string | null; status: string; priority: string; assigned_to: number | null; due_date: string | null }) => Promise<void>;
 }) {
+  const { t } = useI18n();
   const [form, setForm] = useState({ title: "", location: "", status: "open", priority: "medium", assigned_to: "", due_date: "" });
   const [saving, setSaving] = useState(false);
   async function submit(e: FormEvent) {
@@ -1526,17 +1537,17 @@ function PunchDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Punch item</DialogTitle>
+          <DialogTitle>{t("project.punchItem")}</DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="grid gap-4">
-          <Field label="Title">
+          <Field label={t("project.title")}>
             <Input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
           </Field>
-          <Field label="Location">
+          <Field label={t("project.location")}>
             <Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Status">
+            <Field label={t("project.status")}>
               <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
                 <SelectTrigger>
                   <SelectValue />
@@ -1544,13 +1555,13 @@ function PunchDialog({
                 <SelectContent>
                   {PUNCH_STATUSES.map((s) => (
                     <SelectItem key={s.value} value={s.value}>
-                      {s.label}
+                      {t(`status.${s.value}` as MessageKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="Priority">
+            <Field label={t("project.priority")}>
               <Select value={form.priority} onValueChange={(v) => setForm({ ...form, priority: v })}>
                 <SelectTrigger>
                   <SelectValue />
@@ -1558,7 +1569,7 @@ function PunchDialog({
                 <SelectContent>
                   {PRIORITIES.map((s) => (
                     <SelectItem key={s.value} value={s.value}>
-                      {s.label}
+                      {t(`status.${s.value}` as MessageKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1566,13 +1577,13 @@ function PunchDialog({
             </Field>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Assigned">
+            <Field label={t("project.assigned")}>
               <Select value={form.assigned_to || "none"} onValueChange={(v) => setForm({ ...form, assigned_to: v === "none" ? "" : v })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Unassigned</SelectItem>
+                  <SelectItem value="none">{t("project.unassigned")}</SelectItem>
                   {people.map((p) => (
                     <SelectItem key={p.id} value={String(p.id)}>
                       {p.name}
@@ -1581,16 +1592,16 @@ function PunchDialog({
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="Due">
+            <Field label={t("billing.due")}>
               <Input type="date" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
             </Field>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
+              {t("project.cancel")}
             </Button>
             <Button type="submit" disabled={saving}>
-              Save
+              {t("project.save")}
             </Button>
           </DialogFooter>
         </form>
@@ -1608,6 +1619,7 @@ function SafetyDialog({
   onClose: () => void;
   onSave: (v: { incident_date: string; severity: string; title: string; description: string | null; status: string }) => Promise<void>;
 }) {
+  const { t } = useI18n();
   const [form, setForm] = useState({ incident_date: todayISO(), severity: "observation", title: "", description: "", status: "open" });
   const [saving, setSaving] = useState(false);
   async function submit(e: FormEvent) {
@@ -1627,17 +1639,17 @@ function SafetyDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Safety record</DialogTitle>
+          <DialogTitle>{t("project.safetyRecord")}</DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="grid gap-4">
-          <Field label="Title">
+          <Field label={t("project.title")}>
             <Input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Date">
+            <Field label={t("project.date")}>
               <Input type="date" required value={form.incident_date} onChange={(e) => setForm({ ...form, incident_date: e.target.value })} />
             </Field>
-            <Field label="Severity">
+            <Field label={t("project.severity")}>
               <Select value={form.severity} onValueChange={(v) => setForm({ ...form, severity: v })}>
                 <SelectTrigger>
                   <SelectValue />
@@ -1645,14 +1657,14 @@ function SafetyDialog({
                 <SelectContent>
                   {SAFETY_SEVERITIES.map((s) => (
                     <SelectItem key={s.value} value={s.value}>
-                      {s.label}
+                      {t(`status.${s.value}` as MessageKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </Field>
           </div>
-          <Field label="Status">
+          <Field label={t("project.status")}>
             <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
               <SelectTrigger>
                 <SelectValue />
@@ -1660,21 +1672,21 @@ function SafetyDialog({
               <SelectContent>
                 {SAFETY_STATUSES.map((s) => (
                   <SelectItem key={s.value} value={s.value}>
-                    {s.label}
+                    {t(`status.${s.value}` as MessageKey)}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </Field>
-          <Field label="Description">
+          <Field label={t("project.description")}>
             <Textarea rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </Field>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
+              {t("project.cancel")}
             </Button>
             <Button type="submit" disabled={saving}>
-              Save
+              {t("project.save")}
             </Button>
           </DialogFooter>
         </form>
@@ -1694,6 +1706,7 @@ function MemberDialog({
   people: User[];
   onSave: (v: { user_id: number; role: string }) => Promise<void>;
 }) {
+  const { t } = useI18n();
   const [form, setForm] = useState({ user_id: "", role: "Coordinator" });
   const [saving, setSaving] = useState(false);
   async function submit(e: FormEvent) {
@@ -1708,24 +1721,24 @@ function MemberDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add team member</DialogTitle>
+          <DialogTitle>{t("project.addTeamMember")}</DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="grid gap-4">
-          <Field label="Person">
+          <Field label={t("project.person")}>
             <Select value={form.user_id || undefined} onValueChange={(v) => setForm({ ...form, user_id: v })}>
               <SelectTrigger>
-                <SelectValue placeholder="Select someone" />
+                <SelectValue placeholder={t("project.selectSomeone")} />
               </SelectTrigger>
               <SelectContent>
                 {people.map((p) => (
                   <SelectItem key={p.id} value={String(p.id)}>
-                    {p.name} · {p.user_type}
+                    {p.name} · {tOr(t, `status.${p.user_type}`, p.user_type)}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </Field>
-          <Field label="Role">
+          <Field label={t("project.role")}>
             <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v })}>
               <SelectTrigger>
                 <SelectValue />
@@ -1733,7 +1746,7 @@ function MemberDialog({
               <SelectContent>
                 {TEAM_ROLES.map((r) => (
                   <SelectItem key={r} value={r}>
-                    {r}
+                    {t(`role.${r}` as MessageKey)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1741,16 +1754,21 @@ function MemberDialog({
           </Field>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
+              {t("project.cancel")}
             </Button>
             <Button type="submit" disabled={saving || !form.user_id}>
-              Add
+              {t("project.add")}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
   );
+}
+
+/** Translate a stored value (category, role, slug) when the dictionary knows it; otherwise show it as is. */
+function tOr(t: (key: MessageKey) => string, key: string, fallback: string) {
+  return key in en ? t(key as MessageKey) : fallback;
 }
 
 void PROJECT_PHASES;

@@ -123,13 +123,13 @@ export function TeamPage() {
   return (
     <div>
       <PageHeader
-        eyebrow="Directory"
-        title="People"
+        eyebrow={t("people.eyebrow")}
+        title={t("people.title")}
         actions={
           (user?.is_admin || can("users", "create")) && (
             <Button onClick={() => setOpen(true)}>
               <Plus className="size-4" />
-              New user
+              {t("people.new")}
             </Button>
           )
         }
@@ -141,7 +141,7 @@ export function TeamPage() {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search people…"
+            placeholder={t("people.search")}
             className="pl-9"
           />
         </div>
@@ -155,7 +155,7 @@ export function TeamPage() {
                 filter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              {f}
+              {t(`people.filter.${f}`)}
             </button>
           ))}
         </div>
@@ -164,8 +164,8 @@ export function TeamPage() {
       {filtered.length === 0 ? (
         <EmptyState
           icon={<Users className="size-5" />}
-          title="No people match"
-          description="Adjust the filter or create a user."
+          title={t("people.noMatch")}
+          description={t("people.noMatchDesc")}
         />
       ) : (
         <div className="overflow-hidden rounded-xl border bg-card">
@@ -181,7 +181,7 @@ export function TeamPage() {
                     <p className="truncate font-medium">
                       {p.name}
                       {p.is_admin ? (
-                        <span className="ml-2 text-[11px] font-medium text-primary">Admin</span>
+                        <span className="ml-2 text-[11px] font-medium text-primary">{t("nav.admin")}</span>
                       ) : null}
                     </p>
                     <p className="truncate text-xs text-muted-foreground">
@@ -200,11 +200,11 @@ export function TeamPage() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>New user</DialogTitle>
+            <DialogTitle>{t("people.new")}</DialogTitle>
           </DialogHeader>
           <form onSubmit={onCreate} className="grid gap-4">
             <div className="space-y-1.5">
-              <Label>Full name</Label>
+              <Label>{t("people.fullName")}</Label>
               <Input
                 required
                 value={form.name}
@@ -212,7 +212,7 @@ export function TeamPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Email</Label>
+              <Label>{t("people.email")}</Label>
               <Input
                 type="email"
                 required
@@ -231,7 +231,7 @@ export function TeamPage() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label>Type</Label>
+              <Label>{t("people.type")}</Label>
               <Select
                 value={form.user_type}
                 onValueChange={(v) =>
@@ -242,13 +242,13 @@ export function TeamPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="internal">Internal employee</SelectItem>
-                  <SelectItem value="external">External (client)</SelectItem>
+                  <SelectItem value="internal">{t("people.internal")}</SelectItem>
+                  <SelectItem value="external">{t("people.external")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Temporary password</Label>
+              <Label>{t("people.tempPassword")}</Label>
               <Input
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
@@ -266,10 +266,10 @@ export function TeamPage() {
             )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                Cancel
+                {t("people.cancel")}
               </Button>
               <Button type="submit" disabled={saving}>
-                {saving ? "Creating…" : "Create user"}
+                {saving ? t("people.creating") : t("people.create")}
               </Button>
             </DialogFooter>
           </form>

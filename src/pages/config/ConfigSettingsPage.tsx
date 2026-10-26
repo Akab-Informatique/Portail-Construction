@@ -84,7 +84,7 @@ const TEMPLATE_KEYS: { key: EmailTemplateKey; label: MessageKey; hint?: MessageK
 
 export function ConfigSettingsPage() {
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { t, tr } = useI18n();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -154,9 +154,9 @@ export function ConfigSettingsPage() {
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; provider?: string; model?: string };
       if (data.ok) setAiTest(t("settings.ai.testOk", { model: data.model ?? "" }));
       else if (data.error === "ai.notConfigured") setAiTest(t("settings.ai.testNoKey"));
-      else setAiTest(data.error || t("settings.sp.testFail"));
+      else setAiTest(tr(data.error, "settings.sp.testFail"));
     } catch (err) {
-      setAiTest(err instanceof Error ? err.message : t("settings.sp.testFail"));
+      setAiTest(tr(err, "settings.sp.testFail"));
     } finally {
       setSaving(false);
     }
@@ -176,9 +176,9 @@ export function ConfigSettingsPage() {
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; local?: boolean };
       if (data.ok) setSmtpTest(t("settings.smtp.testOk"));
       else if (data.local) setSmtpTest(t("settings.smtp.testLocal"));
-      else setSmtpTest(data.error || t("settings.sp.testFail"));
+      else setSmtpTest(tr(data.error, "settings.sp.testFail"));
     } catch (err) {
-      setSmtpTest(err instanceof Error ? err.message : t("settings.sp.testFail"));
+      setSmtpTest(tr(err, "settings.sp.testFail"));
     } finally {
       setSaving(false);
     }
@@ -537,12 +537,12 @@ export function ConfigSettingsPage() {
                         body: JSON.stringify({ action: "test", config: sp }),
                       });
                       const payload = (await res.json()) as { ok?: boolean; driveId?: string; error?: string };
-                      if (!res.ok) throw new Error(payload.error || "Test failed");
+                      if (!res.ok) throw new Error(payload.error || "settings.sp.testFail");
                       setSp({ ...sp, connected: true, drive_id: payload.driveId || sp.drive_id });
                       setSpTest(t("settings.sp.testOk"));
                     } catch (err) {
                       setSp({ ...sp, connected: false });
-                      setSpTest(err instanceof Error ? err.message : t("settings.sp.testFail"));
+                      setSpTest(tr(err, "settings.sp.testFail"));
                     }
                   }}
                 >

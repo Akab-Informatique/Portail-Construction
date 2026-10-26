@@ -174,11 +174,11 @@ export function UserAccessPage() {
     return (
       <EmptyState
         icon={<Shield className="size-5" />}
-        title="User not found"
-        description="This account may have been removed."
+        title={t("people.notFound")}
+        description={t("people.notFoundDesc")}
         action={
           <Button asChild variant="outline">
-            <Link to="/team">Back to people</Link>
+            <Link to="/team">{t("people.backToPeople")}</Link>
           </Button>
         }
       />
@@ -190,8 +190,8 @@ export function UserAccessPage() {
     return (
       <EmptyState
         icon={<Shield className="size-5" />}
-        title="Restricted"
-        description="You don’t have permission to manage access."
+        title={t("people.restricted")}
+        description={t("people.accessRestricted")}
       />
     );
   }
@@ -203,14 +203,14 @@ export function UserAccessPage() {
       <Button variant="ghost" size="sm" className="-ml-2 mb-3" asChild>
         <Link to="/team">
           <ArrowLeft className="size-4" />
-          People
+          {t("people.back")}
         </Link>
       </Button>
 
       <PageHeader
-        eyebrow="Access"
+        eyebrow={t("people.accessEyebrow")}
         title={target.name}
-        description={`${target.email} · ${target.title || (target.user_type === "internal" ? "Employee" : "Client user")}`}
+        description={`${target.email} · ${target.title || (target.user_type === "internal" ? t("people.employee") : t("people.clientUser"))}`}
         actions={
           <>
             <UserAvatar name={target.name} hint={target.avatar_initials} />
@@ -252,7 +252,7 @@ export function UserAccessPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="global">Global (all jobs)</SelectItem>
+                  <SelectItem value="global">{t("people.scopeGlobal")}</SelectItem>
                   {visibleProjects.map((p) => {
                     const client = clients.find((c) => c.id === p.client_id);
                     return (
@@ -265,7 +265,7 @@ export function UserAccessPage() {
               </Select>
             </div>
             <p className="text-xs text-muted-foreground">
-              {saving ? "Saving…" : "Changes save as you click."}
+              {saving ? t("people.saving") : t("people.autosave")}
             </p>
           </div>
 
@@ -273,16 +273,17 @@ export function UserAccessPage() {
             <table className="w-full min-w-[640px] text-sm">
               <thead className="border-b bg-muted/40 text-left text-[11px] uppercase tracking-wider text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Module</th>
-                  <th className="px-3 py-3 font-medium">View</th>
-                  <th className="px-3 py-3 font-medium">Create</th>
-                  <th className="px-3 py-3 font-medium">Edit</th>
-                  <th className="px-3 py-3 font-medium">Delete</th>
+                  <th className="px-4 py-3 font-medium">{t("people.col.module")}</th>
+                  <th className="px-3 py-3 font-medium">{t("people.col.view")}</th>
+                  <th className="px-3 py-3 font-medium">{t("people.col.create")}</th>
+                  <th className="px-3 py-3 font-medium">{t("people.col.edit")}</th>
+                  <th className="px-3 py-3 font-medium">{t("people.col.delete")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {matrixModules.map((m) => {
                   const flags = currentFlags(m.id);
+                  const moduleLabel = m.labelKey ? t(m.labelKey as "module.dashboard") : t(`module.${m.id}` as "module.dashboard");
                   const set = (key: keyof Flags, value: boolean) => {
                     const next = { ...flags, [key]: value };
                     if (key !== "can_view" && value) next.can_view = true;
@@ -296,7 +297,7 @@ export function UserAccessPage() {
                   return (
                     <tr key={m.id} className="hover:bg-muted/30">
                       <td className="px-4 py-3">
-                        <p className={m.parent ? "pl-4 font-medium" : "font-medium"}>{m.labelKey ? t(m.labelKey as "module.dashboard") : t(`module.${m.id}` as "module.dashboard")}</p>
+                        <p className={m.parent ? "pl-4 font-medium" : "font-medium"}>{moduleLabel}</p>
                         {m.group !== "menu" ? <p className="text-xs text-muted-foreground">{t(`module.${m.id}.desc` as "module.dashboard.desc")}</p> : null}
                       </td>
                       {(["can_view", "can_create", "can_edit", "can_delete"] as const).map((k) => (
@@ -305,7 +306,7 @@ export function UserAccessPage() {
                             checked={flags[k]}
                             disabled={!canEdit}
                             onCheckedChange={(v) => set(k, v === true)}
-                            aria-label={`${m.label} ${k.replace("can_", "")}`}
+                            aria-label={`${moduleLabel} ${t(`people.col.${k.replace("can_", "")}` as "people.col.view")}`}
                           />
                         </td>
                       ))}
