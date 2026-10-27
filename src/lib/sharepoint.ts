@@ -110,6 +110,10 @@ export async function deleteItemShares(itemId: string) {
   await db.delete(schema.sharepoint_shares).where(eq(schema.sharepoint_shares.item_id, itemId));
 }
 
+/**
+ * A project has one documentation root: its first folder link. Choosing another folder replaces that link in place, and the
+ * rights given on the old folder go with it (a new root starts with no access). Choosing the same folder again keeps them.
+ */
 export async function assignProjectFolder(opts: {
   projectId: number;
   clientId: number;
@@ -119,32 +123,22 @@ export async function assignProjectFolder(opts: {
   path: string;
 }) {
   await dbReady;
-  const existing = (await db
-    .select()
-    .from(schema.sharepoint_folders)
-    .where(eq(schema.sharepoint_folders.sp_item_id, opts.spItemId))) as SharePointFolder[];
-  let folder = existing[0];
-  if (folder) {
-    await db
-      .update(schema.sharepoint_folders)
-      .set({ project_id: opts.projectId, name: opts.name, path: opts.path, sp_drive_id: opts.spDriveId })
-      .where(eq(schema.sharepoint_folders.id, folder.id));
-    folder = { ...folder, project_id: opts.projectId, name: opts.name, path: opts.path, sp_drive_id: opts.spDriveId };
-  } else {
-    const [row] = await db
-      .insert(schema.sharepoint_folders)
-      .values({
-        project_id: opts.projectId,
-        name: opts.name,
-        sp_item_id: opts.spItemId,
-        sp_drive_id: opts.spDriveId,
-        path: opts.path,
-      })
-      .returning();
-    folder = row as SharePointFolder;
+  const mine = ((await db.select().from(schema.sharepoint_folders).where(eq(schema.sharepoint_folders.project_id, opts.projectId))) as SharePointFolder[])
+    .filter((f) => f.sp_item_id)
+    .sort((a, b) => a.id - b.id);
+  const root = mine[0];
+  const fields = { name: opts.name, sp_item_id: opts.spItemId, sp_drive_id: opts.spDriveId, path: opts.path };
+  if (!root) {
+    const [row] = await db.insert(schema.sharepoint_folders).values({ project_id: opts.projectId, ...fields }).returning();
+    return row as SharePointFolder;
   }
-  // No right is given by default: an administrator gives access folder by folder.
-  return folder;
+  if (root.sp_item_id !== opts.spItemId) {
+    // The old root's rights no longer describe anything; another link to the new folder under this project is dropped.
+    await db.delete(schema.sharepoint_shares).where(eq(schema.sharepoint_shares.folder_id, root.id));
+    for (const dup of mine.slice(1).filter((f) => f.sp_item_id === opts.spItemId)) await deleteFolderRecord(dup.id);
+  }
+  await db.update(schema.sharepoint_folders).set(fields).where(eq(schema.sharepoint_folders.id, root.id));
+  return { ...root, ...fields } as SharePointFolder;
 }
 
 export { EMPTY_SHAREPOINT };
