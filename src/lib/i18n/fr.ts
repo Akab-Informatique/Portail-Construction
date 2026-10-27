@@ -269,6 +269,7 @@ export const fr: Record<MessageKey, string> = {
   "pda.staffTitle": "Employés",
   "pda.staffHelp": "Accès de chaque employé au dossier « {folder} ». Un employé ne voit rien tant que ce n’est pas donné ici.",
   "pda.noStaff": "Aucun employé trouvé.",
+  "pda.clientsHelp": "Chaque entreprise cliente, puis ses utilisateurs avec le bouton Utilisateurs. Une entreprise ou un utilisateur ne voit rien tant que ce n’est pas donné ici.",
   "pda.level": "Accès",
   "pda.staff": "Employés",
   "pda.clientsHead": "Clients",

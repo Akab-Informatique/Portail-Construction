@@ -48,8 +48,7 @@ export function DocsAccess({
   const [users, setUsers] = useState<(User & { clientId: number })[]>([]);
   const [staff, setStaff] = useState<User[]>([]);
   const [userDialog, setUserDialog] = useState<number | null>(null);
-  const [staffDialog, setStaffDialog] = useState(false);
-  const [staffQuery, setStaffQuery] = useState("");
+  const [who, setWho] = useState<"staff" | "clients">("staff");
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -85,9 +84,9 @@ export function DocsAccess({
   }, [clients, query]);
 
   const visibleStaff = useMemo(() => {
-    const q = staffQuery.trim().toLowerCase();
+    const q = query.trim().toLowerCase();
     return staff.filter((u) => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name));
-  }, [staff, staffQuery]);
+  }, [staff, query]);
 
   /** The folder and its ancestors, nearest first. */
   const chain: Crumb[] = [...[{ id: root.id, name: root.name }, ...trail].reverse()];
@@ -171,7 +170,15 @@ export function DocsAccess({
               <UserAvatar name={g.label} size="md" />
             )}
             <div className="min-w-0">
-              <p className="truncate font-medium">{g.label}</p>
+              <div className="flex items-center gap-2">
+                <p className="truncate font-medium">{g.label}</p>
+                {mine.length ? (
+                  <Button size="xs" variant="outline" onClick={() => setUserDialog(g.clientId)}>
+                    <Users className="size-3.5" />
+                    {t("pda.manageUsers", { n: mine.length })}
+                  </Button>
+                ) : null}
+              </div>
               <p className="truncate text-xs text-muted-foreground">{g.sub}</p>
               <p className={cn("text-[11px]", r.from === "here" ? "font-semibold" : "text-muted-foreground")} style={r.from === "here" ? { color } : undefined}>
                 {r.from === "here" ? t("pda.setHere") : r.from === "above" ? t("pda.inherited", { name: r.fromName ?? "" }) : t("pda.none")}
@@ -203,12 +210,6 @@ export function DocsAccess({
           </div>
         </td>
         <td className="py-3 text-right">
-          {mine.length ? (
-            <Button size="sm" variant="outline" className="mr-1" onClick={() => setUserDialog(g.clientId)}>
-              <Users className="size-4" />
-              {t("pda.manageUsers", { n: mine.length })}
-            </Button>
-          ) : null}
           {r.from === "here" ? (
             <Button size="icon-sm" variant="ghost" title={t("pda.reset")} aria-label={t("pda.reset")} onClick={() => void reset(g)}>
               <RotateCcw className="size-4" />
@@ -235,16 +236,36 @@ export function DocsAccess({
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
         <p className="rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">{t("pda.levelsHelp")}</p>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative w-full max-w-sm">
-            <Search className="pointer-events-none absolute top-2.5 left-3 size-4 text-muted-foreground" />
-            <Input className="pl-9" value={query} placeholder={t("pda.searchClient")} onChange={(e) => setQuery(e.target.value)} />
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex w-fit items-center gap-1 rounded-xl border bg-muted/40 p-1">
+            {(
+              [
+                ["staff", t("pda.staff"), HardHat, staff.length],
+                ["clients", t("pda.clientsHead"), Building2, clients.length],
+              ] as const
+            ).map(([id, label, Icon, n]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => {
+                  setWho(id);
+                  setQuery("");
+                }}
+                className={cn("flex h-9 items-center gap-2 rounded-lg px-4 text-sm font-medium transition-all", who === id ? "text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+                style={who === id ? { background: `color-mix(in srgb, ${color} 18%, var(--card))`, boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${color} 38%, transparent)` } : undefined}
+              >
+                <Icon className="size-4" style={who === id ? { color } : undefined} />
+                {label}
+                <span className="text-xs tabular-nums text-muted-foreground">{n}</span>
+              </button>
+            ))}
           </div>
-          <Button variant="outline" onClick={() => setStaffDialog(true)}>
-            <HardHat className="size-4" />
-            {t("pda.manageStaff", { n: staff.length })}
-          </Button>
+          <div className="relative w-full max-w-xs">
+            <Search className="pointer-events-none absolute top-2.5 left-3 size-4 text-muted-foreground" />
+            <Input className="pl-9" value={query} placeholder={who === "staff" ? t("pda.searchStaff") : t("pda.searchClient")} onChange={(e) => setQuery(e.target.value)} />
+          </div>
         </div>
+        <p className="text-xs text-muted-foreground">{who === "staff" ? t("pda.staffHelp", { folder: here.id === root.id ? rootLabel : here.name }) : t("pda.clientsHelp")}</p>
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] text-sm">
@@ -256,33 +277,12 @@ export function DocsAccess({
               </tr>
             </thead>
             <tbody className="divide-y">
-              {visibleClients.map((c) => rowFor({ key: `c${c.id}`, clientId: c.id, userId: null, label: c.company_name, sub: c.name }))}
+              {who === "staff" ? visibleStaff.map((u) => rowFor({ key: `s${u.id}`, clientId: 0, userId: u.id, label: u.name, sub: u.title || u.email })) : null}
+              {who === "clients" ? visibleClients.map((c) => rowFor({ key: `c${c.id}`, clientId: c.id, userId: null, label: c.company_name, sub: c.name })) : null}
             </tbody>
           </table>
         </div>
       </Card>
-
-      <Dialog open={staffDialog} onOpenChange={setStaffDialog}>
-        <DialogContent className="sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <HardHat className="size-5" style={{ color }} />
-              {t("pda.staffTitle")}
-            </DialogTitle>
-            <DialogDescription>{t("pda.staffHelp", { folder: here.id === root.id ? rootLabel : here.name })}</DialogDescription>
-          </DialogHeader>
-          <div className="relative max-w-xs">
-            <Search className="pointer-events-none absolute top-2.5 left-3 size-4 text-muted-foreground" />
-            <Input className="pl-9" value={staffQuery} placeholder={t("pda.searchStaff")} onChange={(e) => setStaffQuery(e.target.value)} />
-          </div>
-          <div className="max-h-[55vh] overflow-auto">
-            <table className="w-full min-w-[640px] text-sm">
-              <tbody className="divide-y">{visibleStaff.map((u) => rowFor({ key: `s${u.id}`, clientId: 0, userId: u.id, label: u.name, sub: u.title || u.email }))}</tbody>
-            </table>
-            {visibleStaff.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">{t("pda.noStaff")}</p> : null}
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={userDialog !== null} onOpenChange={(o) => !o && setUserDialog(null)}>
         <DialogContent className="sm:max-w-3xl">

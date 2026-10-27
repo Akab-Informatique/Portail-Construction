@@ -267,6 +267,7 @@ export const en = {
   "pda.staffTitle": "Employees",
   "pda.staffHelp": "Access of each employee to “{folder}”. An employee sees nothing until it is given here.",
   "pda.noStaff": "No employee found.",
+  "pda.clientsHelp": "Each client company, then its users with the Users button. A company or user sees nothing until it is given here.",
   "pda.level": "Access",
   "pda.staff": "Employees",
   "pda.clientsHead": "Clients",
