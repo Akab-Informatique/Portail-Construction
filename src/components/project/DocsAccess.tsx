@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { eq, inArray } from "drizzle-orm";
-import { Building2, ChevronDown, ChevronRight, Folder, FolderOpen, HardHat, Lock, RotateCcw, Search } from "lucide-react";
+import { Building2, ChevronDown, ChevronRight, Folder, FolderOpen, HardHat, Lock, RotateCcw, Search, Users } from "lucide-react";
 import { db, schema } from "../../db";
 import { clearShareFlags, setShareFlags } from "@/lib/sharepoint";
 import { useI18n } from "@/lib/i18n";
@@ -12,6 +12,7 @@ import { UserAvatar } from "@/components/UserAvatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 type Flags = DocFlags;
@@ -46,7 +47,7 @@ export function DocsAccess({
   const [shares, setShares] = useState<SharePointShare[]>([]);
   const [users, setUsers] = useState<(User & { clientId: number })[]>([]);
   const [staff, setStaff] = useState<User[]>([]);
-  const [open, setOpen] = useState<Set<number>>(() => new Set(clients.length === 1 ? [clients[0].id] : []));
+  const [userDialog, setUserDialog] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -76,12 +77,14 @@ export function DocsAccess({
 
   const visibleClients = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return clients.filter((c) => !q || c.company_name.toLowerCase().includes(q) || c.name.toLowerCase().includes(q));
+    return clients
+      .filter((c) => !q || c.company_name.toLowerCase().includes(q) || c.name.toLowerCase().includes(q))
+      .sort((a, b) => a.company_name.localeCompare(b.company_name));
   }, [clients, query]);
 
   const visibleStaff = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return staff.filter((u) => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
+    return staff.filter((u) => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name));
   }, [staff, query]);
 
   /** The folder and its ancestors, nearest first. */
@@ -140,12 +143,19 @@ export function DocsAccess({
   }
 
   const here = chain[0];
-  const rowFor = (g: Grantee, indent = false) => {
+  const rank = (l: DocLevel) => DOC_LEVELS.indexOf(l);
+  /** What a company has here: its users can never have more than this. */
+  const companyLevel = (clientId: number) => levelOf(resolve({ key: "c", clientId, userId: null, label: "" }).flags);
+  /** `max`: the most this grantee can be given (a client user: what their company has). */
+  const rowFor = (g: Grantee, max?: DocLevel) => {
     const r = resolve(g);
-    const company = g.userId !== null ? resolve({ ...g, userId: null, key: "c" }) : null;
+    const stored = levelOf(r.flags);
+    const shown: DocLevel = max && rank(stored) > rank(max) ? max : stored;
+    const clipped = shown !== stored;
+    const mine = g.userId === null && g.clientId > 0 ? users.filter((u) => u.clientId === g.clientId) : [];
     return (
       <tr key={g.key}>
-        <td className={cn("py-3 pr-3", indent && "pl-8")}>
+        <td className="py-3 pr-3">
           <div className="flex items-center gap-3">
             {g.clientId === 0 ? (
               <span className="flex size-9 items-center justify-center rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300">
@@ -163,7 +173,7 @@ export function DocsAccess({
               <p className="truncate text-xs text-muted-foreground">{g.sub}</p>
               <p className={cn("text-[11px]", r.from === "here" ? "font-semibold" : "text-muted-foreground")} style={r.from === "here" ? { color } : undefined}>
                 {r.from === "here" ? t("pda.setHere") : r.from === "above" ? t("pda.inherited", { name: r.fromName ?? "" }) : t("pda.none")}
-                {company && company.flags.can_view && !r.flags.can_view ? ` · ${t("pda.viaCompany")}` : ""}
+                {clipped ? ` · ${t("pda.limitedByCompany")}` : ""}
               </p>
             </div>
           </div>
@@ -171,15 +181,17 @@ export function DocsAccess({
         <td className="py-3 text-center">
           <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
             {DOC_LEVELS.map((lv) => {
-              const on = levelOf(r.flags) === lv;
+              const on = shown === lv;
+              const blocked = Boolean(max) && rank(lv) > rank(max as DocLevel);
               return (
                 <button
                   key={lv}
                   type="button"
                   aria-pressed={on}
-                  title={t(`${LEVEL_LABEL[lv]}.hint` as MessageKey)}
+                  disabled={blocked}
+                  title={blocked ? t("pda.aboveCompany") : t(`${LEVEL_LABEL[lv]}.hint` as MessageKey)}
                   onClick={() => void change(g, lv)}
-                  className={cn("rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors", on ? "text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+                  className={cn("rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors", on ? "text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground", blocked && "cursor-not-allowed opacity-35 hover:text-muted-foreground")}
                   style={on ? { background: lv === "none" ? "var(--card)" : `color-mix(in srgb, ${color} 26%, var(--card))`, boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${lv === "none" ? "currentColor" : color} 40%, transparent)` } : undefined}
                 >
                   {t(LEVEL_LABEL[lv])}
@@ -189,6 +201,12 @@ export function DocsAccess({
           </div>
         </td>
         <td className="py-3 text-right">
+          {mine.length ? (
+            <Button size="sm" variant="outline" className="mr-1" onClick={() => setUserDialog(g.clientId)}>
+              <Users className="size-4" />
+              {t("pda.manageUsers", { n: mine.length })}
+            </Button>
+          ) : null}
           {r.from === "here" ? (
             <Button size="icon-sm" variant="ghost" title={t("pda.reset")} aria-label={t("pda.reset")} onClick={() => void reset(g)}>
               <RotateCcw className="size-4" />
@@ -215,16 +233,13 @@ export function DocsAccess({
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
         <p className="rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">{t("pda.levelsHelp")}</p>
-        {clients.length + staff.length > 6 ? (
-          <div className="relative max-w-xs">
-            <Search className="pointer-events-none absolute top-2.5 left-3 size-4 text-muted-foreground" />
-            <Input className="pl-9" value={query} placeholder={t("pda.searchClient")} onChange={(e) => setQuery(e.target.value)} />
-          </div>
-        ) : null}
-
+        <div className="relative max-w-sm">
+          <Search className="pointer-events-none absolute top-2.5 left-3 size-4 text-muted-foreground" />
+          <Input className="pl-9" value={query} placeholder={t("pda.search")} onChange={(e) => setQuery(e.target.value)} />
+        </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
+          <table className="w-full min-w-[720px] text-sm">
             <thead className="text-left text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="pb-2 font-medium" />
@@ -244,34 +259,43 @@ export function DocsAccess({
                   <td colSpan={3} className="pt-4 pb-0 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{t("pda.clientsHead")}</td>
                 </tr>
               ) : null}
-              {visibleClients.map((c) => {
-                const mine = users.filter((u) => u.clientId === c.id);
-                const isOpen = open.has(c.id);
-                return [
-                  rowFor({ key: `c${c.id}`, clientId: c.id, userId: null, label: c.company_name, sub: mine.length ? t("pda.users", { n: mine.length }) : t("pda.company") }),
-                  ...(mine.length
-                    ? [
-                        <tr key={`t${c.id}`}>
-                          <td colSpan={3} className="py-0">
-                            <button
-                              type="button"
-                              className="flex items-center gap-1 pl-8 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
-                              onClick={() => setOpen((prev) => { const n = new Set(prev); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })}
-                            >
-                              <ChevronDown className={cn("size-3.5 transition-transform", !isOpen && "-rotate-90")} />
-                              {t("pda.userRights")}
-                            </button>
-                          </td>
-                        </tr>,
-                      ]
-                    : []),
-                  ...(isOpen ? mine.map((u) => rowFor({ key: `u${c.id}-${u.id}`, clientId: c.id, userId: u.id, label: u.name, sub: u.email }, true)) : []),
-                ];
-              })}
+              {visibleClients.map((c) => rowFor({ key: `c${c.id}`, clientId: c.id, userId: null, label: c.company_name, sub: c.name }))}
             </tbody>
           </table>
         </div>
       </Card>
+
+      <Dialog open={userDialog !== null} onOpenChange={(o) => !o && setUserDialog(null)}>
+        <DialogContent className="sm:max-w-3xl">
+          {(() => {
+            const client = clients.find((c) => c.id === userDialog);
+            if (!client) return null;
+            const max = companyLevel(client.id);
+            const mine = users.filter((u) => u.clientId === client.id).sort((a, b) => a.name.localeCompare(b.name));
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Users className="size-5" style={{ color }} />
+                    {t("pda.usersOf", { name: client.company_name })}
+                  </DialogTitle>
+                  <DialogDescription>{t("pda.usersHelp", { folder: here.id === root.id ? rootLabel : here.name, level: t(LEVEL_LABEL[max]) })}</DialogDescription>
+                </DialogHeader>
+                <div className="flex items-center gap-3 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+                  <Building2 className="size-4 text-primary" />
+                  <span className="font-medium">{client.company_name}</span>
+                  <span className="ml-auto rounded-md bg-card px-2 py-0.5 text-xs font-semibold shadow-sm">{t(LEVEL_LABEL[max])}</span>
+                </div>
+                <div className="max-h-[55vh] overflow-auto">
+                  <table className="w-full min-w-[640px] text-sm">
+                    <tbody className="divide-y">{mine.map((u) => rowFor({ key: `u${client.id}-${u.id}`, clientId: client.id, userId: u.id, label: u.name, sub: u.email }, max))}</tbody>
+                  </table>
+                </div>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

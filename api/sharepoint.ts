@@ -144,13 +144,30 @@ async function allowed(
     current = await getItemParent(token, driveId, current);
   }
   chain.push("");
-  for (const nodes of subjects.values()) {
+  const hitOf = (nodes: Map<string, Grant> | undefined): Grant | null => {
     for (const key of chain) {
-      const grant = nodes.get(key);
-      if (!grant) continue;
-      if (grant[NEED_FLAG[need]]) return true;
-      break;
+      const grant = nodes?.get(key);
+      if (grant) return grant;
     }
+    return null;
+  };
+  const flag = NEED_FLAG[need];
+  const clientIds = new Set([...subjects.keys()].map((k) => k.split(":")[0]));
+  for (const clientId of clientIds) {
+    const company = hitOf(subjects.get(`${clientId}:`));
+    const own = hitOf([...subjects.entries()].find(([k]) => k.startsWith(`${clientId}:`) && k !== `${clientId}:`)?.[1]);
+    if (clientId === "0") {
+      if (own?.[flag]) return true;
+      continue;
+    }
+    // A client user's right is set inside their company's: it can lower it, never go above it.
+    if (!own) {
+      if (company?.[flag]) return true;
+      continue;
+    }
+    const rank = (g: Grant | null) => (g?.edit ? 3 : g?.upload ? 2 : g?.view ? 1 : 0);
+    const need_rank = flag === "edit" ? 3 : flag === "upload" ? 2 : 1;
+    if (Math.min(rank(own), rank(company)) >= need_rank) return true;
   }
   return false;
 }

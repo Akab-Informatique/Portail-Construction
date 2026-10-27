@@ -59,13 +59,30 @@ export function subjectsFor(user: SessionUser | null, clients: Client[], selecte
  * take rights away; the grantees' rights add up.
  */
 export function levelAt(shares: SharePointShare[], subjects: Subject[], rowId: number, chain: string[]): DocLevel {
-  let flags: DocFlags = { can_view: false, can_upload: false, can_edit: false };
-  for (const subject of subjects) {
+  const hitOf = (subject: Subject) => {
     const mine = shares.filter((s) => s.client_id === subject.clientId && (s.user_id ?? null) === subject.userId);
-    const hit = [...chain.map((key) => mine.find((s) => s.folder_id === rowId && (s.item_id || "") === key)), mine.find((s) => s.folder_id === 0 && !s.item_id)].find(Boolean);
-    if (!hit) continue;
-    const f = shareFlags(hit);
+    const row = [...chain.map((key) => mine.find((s) => s.folder_id === rowId && (s.item_id || "") === key)), mine.find((s) => s.folder_id === 0 && !s.item_id)].find(Boolean);
+    return row ? shareFlags(row) : null;
+  };
+  const none: DocFlags = { can_view: false, can_upload: false, can_edit: false };
+  let flags = none;
+  const add = (f: DocFlags) => {
     flags = { can_view: flags.can_view || f.can_view, can_upload: flags.can_upload || f.can_upload, can_edit: flags.can_edit || f.can_edit };
+  };
+  for (const subject of subjects.filter((x) => x.clientId === 0)) {
+    const hit = hitOf(subject);
+    if (hit) add(hit);
+  }
+  // A client user's right is set inside their company's: it can lower it, never go above it.
+  for (const clientId of new Set(subjects.filter((x) => x.clientId > 0).map((x) => x.clientId))) {
+    const company = hitOf({ clientId, userId: null }) ?? none;
+    const mine = subjects.find((x) => x.clientId === clientId && x.userId !== null);
+    const own = mine ? hitOf(mine) : null;
+    if (!own) {
+      add(company);
+      continue;
+    }
+    add(levelFlags(DOC_LEVELS[Math.min(DOC_LEVELS.indexOf(levelOf(own)), DOC_LEVELS.indexOf(levelOf(company)))]));
   }
   return levelOf(flags);
 }
