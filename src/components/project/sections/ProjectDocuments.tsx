@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { FileText, FolderOpen, KeyRound } from "lucide-react";
-import { loadProjectFolders } from "@/lib/sharepoint";
+import { callSharePoint, loadProjectFolders } from "@/lib/sharepoint";
 import { getSharePointSettings } from "@/lib/settings";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -29,7 +29,7 @@ export function ProjectDocuments({ project, client }: SectionProps) {
   const tab = isAdmin && params.get("tab") === "access" ? "access" : "files";
   // A client account only sees the folders and files shared with it, with the rights it was given.
   const viewer = user?.user_type === "external" || user?.view_as === "client";
-  const [state, setState] = useState<"loading" | "notConfigured" | "noFolder" | "ready">("loading");
+  const [state, setState] = useState<"loading" | "notConfigured" | "noFolder" | "gone" | "ready">("loading");
   const [settings, setSettings] = useState<SharePointSettings | null>(null);
   const [root, setRoot] = useState<SpRoot | null>(null);
 
@@ -41,10 +41,22 @@ export function ProjectDocuments({ project, client }: SectionProps) {
       setSettings(s);
       if (!s.tenant_id || !s.client_id || !s.site_url) return setState("notConfigured");
       const rows = (await loadProjectFolders(project.id)) as SharePointFolder[];
-      const first = [...rows].filter((r) => r.sp_item_id).sort((a, b) => a.id - b.id)[0];
-      if (!first) return setState("noFolder");
-      setRoot({ id: first.sp_item_id, name: first.name, drive: first.sp_drive_id || s.drive_id, rowId: first.id });
-      setState("ready");
+      const linked = [...rows].filter((r) => r.sp_item_id).sort((a, b) => a.id - b.id);
+      if (linked.length === 0) return setState("noFolder");
+      // The saved folder can be gone from SharePoint (deleted, moved to another library): try each link, and the configured library, before giving up.
+      for (const row of linked) {
+        for (const drive of [...new Set([row.sp_drive_id, s.drive_id].filter(Boolean))]) {
+          try {
+            await callSharePoint("list", { driveId: drive, itemId: row.sp_item_id });
+          } catch {
+            continue;
+          }
+          if (cancelled) return;
+          setRoot({ id: row.sp_item_id, name: row.name, drive, rowId: row.id });
+          return setState("ready");
+        }
+      }
+      setState("gone");
     })().catch(() => setState("noFolder"));
     return () => {
       cancelled = true;
@@ -54,6 +66,7 @@ export function ProjectDocuments({ project, client }: SectionProps) {
   if (viewer) return <SharePointLibrary projectId={project.id} projectName={project.name} client={client} canCreate={false} />;
   if (state === "loading") return <Card className="p-10 text-center text-sm text-muted-foreground">…</Card>;
   if (state === "notConfigured") return <EmptyState icon={<FileText className="size-5" />} title={t("sp.notConfigured")} description={t("sp.notConfiguredHint")} />;
+  if (state === "gone") return <EmptyState icon={<FolderOpen className="size-5" />} title={t("pdoc.gone")} description={t("pdoc.goneHint")} />;
   if (state === "noFolder" || !root) return <EmptyState icon={<FolderOpen className="size-5" />} title={t("pdoc.noFolder")} description={t("pdoc.noFolderHint")} />;
 
   return (

@@ -251,6 +251,8 @@ export const fr: Record<MessageKey, string> = {
   "module.project_billing.desc": "Soumissions, demandes de changement et factures du projet",
   "pdoc.noFolder": "Aucun dossier lié à ce projet",
   "pdoc.noFolderHint": "Modifiez le projet et choisissez son dossier SharePoint.",
+  "pdoc.gone": "Dossier SharePoint lié introuvable",
+  "pdoc.goneHint": "Le dossier SharePoint lié à ce projet n’existe plus (supprimé, bibliothèque changée ou déplacé). Modifiez le projet et choisissez de nouveau son dossier.",
   "pdoc.upload": "Téléverser",
   "pdoc.download": "Télécharger",
   "pdoc.print": "Imprimer",

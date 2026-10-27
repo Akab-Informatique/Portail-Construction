@@ -249,6 +249,8 @@ export const en = {
   "module.project_billing.desc": "Quotes, change requests and invoices of the project",
   "pdoc.noFolder": "No folder linked to this project",
   "pdoc.noFolderHint": "Edit the project and choose its SharePoint folder.",
+  "pdoc.gone": "Linked SharePoint folder not found",
+  "pdoc.goneHint": "The SharePoint folder linked to this project no longer exists (deleted, renamed library or moved). Edit the project and choose its folder again.",
   "pdoc.upload": "Upload",
   "pdoc.download": "Download",
   "pdoc.print": "Print",
