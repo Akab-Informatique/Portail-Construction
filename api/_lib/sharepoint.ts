@@ -161,11 +161,13 @@ export async function uploadSmallFile(
   parentId: string,
   filename: string,
   bytes: Uint8Array,
+  /** Only people who may change files may replace one with the same name; everyone else's upload is renamed. */
+  replace = false,
 ) {
   const encoded = encodeURIComponent(filename);
   // An empty parent means the root of the library.
   const place = parentId ? `items/${parentId}` : "root";
-  const res = await fetch(`${GRAPH}/drives/${driveId}/${place}:/${encoded}:/content`, {
+  const res = await fetch(`${GRAPH}/drives/${driveId}/${place}:/${encoded}:/content?@microsoft.graph.conflictBehavior=${replace ? "replace" : "rename"}`, {
     method: "PUT",
     headers: {
       Authorization: `Bearer ${token}`,

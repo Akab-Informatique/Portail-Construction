@@ -123,20 +123,11 @@ async function loadGrants(user: ApiUser) {
   return subjects;
 }
 
-/**
- * Walks up from itemId to the library root. For each grantee the nearest folder with a right set decides (so a subfolder
- * can take rights away); the grantees' rights add up.
- */
-async function allowed(
-  user: ApiUser,
-  token: string,
-  driveId: string,
-  itemId: string | undefined,
-  need: Need,
-) {
-  if (isEffectiveAdmin(user) || Number(user.is_admin) === 1) return true;
-  const subjects = await loadGrants(user);
-  if (subjects.size === 0) return false;
+type Subjects = Map<string, Map<string, Grant>>;
+const isAdminUser = (user: ApiUser) => isEffectiveAdmin(user) || Number(user.is_admin) === 1;
+
+/** The item and its ancestors up to the library root (written ""), nearest first. */
+async function chainOf(token: string, driveId: string, itemId: string | undefined) {
   const chain: string[] = [];
   let current = itemId;
   for (let depth = 0; current && depth < 32; depth += 1) {
@@ -144,6 +135,16 @@ async function allowed(
     current = await getItemParent(token, driveId, current);
   }
   chain.push("");
+  return chain;
+}
+
+/**
+ * Does this person have the right on the item whose ancestry is `chain`? For each grantee the nearest folder with a right
+ * set decides (so a subfolder can take rights away); a client user's right can lower their company's, never go above it.
+ * Nobody has any right until an administrator gave it.
+ */
+function granted(subjects: Subjects, chain: string[], need: Need) {
+  if (subjects.size === 0) return false;
   const hitOf = (nodes: Map<string, Grant> | undefined): Grant | null => {
     for (const key of chain) {
       const grant = nodes?.get(key);
@@ -152,24 +153,60 @@ async function allowed(
     return null;
   };
   const flag = NEED_FLAG[need];
+  const rank = (g: Grant | null) => (g?.edit ? 3 : g?.upload ? 2 : g?.view ? 1 : 0);
+  const needRank = flag === "edit" ? 3 : flag === "upload" ? 2 : 1;
   const clientIds = new Set([...subjects.keys()].map((k) => k.split(":")[0]));
   for (const clientId of clientIds) {
     const company = hitOf(subjects.get(`${clientId}:`));
     const own = hitOf([...subjects.entries()].find(([k]) => k.startsWith(`${clientId}:`) && k !== `${clientId}:`)?.[1]);
     if (clientId === "0") {
-      if (own?.[flag]) return true;
+      if (rank(own) >= needRank) return true;
       continue;
     }
-    // A client user's right is set inside their company's: it can lower it, never go above it.
     if (!own) {
-      if (company?.[flag]) return true;
+      if (rank(company) >= needRank) return true;
       continue;
     }
-    const rank = (g: Grant | null) => (g?.edit ? 3 : g?.upload ? 2 : g?.view ? 1 : 0);
-    const need_rank = flag === "edit" ? 3 : flag === "upload" ? 2 : 1;
-    if (Math.min(rank(own), rank(company)) >= need_rank) return true;
+    if (Math.min(rank(own), rank(company)) >= needRank) return true;
   }
   return false;
+}
+
+async function allowed(
+  user: ApiUser,
+  token: string,
+  driveId: string,
+  itemId: string | undefined,
+  need: Need,
+) {
+  if (isAdminUser(user)) return true;
+  const subjects = await loadGrants(user);
+  if (subjects.size === 0) return false;
+  return granted(subjects, await chainOf(token, driveId, itemId), need);
+}
+
+/**
+ * A folder carries everything inside it. Deleting, moving or copying one needs the same right on every subfolder, so a
+ * subfolder that was closed to this person can't be taken along, copied out of its protection or wiped.
+ */
+async function subtreeAllowed(user: ApiUser, token: string, driveId: string, itemId: string, need: Need) {
+  if (isAdminUser(user)) return true;
+  const item = await getItem(token, driveId, itemId);
+  if (!item.folder) return true;
+  const subjects = await loadGrants(user);
+  const queue: string[][] = [await chainOf(token, driveId, itemId)];
+  let seen = 0;
+  while (queue.length) {
+    const chain = queue.shift() as string[];
+    for (const kid of await listChildren(token, driveId, chain[0])) {
+      if (!kid.folder) continue;
+      seen += 1;
+      const next = [kid.id, ...chain];
+      if (seen > 300 || !granted(subjects, next, need)) return false;
+      queue.push(next);
+    }
+  }
+  return true;
 }
 
 export default async function handler(req: Req, res: Res) {
@@ -233,19 +270,24 @@ export default async function handler(req: Req, res: Res) {
     }
     if (action === "list") {
       const itemId = body.itemId ? String(body.itemId) : undefined;
-      if (!(await allowed(user, token, driveId, itemId, "view"))) return deny();
-      const items = await listChildren(token, driveId, itemId);
+      const admin = isAdminUser(user);
+      const subjects = admin ? null : await loadGrants(user);
+      const chain = admin ? [] : await chainOf(token, driveId, itemId);
+      if (subjects && !granted(subjects, chain, "view")) return deny();
+      // Folders closed to this person are not even named, and the SharePoint links go only to those who may download.
+      const links = !subjects || granted(subjects, chain, "download");
+      const items = (await listChildren(token, driveId, itemId)).filter((item) => !subjects || !item.folder || granted(subjects, [item.id, ...chain], "view"));
       return res.status(200).json({
         driveId,
         items: items.map((item) => ({
           id: item.id,
           name: item.name,
           size: item.size ?? 0,
-          webUrl: item.webUrl ?? "",
+          webUrl: links ? (item.webUrl ?? "") : "",
           lastModified: item.lastModifiedDateTime ?? "",
           isFolder: Boolean(item.folder),
           mime: item.file?.mimeType ?? "",
-          editUrl: item.file ? officeEditUrl(item.webUrl) : null,
+          editUrl: links && item.file ? officeEditUrl(item.webUrl) : null,
         })),
       });
     }
@@ -285,6 +327,7 @@ export default async function handler(req: Req, res: Res) {
       const itemId = String(body.itemId ?? "").trim();
       if (!itemId) return res.status(400).json({ error: "err.badRequest" });
       if (!(await allowed(user, token, driveId, itemId, "edit"))) return deny();
+      if (!(await subtreeAllowed(user, token, driveId, itemId, "edit"))) return deny();
       await deleteItem(token, driveId, itemId);
       return res.status(200).json({ ok: true });
     }
@@ -294,6 +337,7 @@ export default async function handler(req: Req, res: Res) {
       if (!itemId || !parentId) return res.status(400).json({ error: "err.badRequest" });
       const sourceNeed: Need = action === "move" ? "edit" : "download";
       if (!(await allowed(user, token, driveId, itemId, sourceNeed))) return deny();
+      if (!(await subtreeAllowed(user, token, driveId, itemId, sourceNeed))) return deny();
       if (!(await allowed(user, token, driveId, parentId, "upload"))) return deny();
       if (action === "copy") {
         await copyItem(token, driveId, itemId, parentId, body.name ? String(body.name) : undefined);
@@ -314,7 +358,8 @@ export default async function handler(req: Req, res: Res) {
       if (bytes.length > 4 * 1024 * 1024) {
         return res.status(400).json({ error: "sp.error.tooBig" });
       }
-      const file = await uploadSmallFile(token, driveId, parentId, name, bytes);
+      const replace = await allowed(user, token, driveId, parentId || undefined, "edit");
+      const file = await uploadSmallFile(token, driveId, parentId, name, bytes, replace);
       return res.status(200).json({
         file: {
           id: file.id,

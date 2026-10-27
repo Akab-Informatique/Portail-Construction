@@ -43,6 +43,8 @@ const ADMIN_TABLES = [
   "client_users",
   "report_access",
   "sharepoint_shares",
+  // The link between a project and its SharePoint folder decides which folder the document rights apply to.
+  "sharepoint_folders",
 ];
 /** Columns a non-admin may change on their own users row. */
 const USER_SELF_COLUMNS = ["name", "title", "phone", "avatar_initials", "locale", "theme", "tutorial_done"];
