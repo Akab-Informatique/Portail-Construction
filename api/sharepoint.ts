@@ -4,11 +4,13 @@ import {
   deleteItem,
   downloadFile,
   getGraphToken,
+  getItem,
   getItemParent,
   listChildren,
   mergeSharePointConfig,
   moveItem,
   officeEditUrl,
+  previewItem,
   renameItem,
   resolveDrive,
   sharePointConfigured,
@@ -30,7 +32,12 @@ type Res = {
   end: (body?: unknown) => unknown;
 };
 type Grant = { view: boolean; upload: boolean; edit: boolean };
-type Need = keyof Grant;
+/**
+ * What an action needs. Three levels of access: view only; view and upload; full (download, change, delete).
+ * Downloading, printing and exporting need the full level, same as changing or deleting.
+ */
+type Need = "view" | "upload" | "download" | "edit";
+const NEED_FLAG: Record<Need, keyof Grant> = { view: "view", upload: "upload", download: "edit", edit: "edit" };
 type ApiUser = NonNullable<Awaited<ReturnType<typeof requireApiUser>>>;
 
 const REDACTED = "********";
@@ -81,13 +88,13 @@ function withOverrides(base: SharePointConfig, override: SharePointConfig | unde
 }
 
 /**
- * Share grants keyed by SharePoint item id ("" = whole library root).
- * External users only get their own clients' shares; internal staff get any share.
+ * Share grants of this user, one table per grantee (a client company, the user themselves, or for an employee the
+ * employee only), keyed by SharePoint item id ("" = whole library root). Nobody has any right until an administrator gives it.
  */
 async function loadGrants(user: ApiUser) {
   const external = user.user_type === "external";
   const { rows } = await runSql(
-    `SELECT s.folder_id, s.item_id, s.can_view, s.can_upload, s.can_edit, f.sp_item_id
+    `SELECT s.client_id, s.user_id, s.folder_id, s.item_id, s.can_view, s.can_upload, s.can_edit, f.sp_item_id
      FROM sharepoint_shares s
      LEFT JOIN sharepoint_folders f ON f.id = s.folder_id
      ${
@@ -95,25 +102,31 @@ async function loadGrants(user: ApiUser) {
          ? `WHERE s.client_id IN (SELECT client_id FROM client_users WHERE user_id = $1
                                   UNION SELECT client_id FROM user_clients WHERE user_id = $1)
               AND (s.user_id IS NULL OR s.user_id = $1)`
-         : "WHERE $1::int IS NOT NULL"
+         : "WHERE s.client_id = 0 AND s.user_id = $1"
      }`,
     [user.id],
   );
-  const grants = new Map<string, Grant>();
-  for (const [folderId, itemId, canView, canUpload, canEdit, spItemId] of rows as unknown[][]) {
+  const subjects = new Map<string, Map<string, Grant>>();
+  for (const [clientId, userId, folderId, itemId, canView, canUpload, canEdit, spItemId] of rows as unknown[][]) {
     const key = String(itemId || "") || (Number(folderId) === 0 ? "" : String(spItemId || ""));
     if (!key && Number(folderId) !== 0) continue;
-    const prev = grants.get(key) ?? { view: false, upload: false, edit: false };
-    grants.set(key, {
+    const who = `${clientId}:${userId ?? ""}`;
+    const nodes = subjects.get(who) ?? new Map<string, Grant>();
+    const prev = nodes.get(key) ?? { view: false, upload: false, edit: false };
+    nodes.set(key, {
       view: prev.view || Number(canView) === 1,
       upload: prev.upload || Number(canUpload) === 1,
       edit: prev.edit || Number(canEdit) === 1,
     });
+    subjects.set(who, nodes);
   }
-  return grants;
+  return subjects;
 }
 
-/** Walks up from itemId to the drive root looking for a share that grants `need`. */
+/**
+ * Walks up from itemId to the library root. For each grantee the nearest folder with a right set decides (so a subfolder
+ * can take rights away); the grantees' rights add up.
+ */
 async function allowed(
   user: ApiUser,
   token: string,
@@ -122,14 +135,22 @@ async function allowed(
   need: Need,
 ) {
   if (isEffectiveAdmin(user) || Number(user.is_admin) === 1) return true;
-  if (user.user_type !== "external" && need === "view") return true;
-  const grants = await loadGrants(user);
-  const ok = (key: string) => Boolean(grants.get(key)?.[need]);
-  if (ok("")) return true;
+  const subjects = await loadGrants(user);
+  if (subjects.size === 0) return false;
+  const chain: string[] = [];
   let current = itemId;
   for (let depth = 0; current && depth < 32; depth += 1) {
-    if (ok(current)) return true;
+    chain.push(current);
     current = await getItemParent(token, driveId, current);
+  }
+  chain.push("");
+  for (const nodes of subjects.values()) {
+    for (const key of chain) {
+      const grant = nodes.get(key);
+      if (!grant) continue;
+      if (grant[NEED_FLAG[need]]) return true;
+      break;
+    }
   }
   return false;
 }
@@ -149,7 +170,7 @@ export default async function handler(req: Req, res: Res) {
       if (!itemId) return res.status(400).json({ error: "err.badRequest" });
       if (!validIds(driveId, itemId)) return res.status(400).json({ error: "err.badRequest" });
       if (!(await driveAllowed(user, driveId, () => resolveDrive(token, cfg)))) return res.status(403).json({ error: "err.forbidden" });
-      if (!(await allowed(user, token, driveId, itemId, "view"))) return res.status(403).json({ error: "err.forbidden" });
+      if (!(await allowed(user, token, driveId, itemId, "download"))) return res.status(403).json({ error: "err.forbidden" });
       const name = String(q(req, "name") ?? "file");
       const asPdf = String(q(req, "format") ?? "") === "pdf";
       const { buf, contentType } = await downloadFile(token, driveId, itemId, asPdf ? "pdf" : undefined);
@@ -211,6 +232,19 @@ export default async function handler(req: Req, res: Res) {
         })),
       });
     }
+    if (action === "stat") {
+      const itemId = String(body.itemId ?? "").trim();
+      if (!itemId) return res.status(400).json({ error: "err.badRequest" });
+      if (!(await allowed(user, token, driveId, itemId, "view"))) return deny();
+      const item = await getItem(token, driveId, itemId);
+      return res.status(200).json({ driveId, item: { id: item.id, name: item.name, isFolder: Boolean(item.folder) } });
+    }
+    if (action === "preview") {
+      const itemId = String(body.itemId ?? "").trim();
+      if (!itemId) return res.status(400).json({ error: "err.badRequest" });
+      if (!(await allowed(user, token, driveId, itemId, "view"))) return deny();
+      return res.status(200).json({ url: await previewItem(token, driveId, itemId) });
+    }
     if (action === "mkdir") {
       const name = String(body.name ?? "").trim();
       if (!name) return res.status(400).json({ error: "sp.error.folderName" });
@@ -241,7 +275,7 @@ export default async function handler(req: Req, res: Res) {
       const itemId = String(body.itemId ?? "").trim();
       const parentId = String(body.parentId ?? "").trim();
       if (!itemId || !parentId) return res.status(400).json({ error: "err.badRequest" });
-      const sourceNeed: Need = action === "move" ? "edit" : "view";
+      const sourceNeed: Need = action === "move" ? "edit" : "download";
       if (!(await allowed(user, token, driveId, itemId, sourceNeed))) return deny();
       if (!(await allowed(user, token, driveId, parentId, "upload"))) return deny();
       if (action === "copy") {

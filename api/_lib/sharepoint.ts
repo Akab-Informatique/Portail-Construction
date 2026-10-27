@@ -108,6 +108,17 @@ export async function getItemParent(token: string, driveId: string, itemId: stri
   return item.parentReference?.id || undefined;
 }
 
+/** One item: its name and whether it is a folder. */
+export async function getItem(token: string, driveId: string, itemId: string) {
+  return graph<DriveItem>(token, `/drives/${driveId}/items/${itemId}?$select=id,name,folder,file`);
+}
+
+/** A viewer address for a file: it shows the document in a page, without handing the file over. */
+export async function previewItem(token: string, driveId: string, itemId: string) {
+  const out = await graph<{ getUrl?: string }>(token, `/drives/${driveId}/items/${itemId}/preview`, { method: "POST", body: "{}" });
+  return out?.getUrl || "";
+}
+
 export async function createFolder(token: string, driveId: string, name: string, parentId?: string) {
   const path = parentId ? `/drives/${driveId}/items/${parentId}/children` : `/drives/${driveId}/root/children`;
   return graph<DriveItem>(token, path, {

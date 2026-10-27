@@ -1,26 +1,29 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { eq, inArray } from "drizzle-orm";
-import { Building2, ChevronDown, ChevronRight, Folder, FolderOpen, Lock, RotateCcw, Search } from "lucide-react";
+import { Building2, ChevronDown, ChevronRight, Folder, FolderOpen, HardHat, Lock, RotateCcw, Search } from "lucide-react";
 import { db, schema } from "../../db";
 import { clearShareFlags, setShareFlags } from "@/lib/sharepoint";
 import { useI18n } from "@/lib/i18n";
+import type { MessageKey } from "@/lib/i18n/en";
+import { DOC_LEVELS, levelFlags, levelOf, shareFlags, type DocFlags, type DocLevel } from "@/lib/doc-rights";
 import type { Client, SharePointShare, User } from "@/lib/types";
 import { useSpTree, type Crumb, type SpRoot } from "@/components/project/useSpTree";
 import { UserAvatar } from "@/components/UserAvatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
-type Flags = { can_view: boolean; can_upload: boolean; can_edit: boolean };
+type Flags = DocFlags;
 type Grantee = { key: string; clientId: number; userId: number | null; label: string; sub?: string };
 const NONE: Flags = { can_view: false, can_upload: false, can_edit: false };
-const asFlags = (s: SharePointShare): Flags => ({ can_view: s.can_view === 1, can_upload: s.can_upload === 1, can_edit: s.can_edit === 1 });
+const asFlags = shareFlags;
+const LEVEL_LABEL: Record<DocLevel, MessageKey> = { none: "pda.lvl.none", view: "pda.lvl.view", contribute: "pda.lvl.contribute", full: "pda.lvl.full" };
 
 /**
- * Who sees what, folder by folder. Pick a folder on the left; on the right, switch View / Upload / Edit for each client
- * company and for each of its users. A subfolder inherits from the folder above until something is set on it.
+ * Who sees what, folder by folder. Pick a folder on the left; on the right, choose a level for each employee, each client
+ * company and each of its users: no access, view only, view and upload, or full access (download, change, delete).
+ * Nobody has any access until it is given here. A subfolder inherits from the folder above until something is set on it.
  *
  * `shareFolderId` is where the rights are stored: a project's folder row, or 0 for the whole library.
  */
@@ -42,6 +45,7 @@ export function DocsAccess({
   const [trail, setTrail] = useState<Crumb[]>([]);
   const [shares, setShares] = useState<SharePointShare[]>([]);
   const [users, setUsers] = useState<(User & { clientId: number })[]>([]);
+  const [staff, setStaff] = useState<User[]>([]);
   const [open, setOpen] = useState<Set<number>>(() => new Set(clients.length === 1 ? [clients[0].id] : []));
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +67,7 @@ export function DocsAccess({
         const rows = userIds.length ? ((await db.select().from(schema.users).where(inArray(schema.users.id, userIds))) as User[]) : [];
         setUsers(links.flatMap((l) => (rows.find((u) => u.id === l.user_id) ? [{ ...rows.find((u) => u.id === l.user_id)!, clientId: l.client_id }] : [])));
       }
+      setStaff(((await db.select().from(schema.users)) as User[]).filter((u) => u.user_type === "internal" && u.is_active === 1 && u.is_admin !== 1));
       await loadShares();
     })();
     void tree.list(root.id).catch((err) => setError(tr(err, "sp.error.failed")));
@@ -73,6 +78,11 @@ export function DocsAccess({
     const q = query.trim().toLowerCase();
     return clients.filter((c) => !q || c.company_name.toLowerCase().includes(q) || c.name.toLowerCase().includes(q));
   }, [clients, query]);
+
+  const visibleStaff = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return staff.filter((u) => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
+  }, [staff, query]);
 
   /** The folder and its ancestors, nearest first. */
   const chain: Crumb[] = [...[{ id: root.id, name: root.name }, ...trail].reverse()];
@@ -89,17 +99,10 @@ export function DocsAccess({
     return { flags: NONE, from: "none" };
   }
 
-  async function change(g: Grantee, key: keyof Flags, on: boolean) {
-    const base = { ...resolve(g).flags };
-    base[key] = on;
-    if (key === "can_view" && !on) {
-      base.can_upload = false;
-      base.can_edit = false;
-    }
-    if (key !== "can_view" && on) base.can_view = true;
+  async function change(g: Grantee, level: DocLevel) {
     setError(null);
     try {
-      await setShareFlags({ folderId: shareFolderId, clientId: g.clientId, userId: g.userId, itemId: itemIdOf(currentId), flags: base });
+      await setShareFlags({ folderId: shareFolderId, clientId: g.clientId, userId: g.userId, itemId: itemIdOf(currentId), flags: levelFlags(level) });
       await loadShares();
     } catch (err) {
       setError(tr(err, "sp.error.failed"));
@@ -111,7 +114,7 @@ export function DocsAccess({
     await loadShares();
   }
 
-  const hasRules = (nodeId: string) => shares.some((s) => (s.item_id || root.id) === nodeId && (s.can_view === 1 || s.can_upload === 1 || s.can_edit === 1));
+  const hasRules = (nodeId: string) => shares.some((s) => (s.item_id || root.id) === nodeId);
 
   function renderNode(node: Crumb, path: Crumb[], depth: number) {
     const isOpen = tree.expanded.has(node.id);
@@ -144,7 +147,11 @@ export function DocsAccess({
       <tr key={g.key}>
         <td className={cn("py-3 pr-3", indent && "pl-8")}>
           <div className="flex items-center gap-3">
-            {g.userId === null ? (
+            {g.clientId === 0 ? (
+              <span className="flex size-9 items-center justify-center rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                <HardHat className="size-4" />
+              </span>
+            ) : g.userId === null ? (
               <span className="flex size-9 items-center justify-center rounded-full bg-primary/15 text-primary">
                 <Building2 className="size-4" />
               </span>
@@ -161,11 +168,26 @@ export function DocsAccess({
             </div>
           </div>
         </td>
-        {(["can_view", "can_upload", "can_edit"] as const).map((k) => (
-          <td key={k} className="py-3 text-center">
-            <Switch checked={r.flags[k]} onCheckedChange={(on) => void change(g, k, on)} aria-label={`${g.label} ${k}`} />
-          </td>
-        ))}
+        <td className="py-3 text-center">
+          <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
+            {DOC_LEVELS.map((lv) => {
+              const on = levelOf(r.flags) === lv;
+              return (
+                <button
+                  key={lv}
+                  type="button"
+                  aria-pressed={on}
+                  title={t(`${LEVEL_LABEL[lv]}.hint` as MessageKey)}
+                  onClick={() => void change(g, lv)}
+                  className={cn("rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors", on ? "text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+                  style={on ? { background: lv === "none" ? "var(--card)" : `color-mix(in srgb, ${color} 26%, var(--card))`, boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${lv === "none" ? "currentColor" : color} 40%, transparent)` } : undefined}
+                >
+                  {t(LEVEL_LABEL[lv])}
+                </button>
+              );
+            })}
+          </div>
+        </td>
         <td className="py-3 text-right">
           {r.from === "here" ? (
             <Button size="icon-sm" variant="ghost" title={t("pda.reset")} aria-label={t("pda.reset")} onClick={() => void reset(g)}>
@@ -192,27 +214,36 @@ export function DocsAccess({
         </div>
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-        {clients.length > 6 ? (
+        <p className="rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">{t("pda.levelsHelp")}</p>
+        {clients.length + staff.length > 6 ? (
           <div className="relative max-w-xs">
             <Search className="pointer-events-none absolute top-2.5 left-3 size-4 text-muted-foreground" />
             <Input className="pl-9" value={query} placeholder={t("pda.searchClient")} onChange={(e) => setQuery(e.target.value)} />
           </div>
         ) : null}
 
-        {clients.length === 0 ? <p className="rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">{t("pda.noClients")}</p> : null}
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[520px] text-sm">
+          <table className="w-full min-w-[640px] text-sm">
             <thead className="text-left text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="pb-2 font-medium" />
-                <th className="w-20 pb-2 text-center font-medium">{t("pda.view")}</th>
-                <th className="w-20 pb-2 text-center font-medium">{t("pda.upload")}</th>
-                <th className="w-20 pb-2 text-center font-medium">{t("pda.edit")}</th>
+                <th className="pb-2 text-center font-medium">{t("pda.level")}</th>
                 <th className="w-10 pb-2" />
               </tr>
             </thead>
             <tbody className="divide-y">
+              {visibleStaff.length ? (
+                <tr key="staff-head">
+                  <td colSpan={3} className="pt-1 pb-0 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{t("pda.staff")}</td>
+                </tr>
+              ) : null}
+              {visibleStaff.map((u) => rowFor({ key: `s${u.id}`, clientId: 0, userId: u.id, label: u.name, sub: u.title || u.email }))}
+              {visibleClients.length ? (
+                <tr key="client-head">
+                  <td colSpan={3} className="pt-4 pb-0 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{t("pda.clientsHead")}</td>
+                </tr>
+              ) : null}
               {visibleClients.map((c) => {
                 const mine = users.filter((u) => u.clientId === c.id);
                 const isOpen = open.has(c.id);
@@ -221,7 +252,7 @@ export function DocsAccess({
                   ...(mine.length
                     ? [
                         <tr key={`t${c.id}`}>
-                          <td colSpan={5} className="py-0">
+                          <td colSpan={3} className="py-0">
                             <button
                               type="button"
                               className="flex items-center gap-1 pl-8 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"

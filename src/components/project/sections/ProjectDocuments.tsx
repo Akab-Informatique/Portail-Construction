@@ -10,7 +10,7 @@ import type { SharePointFolder, SharePointSettings } from "@/lib/types";
 import { EmptyState } from "@/components/EmptyState";
 import { DocsAccess } from "@/components/project/DocsAccess";
 import { DocsExplorer } from "@/components/project/DocsExplorer";
-import { SharePointLibrary } from "@/components/project/SharePointLibrary";
+import { MemberDocs } from "@/components/project/MemberDocs";
 import type { SpRoot } from "@/components/project/useSpTree";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -22,18 +22,19 @@ import type { SectionProps } from "./types";
  */
 export function ProjectDocuments({ project, client }: SectionProps) {
   const { t } = useI18n();
-  const { user, can } = useAuth();
+  const { user } = useAuth();
   const [params, setParams] = useSearchParams();
   const color = projectColor(project);
   const isAdmin = Boolean(user?.is_admin) && user?.view_as !== "client";
   const tab = isAdmin && params.get("tab") === "access" ? "access" : "files";
-  // A client account only sees the folders and files shared with it, with the rights it was given.
-  const viewer = user?.user_type === "external" || user?.view_as === "client";
+  // Everyone but an administrator sees only the folders an administrator gave them, at the level given.
+  const viewer = !isAdmin;
   const [state, setState] = useState<"loading" | "notConfigured" | "noFolder" | "gone" | "ready">("loading");
   const [settings, setSettings] = useState<SharePointSettings | null>(null);
   const [root, setRoot] = useState<SpRoot | null>(null);
 
   useEffect(() => {
+    if (viewer) return;
     let cancelled = false;
     (async () => {
       const s = await getSharePointSettings();
@@ -61,9 +62,9 @@ export function ProjectDocuments({ project, client }: SectionProps) {
     return () => {
       cancelled = true;
     };
-  }, [project.id]);
+  }, [project.id, viewer]);
 
-  if (viewer) return <SharePointLibrary projectId={project.id} projectName={project.name} client={client} canCreate={false} />;
+  if (viewer) return <MemberDocs projects={[project]} />;
   if (state === "loading") return <Card className="p-10 text-center text-sm text-muted-foreground">…</Card>;
   if (state === "notConfigured") return <EmptyState icon={<FileText className="size-5" />} title={t("sp.notConfigured")} description={t("sp.notConfiguredHint")} />;
   if (state === "gone") return <EmptyState icon={<FolderOpen className="size-5" />} title={t("pdoc.gone")} description={t("pdoc.goneHint")} />;
@@ -95,7 +96,7 @@ export function ProjectDocuments({ project, client }: SectionProps) {
       {tab === "access" ? (
         <DocsAccess root={root} color={color} clients={client ? [client] : []} shareFolderId={root.rowId} rootLabel={root.name} />
       ) : (
-        <DocsExplorer root={root} settings={settings!} color={color} rootLabel={root.name} readOnly={!isAdmin && !can("app_client_documents", "create")} />
+        <DocsExplorer root={root} settings={settings!} color={color} rootLabel={root.name} />
       )}
     </div>
   );

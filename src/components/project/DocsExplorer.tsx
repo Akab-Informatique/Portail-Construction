@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
+  Eye,
   File as FileIcon,
   FileImage,
   FileOutput,
@@ -25,6 +26,7 @@ import { callSharePoint, type SpItem } from "@/lib/sharepoint";
 import { downloadBlob } from "@/lib/download";
 import { formatDate } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
+import { FULL_CAPS, type DocCaps } from "@/lib/doc-rights";
 import type { SharePointSettings } from "@/lib/types";
 import { useSpTree, type Crumb, type SpRoot } from "@/components/project/useSpTree";
 import { Button } from "@/components/ui/button";
@@ -54,8 +56,11 @@ const kb = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} M
  * The file view: a tree of folders on the left, the tools on top (upload, download, export to PDF, print, selection)
  * and the folder's files in the middle like a file explorer. Nothing above `root` can be reached.
  */
-/** `readOnly`: people who may look and download but not add, create or delete (the default for employees). */
-export function DocsExplorer({ root, settings, color, rootLabel, readOnly = false }: { root: SpRoot; settings: SharePointSettings; color: string; rootLabel: string; readOnly?: boolean }) {
+/**
+ * `caps`: what the person may do in a folder, given the folder and its ancestors (nearest first, the root last). Without it
+ * they may do everything (administrators). Folders they have no right on are not shown.
+ */
+export function DocsExplorer({ root, settings, color, rootLabel, caps }: { root: SpRoot; settings: SharePointSettings; color: string; rootLabel: string; caps?: (chain: string[]) => DocCaps }) {
   const { t, locale, tr } = useI18n();
   const [params, setParams] = useSearchParams();
   const tree = useSpTree(root);
@@ -72,10 +77,20 @@ export function DocsExplorer({ root, settings, color, rootLabel, readOnly = fals
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
+  const [preview, setPreview] = useState<{ name: string; url: string } | null>(null);
+
   const drive = root.drive;
   const currentId = trail[trail.length - 1]?.id ?? root.id;
+  /** The folder and its ancestors, nearest first. */
+  const chainHere = [...trail.map((c) => c.id).reverse(), root.id].filter((id, i, all) => all.indexOf(id) === i);
+  const rights = (chain: string[]) => (caps ? caps(chain) : FULL_CAPS);
+  const here = rights(chainHere);
   const items = tree.cache[currentId] ?? [];
-  const folders = useMemo(() => items.filter((i) => i.isFolder).sort((a, b) => a.name.localeCompare(b.name)), [items]);
+  const folders = useMemo(
+    () => items.filter((i) => i.isFolder && rights([i.id, ...chainHere]).view).sort((a, b) => a.name.localeCompare(b.name)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items, caps, currentId, trail],
+  );
   const files = useMemo(() => items.filter((i) => !i.isFolder).sort((a, b) => a.name.localeCompare(b.name)), [items]);
   const ordered = useMemo(() => [...folders, ...files], [folders, files]);
   const selectedFiles = files.filter((f) => selected.includes(f.id));
@@ -232,6 +247,22 @@ export function DocsExplorer({ root, settings, color, rootLabel, readOnly = fals
     return fetchFile(item, true);
   }
 
+  /** Shows a file in a page without handing it over: what the view-only level allows. */
+  async function showFile(item: SpItem) {
+    setBusy(true);
+    setError(null);
+    try {
+      const out = await callSharePoint<{ url: string }>("preview", { driveId: drive, itemId: item.id });
+      if (!out.url) throw new Error("pdoc.noPreview");
+      setPreview({ name: item.name, url: out.url });
+    } catch (err) {
+      setError(tr(err, "pdoc.noPreview"));
+    } finally {
+      setBusy(false);
+    }
+  }
+  const openPreview = () => (selectedFiles[0] ? showFile(selectedFiles[0]) : Promise.resolve());
+
   async function run(action: () => Promise<void>) {
     setBusy(true);
     setError(null);
@@ -276,7 +307,7 @@ export function DocsExplorer({ root, settings, color, rootLabel, readOnly = fals
 
   function renderNode(node: Crumb, path: Crumb[], depth: number) {
     const open = tree.expanded.has(node.id);
-    const kids = tree.subfolders(node.id);
+    const kids = tree.subfolders(node.id).filter((k) => rights([k.id, ...path.map((c) => c.id).reverse(), root.id]).view);
     const active = node.id === currentId;
     return (
       <div key={node.id || "root"}>
@@ -308,7 +339,7 @@ export function DocsExplorer({ root, settings, color, rootLabel, readOnly = fals
   return (
     <div className="space-y-3">
       <Card className="flex-row flex-wrap items-center gap-2 p-3">
-        {!readOnly ? (
+        {here.upload ? (
           <Button size="sm" onClick={() => fileInput.current?.click()} disabled={busy}>
             <Upload className="size-4" />
             {t("pdoc.upload")}
@@ -324,7 +355,7 @@ export function DocsExplorer({ root, settings, color, rootLabel, readOnly = fals
             e.target.value = "";
           }}
         />
-        {!readOnly ? (
+        {here.upload ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button size="sm" variant="outline" disabled={busy}>
@@ -353,19 +384,27 @@ export function DocsExplorer({ root, settings, color, rootLabel, readOnly = fals
           </DropdownMenuContent>
         </DropdownMenu>
         ) : null}
-        <Button size="sm" variant="outline" onClick={() => void download()} disabled={needsSelection}>
-          <Download className="size-4" />
-          {t("pdoc.download")}
+        <Button size="sm" variant="outline" onClick={() => void openPreview()} disabled={busy || selectedFiles.length !== 1}>
+          <Eye className="size-4" />
+          {t("pdoc.view")}
         </Button>
-        <Button size="sm" variant="outline" onClick={() => void exportPdf()} disabled={needsSelection}>
-          <FileOutput className="size-4" />
-          {t("pdoc.exportPdf")}
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => void print()} disabled={needsSelection}>
-          <Printer className="size-4" />
-          {t("pdoc.print")}
-        </Button>
-        {!readOnly ? (
+        {here.download ? (
+          <>
+            <Button size="sm" variant="outline" onClick={() => void download()} disabled={needsSelection}>
+              <Download className="size-4" />
+              {t("pdoc.download")}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => void exportPdf()} disabled={needsSelection}>
+              <FileOutput className="size-4" />
+              {t("pdoc.exportPdf")}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => void print()} disabled={needsSelection}>
+              <Printer className="size-4" />
+              {t("pdoc.print")}
+            </Button>
+          </>
+        ) : null}
+        {here.modify ? (
           <Button size="sm" variant="outline" onClick={() => setDeleteOpen(true)} disabled={busy || selectedItems.length === 0} className="text-destructive hover:text-destructive">
             <Trash2 className="size-4" />
             {t("pdoc.delete")}
@@ -387,9 +426,11 @@ export function DocsExplorer({ root, settings, color, rootLabel, readOnly = fals
           <div className="flex items-center justify-between px-2 pt-1 pb-1.5">
             <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t("pdoc.folders")}</span>
             <span className="flex items-center gap-0.5">
-              <Button size="icon-sm" variant="ghost" aria-label={t("pdoc.newFolder")} title={t("pdoc.newFolder")} onClick={() => openNew("folder")} disabled={busy}>
-                <FolderPlus className="size-4" />
-              </Button>
+              {here.upload ? (
+                <Button size="icon-sm" variant="ghost" aria-label={t("pdoc.newFolder")} title={t("pdoc.newFolder")} onClick={() => openNew("folder")} disabled={busy}>
+                  <FolderPlus className="size-4" />
+                </Button>
+              ) : null}
               <Button size="icon-sm" variant="ghost" aria-label={t("pdoc.refresh")} title={t("pdoc.refresh")} onClick={() => void reload()}>
                 <RefreshCw className={cn("size-4", listing && "animate-spin")} />
               </Button>
@@ -409,7 +450,7 @@ export function DocsExplorer({ root, settings, color, rootLabel, readOnly = fals
           onDrop={(e) => {
             e.preventDefault();
             setDragging(false);
-            if (!readOnly && e.dataTransfer.files.length) void uploadFiles(e.dataTransfer.files);
+            if (here.upload && e.dataTransfer.files.length) void uploadFiles(e.dataTransfer.files);
           }}
         >
           <nav className="flex flex-wrap items-center gap-1 border-b bg-muted/30 px-3 py-2 text-sm">
@@ -463,7 +504,7 @@ export function DocsExplorer({ root, settings, color, rootLabel, readOnly = fals
                     className={cn("grid cursor-default grid-cols-[28px_minmax(0,1fr)_120px_90px] items-center gap-3 px-4 py-2.5 text-sm transition-colors max-sm:grid-cols-[28px_minmax(0,1fr)_70px]", !on && "hover:bg-foreground/5")}
                     style={on ? { background: `color-mix(in srgb, ${color} 14%, transparent)`, boxShadow: `inset 3px 0 0 ${color}` } : undefined}
                     onClick={(e) => toggle(e.shiftKey)}
-                    onDoubleClick={() => (item.isFolder ? openFolder() : item.webUrl ? window.open(item.webUrl, "_blank", "noopener") : undefined)}
+                    onDoubleClick={() => (item.isFolder ? openFolder() : here.download && item.webUrl ? window.open(item.webUrl, "_blank", "noopener") : void showFile(item))}
                   >
                     <span onClick={(e) => e.stopPropagation()}>
                       <Checkbox checked={on} onCheckedChange={() => toggle()} aria-label={item.name} />
@@ -494,6 +535,15 @@ export function DocsExplorer({ root, settings, color, rootLabel, readOnly = fals
           )}
         </Card>
       </div>
+
+      <Dialog open={preview !== null} onOpenChange={(o) => !o && setPreview(null)}>
+        <DialogContent className="h-[85vh] sm:max-w-5xl">
+          <DialogHeader>
+            <DialogTitle className="truncate">{preview?.name}</DialogTitle>
+          </DialogHeader>
+          {preview ? <iframe title={preview.name} src={preview.url} className="size-full rounded-lg border bg-white" /> : null}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={newKind !== null} onOpenChange={(o) => !o && setNewKind(null)}>
         <DialogContent className="sm:max-w-sm">

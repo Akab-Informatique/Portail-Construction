@@ -42,6 +42,7 @@ const ADMIN_TABLES = [
   "user_clients",
   "client_users",
   "report_access",
+  "sharepoint_shares",
 ];
 /** Columns a non-admin may change on their own users row. */
 const USER_SELF_COLUMNS = ["name", "title", "phone", "avatar_initials", "locale", "theme", "tutorial_done"];
@@ -115,7 +116,6 @@ const CLIENT_SCOPED: Record<string, string> = {
   billing_files: "frx_client_ok(client_id)",
   billing_requests: "frx_client_ok(client_id)",
   client_users: "frx_client_ok(client_id)",
-  sharepoint_shares: "frx_client_ok(client_id)",
 };
 const PROJECT_SCOPED = [
   "project_members",
@@ -161,6 +161,8 @@ function rowScopes(): Record<string, string> {
   scopes.projects = `(CASE WHEN coalesce(current_setting('frx.project_ids', true), '') LIKE 'p:%'
     THEN id = ANY(string_to_array(substr(current_setting('frx.project_ids', true), 3), ',')::int[])
     ELSE frx_client_ok(client_id) END)`;
+  // Document rights: a person reads their own (an employee's rows carry client 0) and their company's; only administrators write them.
+  scopes.sharepoint_shares = `(${ALL_CLIENTS} OR (client_id = 0 AND user_id = ${ME}) OR (client_id > 0 AND frx_client_ok(client_id) AND (user_id IS NULL OR user_id = ${ME})))`;
   scopes.time_punches = `(user_id = ${ME})`;
   // Expenses: each person reads their own; administrators see all (frx_admin_all).
   scopes.expenses = `(user_id = ${ME})`;
