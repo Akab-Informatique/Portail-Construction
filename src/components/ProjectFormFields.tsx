@@ -140,7 +140,7 @@ export function ProjectFormFields({
   onClientId,
   folderMode,
   onFolderMode,
-  folderChoices: _folderChoices,
+  folderChoices,
   folderId,
   onFolderId,
   folderName,
@@ -270,7 +270,10 @@ export function ProjectFormFields({
             <SelectItem value="later">{t("sp.pickLater")}</SelectItem>
           </SelectContent>
         </Select>
-        {folderMode === "existing" || folderMode === "create" ? (
+        {folderMode === "existing" ? (
+          <FolderPicker rootFolders={folderChoices} folderId={folderId} onFolderId={onFolderId} onFolderName={onFolderName} />
+        ) : null}
+        {folderMode === "create" ? (
           <FolderBrowser
             folderId={folderId}
             onFolderId={onFolderId}
@@ -280,6 +283,97 @@ export function ProjectFormFields({
           />
         ) : null}
       </div>
+    </div>
+  );
+}
+
+const NONE = "__none";
+
+/**
+ * The project's documentation root, chosen with drop-downs: the first lists the library's folders; once one is picked a
+ * second offers the folders inside it (optional), and so on. The deepest one picked is the root.
+ */
+function FolderPicker({
+  rootFolders,
+  folderId,
+  onFolderId,
+  onFolderName,
+}: {
+  rootFolders: SpItem[];
+  folderId: string;
+  onFolderId: (id: string) => void;
+  onFolderName: (name: string) => void;
+}) {
+  const { t } = useI18n();
+  const [picks, setPicks] = useState<SpItem[]>([]);
+  const [kids, setKids] = useState<Record<string, SpItem[]>>({});
+  const [failed, setFailed] = useState(false);
+
+  // The folder already linked to the project (or the one proposed) shows as chosen in the first drop-down.
+  useEffect(() => {
+    if (picks.length > 0) return;
+    const known = rootFolders.find((f) => f.id === folderId);
+    if (known) setPicks([known]);
+  }, [rootFolders, folderId, picks.length]);
+
+  async function loadKids(item: SpItem) {
+    if (kids[item.id]) return;
+    try {
+      const listed = await callSharePoint<{ items: SpItem[] }>("list", { itemId: item.id });
+      setKids((prev) => ({ ...prev, [item.id]: (listed.items ?? []).filter((i) => i.isFolder).sort((a, b) => a.name.localeCompare(b.name)) }));
+    } catch {
+      setFailed(true);
+      setKids((prev) => ({ ...prev, [item.id]: [] }));
+    }
+  }
+
+  function choose(level: number, value: string) {
+    const options = level === 0 ? rootFolders : (kids[picks[level - 1].id] ?? []);
+    const base = picks.slice(0, level);
+    const item = value === NONE ? undefined : options.find((o) => o.id === value);
+    const next = item ? [...base, item] : base;
+    setPicks(next);
+    const last = next[next.length - 1];
+    onFolderId(last?.id ?? "");
+    onFolderName(next.map((p) => p.name).join(" / "));
+    if (item) void loadKids(item);
+  }
+
+  const levels = [rootFolders, ...picks.map((p) => kids[p.id] ?? [])];
+  return (
+    <div className="space-y-2">
+      {levels.map((options, level) => {
+        const picked = picks[level];
+        // A level below the first only shows when the folder above has folders in it.
+        if (level > 0 && options.length === 0) return null;
+        return (
+          <div key={level} className="space-y-1">
+            <Label className="text-xs text-muted-foreground">{level === 0 ? t("sp.pickRoot") : t("sp.pickSub")}</Label>
+            <Select value={picked?.id ?? (level === 0 ? "" : NONE)} onValueChange={(v) => choose(level, v)}>
+              <SelectTrigger>
+                <SelectValue placeholder={t("sp.pickRoot")} />
+              </SelectTrigger>
+              <SelectContent>
+                {level > 0 ? <SelectItem value={NONE}>{t("sp.useAbove")}</SelectItem> : null}
+                {options.map((o) => (
+                  <SelectItem key={o.id} value={o.id}>
+                    {o.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        );
+      })}
+      {rootFolders.length === 0 ? <p className="text-xs text-muted-foreground">{t("sp.noFoldersToPick")}</p> : null}
+      {failed ? <p className="text-xs text-destructive">{t("sp.error.failed")}</p> : null}
+      {picks.length > 0 ? (
+        <p className="flex items-center gap-1.5 rounded-md bg-muted/50 px-2 py-1.5 text-xs">
+          <FolderOpen className="size-3.5 shrink-0" />
+          <span className="font-medium">{t("sp.chosenRoot")}</span>
+          <span className="truncate">{picks.map((p) => p.name).join(" / ")}</span>
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -445,6 +539,7 @@ export function useSharePointFolders(open: boolean, projectId?: number) {
           const linked = await loadProjectFolders(projectId);
           if (linked[0]) {
             setAssignedName(linked[0].name);
+            setFolderName(linked[0].path);
             setFolderId(linked[0].sp_item_id);
             setFolderMode("existing");
           }
