@@ -85,6 +85,8 @@ CREATE TABLE IF NOT EXISTS sharepoint_folders (id SERIAL PRIMARY KEY, project_id
 CREATE TABLE IF NOT EXISTS sharepoint_shares (id SERIAL PRIMARY KEY, folder_id INTEGER NOT NULL, client_id INTEGER NOT NULL, item_id TEXT NOT NULL DEFAULT '', can_view INTEGER NOT NULL, can_upload INTEGER NOT NULL, can_edit INTEGER NOT NULL, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
 ALTER TABLE sharepoint_shares ADD COLUMN IF NOT EXISTS item_id TEXT;
 UPDATE sharepoint_shares SET item_id = '' WHERE item_id IS NULL;
+UPDATE sharepoint_shares s SET item_id = f.sp_item_id, folder_id = 0 FROM sharepoint_folders f WHERE s.folder_id = f.id AND s.folder_id > 0 AND s.item_id = '';
+UPDATE sharepoint_shares SET folder_id = 0 WHERE folder_id > 0 AND item_id <> '';
 CREATE INDEX IF NOT EXISTS users_email_lower_idx ON users (lower(email));
 CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions (user_id);
 CREATE INDEX IF NOT EXISTS sessions_expires_idx ON sessions (expires_at);

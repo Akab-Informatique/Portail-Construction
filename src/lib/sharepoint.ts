@@ -111,8 +111,8 @@ export async function deleteItemShares(itemId: string) {
 }
 
 /**
- * A project has one documentation root: its first folder link. Choosing another folder replaces that link in place, and the
- * rights given on the old folder go with it (a new root starts with no access). Choosing the same folder again keeps them.
+ * A project has one documentation root: its first folder link. Choosing another folder replaces that link in place. Rights
+ * belong to the SharePoint folders themselves, so they stay where they were set and follow each folder.
  */
 export async function assignProjectFolder(opts: {
   projectId: number;
@@ -132,11 +132,8 @@ export async function assignProjectFolder(opts: {
     const [row] = await db.insert(schema.sharepoint_folders).values({ project_id: opts.projectId, ...fields }).returning();
     return row as SharePointFolder;
   }
-  if (root.sp_item_id !== opts.spItemId) {
-    // The old root's rights no longer describe anything; another link to the new folder under this project is dropped.
-    await db.delete(schema.sharepoint_shares).where(eq(schema.sharepoint_shares.folder_id, root.id));
-    for (const dup of mine.slice(1).filter((f) => f.sp_item_id === opts.spItemId)) await deleteFolderRecord(dup.id);
-  }
+  // Another link to the new folder under this same project is dropped.
+  if (root.sp_item_id !== opts.spItemId) for (const dup of mine.slice(1).filter((f) => f.sp_item_id === opts.spItemId)) await deleteFolderRecord(dup.id);
   await db.update(schema.sharepoint_folders).set(fields).where(eq(schema.sharepoint_folders.id, root.id));
   return { ...root, ...fields } as SharePointFolder;
 }

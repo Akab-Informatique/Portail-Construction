@@ -298,6 +298,12 @@ export default async function handler(req: Req, res: Res) {
       const item = await getItem(token, driveId, itemId);
       return res.status(200).json({ driveId, item: { id: item.id, name: item.name, isFolder: Boolean(item.folder) } });
     }
+    if (action === "chain") {
+      const itemId = String(body.itemId ?? "").trim();
+      if (!itemId) return res.status(400).json({ error: "err.badRequest" });
+      if (!(await allowed(user, token, driveId, itemId, "view"))) return deny();
+      return res.status(200).json({ driveId, chain: (await chainOf(token, driveId, itemId)).filter(Boolean) });
+    }
     if (action === "preview") {
       const itemId = String(body.itemId ?? "").trim();
       if (!itemId) return res.status(400).json({ error: "err.badRequest" });

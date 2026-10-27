@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { eq, inArray } from "drizzle-orm";
 import { Building2, ChevronDown, ChevronRight, Folder, FolderOpen, HardHat, Lock, RotateCcw, Search, Users } from "lucide-react";
 import { db, schema } from "../../db";
-import { clearShareFlags, setShareFlags } from "@/lib/sharepoint";
+import { callSharePoint, clearShareFlags, setShareFlags } from "@/lib/sharepoint";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
 import { DOC_LEVELS, levelFlags, levelOf, shareFlags, type DocFlags, type DocLevel } from "@/lib/doc-rights";
@@ -26,19 +26,18 @@ const LEVEL_LABEL: Record<DocLevel, MessageKey> = { none: "pda.lvl.none", view: 
  * company and each of its users: no access, view only, view and upload, or full access (download, change, delete).
  * Nobody has any access until it is given here. A subfolder inherits from the folder above until something is set on it.
  *
- * `shareFolderId` is where the rights are stored: a project's folder row, or 0 for the whole library.
+ * Rights belong to the SharePoint folder itself, so they are the same here, in the library's Documentation page and in a
+ * project's Documentation: set once, they apply everywhere that folder is reached.
  */
 export function DocsAccess({
   root,
   color,
   clients,
-  shareFolderId,
   rootLabel,
 }: {
   root: SpRoot;
   color: string;
   clients: Client[];
-  shareFolderId: number;
   rootLabel: string;
 }) {
   const { t, tr } = useI18n();
@@ -53,11 +52,12 @@ export function DocsAccess({
   const [error, setError] = useState<string | null>(null);
 
   const currentId = trail[trail.length - 1]?.id ?? root.id;
-  const itemIdOf = (id: string) => (id === root.id ? "" : id);
+  /** The folders above this root, up to the library: rights set there reach down into this tree. */
+  const [above, setAbove] = useState<string[]>([]);
 
   const loadShares = useCallback(async () => {
-    setShares((await db.select().from(schema.sharepoint_shares).where(eq(schema.sharepoint_shares.folder_id, shareFolderId))) as SharePointShare[]);
-  }, [shareFolderId]);
+    setShares((await db.select().from(schema.sharepoint_shares).where(eq(schema.sharepoint_shares.folder_id, 0))) as SharePointShare[]);
+  }, []);
 
   const clientIds = clients.map((c) => c.id).join(",");
   useEffect(() => {
@@ -73,8 +73,13 @@ export function DocsAccess({
       await loadShares();
     })();
     void tree.list(root.id).catch((err) => setError(tr(err, "sp.error.failed")));
+    if (root.id) {
+      void callSharePoint<{ chain: string[] }>("chain", { driveId: root.drive, itemId: root.id })
+        .then((out) => setAbove(out.chain.filter((id) => id !== root.id)))
+        .catch(() => setAbove([]));
+    } else setAbove([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientIds, root.id, shareFolderId]);
+  }, [clientIds, root.id]);
 
   const visibleClients = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -88,11 +93,15 @@ export function DocsAccess({
     return staff.filter((u) => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name));
   }, [staff, query]);
 
-  /** The folder and its ancestors, nearest first. */
-  const chain: Crumb[] = [...[{ id: root.id, name: root.name }, ...trail].reverse()];
+  /** The folder and its ancestors, nearest first, up to the whole library. */
+  const chain: Crumb[] = [
+    ...[{ id: root.id, name: root.name }, ...trail].reverse(),
+    ...above.map((id) => ({ id, name: t("pda.above") })),
+    ...(root.id ? [{ id: "", name: t("sp.wholeLibrary") }] : []),
+  ];
 
   const explicitAt = (nodeId: string, g: Grantee) =>
-    shares.find((s) => s.client_id === g.clientId && (s.user_id ?? null) === g.userId && (s.item_id || root.id) === nodeId) ?? null;
+    shares.find((s) => s.client_id === g.clientId && (s.user_id ?? null) === g.userId && s.folder_id === 0 && (s.item_id || "") === nodeId) ?? null;
 
   /** What this grantee has on the current folder, and where it comes from. */
   function resolve(g: Grantee): { flags: Flags; from: "here" | "above" | "none"; fromName?: string } {
@@ -106,7 +115,7 @@ export function DocsAccess({
   async function change(g: Grantee, level: DocLevel) {
     setError(null);
     try {
-      await setShareFlags({ folderId: shareFolderId, clientId: g.clientId, userId: g.userId, itemId: itemIdOf(currentId), flags: levelFlags(level) });
+      await setShareFlags({ folderId: 0, clientId: g.clientId, userId: g.userId, itemId: currentId, flags: levelFlags(level) });
       await loadShares();
     } catch (err) {
       setError(tr(err, "sp.error.failed"));
@@ -114,11 +123,11 @@ export function DocsAccess({
   }
 
   async function reset(g: Grantee) {
-    await clearShareFlags({ folderId: shareFolderId, clientId: g.clientId, userId: g.userId, itemId: itemIdOf(currentId) });
+    await clearShareFlags({ folderId: 0, clientId: g.clientId, userId: g.userId, itemId: currentId });
     await loadShares();
   }
 
-  const hasRules = (nodeId: string) => shares.some((s) => (s.item_id || root.id) === nodeId);
+  const hasRules = (nodeId: string) => shares.some((s) => s.folder_id === 0 && (s.item_id || "") === nodeId);
 
   function renderNode(node: Crumb, path: Crumb[], depth: number) {
     const isOpen = tree.expanded.has(node.id);

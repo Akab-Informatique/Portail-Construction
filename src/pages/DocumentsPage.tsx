@@ -66,7 +66,7 @@ function LibraryDocs() {
           </button>
         ))}
       </div>
-      {tab === "access" ? <DocsAccess root={root} color={BRAND} clients={clients} shareFolderId={0} rootLabel={label} /> : <DocsExplorer root={root} settings={settings} color={BRAND} rootLabel={label} />}
+      {tab === "access" ? <DocsAccess root={root} color={BRAND} clients={clients} rootLabel={label} /> : <DocsExplorer root={root} settings={settings} color={BRAND} rootLabel={label} />}
     </div>
   );
 }

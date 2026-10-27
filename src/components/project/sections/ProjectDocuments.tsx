@@ -94,7 +94,7 @@ export function ProjectDocuments({ project, client }: SectionProps) {
         </div>
       ) : null}
       {tab === "access" ? (
-        <DocsAccess root={root} color={color} clients={client ? [client] : []} shareFolderId={root.rowId} rootLabel={root.name} />
+        <DocsAccess root={root} color={color} clients={client ? [client] : []} rootLabel={root.name} />
       ) : (
         <DocsExplorer root={root} settings={settings!} color={color} rootLabel={root.name} />
       )}

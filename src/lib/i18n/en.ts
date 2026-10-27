@@ -273,6 +273,7 @@ export const en = {
   "sp.useAbove": "— Use the folder above —",
   "sp.chosenRoot": "Documentation root:",
   "sp.noFoldersToPick": "No folder found in the library. Check the SharePoint setup, or create a new folder.",
+  "pda.above": "a folder above",
   "pda.level": "Access",
   "pda.staff": "Employees",
   "pda.clientsHead": "Clients",

@@ -54,14 +54,14 @@ export function subjectsFor(user: SessionUser | null, clients: Client[], selecte
 }
 
 /**
- * The level a person has on a folder of one project. `chain` is the folder and its ancestors, nearest first, with the
- * project's own folder written as "". For each grantee the nearest folder with a right set decides, so a subfolder can
- * take rights away; the grantees' rights add up.
+ * The level a person has on a SharePoint folder. Rights belong to the folder itself (its SharePoint item id; "" is the whole
+ * library), so they are the same wherever the folder is reached from. `chain` is the folder and its ancestors, nearest
+ * first, ending with "". For each grantee the nearest folder with a right set decides, so a subfolder can take rights away.
  */
-export function levelAt(shares: SharePointShare[], subjects: Subject[], rowId: number, chain: string[]): DocLevel {
+export function levelAt(shares: SharePointShare[], subjects: Subject[], chain: string[]): DocLevel {
   const hitOf = (subject: Subject) => {
     const mine = shares.filter((s) => s.client_id === subject.clientId && (s.user_id ?? null) === subject.userId);
-    const row = [...chain.map((key) => mine.find((s) => s.folder_id === rowId && (s.item_id || "") === key)), mine.find((s) => s.folder_id === 0 && !s.item_id)].find(Boolean);
+    const row = chain.map((key) => mine.find((s) => s.folder_id === 0 && (s.item_id || "") === key)).find(Boolean);
     return row ? shareFlags(row) : null;
   };
   const none: DocFlags = { can_view: false, can_upload: false, can_edit: false };
@@ -87,13 +87,12 @@ export function levelAt(shares: SharePointShare[], subjects: Subject[], rowId: n
   return levelOf(flags);
 }
 
-/** Folders deeper than the project's own that were given to this person: their way in when the project folder itself was not. */
-export function entriesOf(shares: SharePointShare[], subjects: Subject[], rowId: number): string[] {
+/** Every folder this person was given something on (the whole library, "", excluded). */
+export function sharedItems(shares: SharePointShare[], subjects: Subject[]): string[] {
   const ids = new Set<string>();
   for (const s of shares) {
-    if (s.folder_id !== rowId || !s.item_id) continue;
-    if (!subjects.some((x) => x.clientId === s.client_id && x.userId === (s.user_id ?? null))) continue;
-    if (levelAt(shares, subjects, rowId, [s.item_id]) !== "none") ids.add(s.item_id);
+    if (s.folder_id !== 0 || !s.item_id) continue;
+    if (subjects.some((x) => x.clientId === s.client_id && x.userId === (s.user_id ?? null))) ids.add(s.item_id);
   }
   return [...ids];
 }

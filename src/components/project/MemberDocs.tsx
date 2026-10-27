@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { FileText, FolderOpen, Lock } from "lucide-react";
 import { callSharePoint, loadProjectFolders } from "@/lib/sharepoint";
 import { getSharePointSettings } from "@/lib/settings";
-import { capsOf, entriesOf, levelAt, useDocShares } from "@/lib/doc-rights";
+import { capsOf, levelAt, sharedItems, useDocShares } from "@/lib/doc-rights";
 import { useI18n } from "@/lib/i18n";
 import { projectColor } from "@/lib/project-colors";
 import type { Project, SharePointFolder, SharePointSettings } from "@/lib/types";
@@ -13,6 +13,9 @@ import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 type Space = { project: Project; root: SpRoot; entries: string[]; rootOpen: boolean };
+
+/** What the portal knows of a folder's ancestry: its own id, then its parents up to the library (nothing above it known = just itself). */
+type Chains = Record<string, string[] | null>;
 
 /**
  * Documentation for everyone who is not an administrator, employees and client accounts alike: the SharePoint folders of
@@ -26,6 +29,8 @@ export function MemberDocs({ projects }: { projects: Project[] }) {
   const [pick, setPick] = useState<number | null>(null);
   const [entryPick, setEntryPick] = useState<string | null>(null);
   const [names, setNames] = useState<Record<string, string>>({});
+  const [chains, setChains] = useState<Chains>({});
+  const [chainsDone, setChainsDone] = useState(false);
   const [loading, setLoading] = useState(true);
   const ids = projects.map((p) => p.id).join(",");
 
@@ -53,17 +58,53 @@ export function MemberDocs({ projects }: { projects: Project[] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ids]);
 
+  // Rights belong to the folders, wherever they were set: so the ancestry of each project root and of each folder given to this
+  // person is needed to know what applies. The server only answers for folders this person may see.
+  const shared = useMemo(() => sharedItems(shares, subjects), [shares, subjects]);
+  const wantedChains = [...new Set([...roots.map((r) => r.root.id), ...shared])].filter((id) => !(id in chains));
+  useEffect(() => {
+    if (loading || loadingShares || !chainsDone) return;
+    if (wantedChains.length === 0) {
+      setChainsDone(true);
+      return;
+    }
+    let cancelled = false;
+    const drive = roots[0]?.root.drive;
+    void Promise.all(
+      wantedChains.map((id) =>
+        callSharePoint<{ chain: string[] }>("chain", { driveId: roots.find((r) => r.root.id === id)?.root.drive ?? drive, itemId: id })
+          .then((out) => [id, out.chain] as const)
+          .catch(() => [id, null] as const),
+      ),
+    ).then((pairs) => {
+      if (cancelled) return;
+      setChains((prev) => ({ ...prev, ...Object.fromEntries(pairs) }));
+      setChainsDone(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, loadingShares, wantedChains.join(",")]);
+
+  /** A chain from the explorer (folder first, the root of what is shown last) completed upward with the root's ancestors and the library. */
+  const completeChain = (chain: string[], rootId: string) => {
+    const up = chains[rootId] ?? [rootId];
+    return [...chain.slice(0, -1), ...up, ""];
+  };
+
   const spaces: Space[] = useMemo(
     () =>
       roots
-        .map(({ project, root }) => ({
-          project,
-          root,
-          entries: entriesOf(shares, subjects, root.rowId),
-          rootOpen: levelAt(shares, subjects, root.rowId, [""]) !== "none",
-        }))
+        .map(({ project, root }) => {
+          const rootOpen = levelAt(shares, subjects, [...(chains[root.id] ?? [root.id]), ""]) !== "none";
+          const inside = shared.filter((id) => id !== root.id && (chains[id] ?? []).includes(root.id) && levelAt(shares, subjects, [...(chains[id] as string[]), ""]) !== "none");
+          // A folder inside another given folder is already reached through it.
+          const entries = inside.filter((id) => !inside.some((o) => o !== id && (chains[id] as string[]).includes(o)));
+          return { project, root, entries, rootOpen };
+        })
         .filter((s) => s.rootOpen || s.entries.length > 0),
-    [roots, shares, subjects],
+    [roots, shares, subjects, chains, shared],
   );
   const current = spaces.find((s) => s.project.id === pick) ?? spaces[0];
 
@@ -97,10 +138,9 @@ export function MemberDocs({ projects }: { projects: Project[] }) {
   if (!current) return <EmptyState icon={<Lock className="size-5" />} title={t("pdoc.noAccess")} description={t("pdoc.noAccessHint")} />;
 
   const color = projectColor(current.project);
-  const projectRootId = current.root.id;
-  const caps = (chain: string[]) => capsOf(levelAt(shares, subjects, current.root.rowId, chain.map((k) => (k === projectRootId ? "" : k))));
   const entry = !current.rootOpen ? (current.entries.find((e) => e === entryPick) ?? current.entries[0]) : null;
   const root: SpRoot = entry ? { id: entry, name: names[entry] || "…", drive: current.root.drive, rowId: current.root.rowId } : current.root;
+  const caps = (chain: string[]) => capsOf(levelAt(shares, subjects, completeChain(chain, root.id)));
 
   return (
     <div className="space-y-4">

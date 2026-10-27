@@ -275,6 +275,7 @@ export const fr: Record<MessageKey, string> = {
   "sp.useAbove": "— Utiliser le dossier au-dessus —",
   "sp.chosenRoot": "Racine de la documentation :",
   "sp.noFoldersToPick": "Aucun dossier trouvé dans la bibliothèque. Vérifiez la configuration SharePoint, ou créez un nouveau dossier.",
+  "pda.above": "un dossier au-dessus",
   "pda.level": "Accès",
   "pda.staff": "Employés",
   "pda.clientsHead": "Clients",
