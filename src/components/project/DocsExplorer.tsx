@@ -570,11 +570,11 @@ export function DocsExplorer({ root, settings, color, rootLabel, caps }: { root:
       </div>
 
       <Dialog open={preview !== null} onOpenChange={(o) => !o && setPreview(null)}>
-        <DialogContent className="h-[85vh] sm:max-w-5xl">
-          <DialogHeader>
-            <DialogTitle className="truncate">{preview?.name}</DialogTitle>
+        <DialogContent className="flex h-[94dvh] w-[96vw] max-w-none flex-col gap-3 p-4 sm:max-w-6xl">
+          <DialogHeader className="shrink-0">
+            <DialogTitle className="truncate pr-8">{preview?.name}</DialogTitle>
           </DialogHeader>
-          {preview ? <iframe title={preview.name} src={preview.url} className="size-full rounded-lg border bg-white" /> : null}
+          {preview ? <iframe title={preview.name} src={preview.url} className="min-h-0 w-full flex-1 rounded-lg border bg-white" /> : null}
         </DialogContent>
       </Dialog>
 
