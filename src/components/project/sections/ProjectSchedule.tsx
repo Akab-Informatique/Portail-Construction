@@ -504,17 +504,22 @@ function TaskGantt({ tasks, color, checkCount, onOpen }: { tasks: Task[]; color:
   const max = addDays(rows.reduce((m, r) => (r.e > m ? r.e : m), today), 7);
   const span = Math.max(days(min, max), 14);
   const pct = (iso: string) => (days(min, iso) / span) * 100;
+  // A long schedule is drawn wider and scrolls sideways, so the dates never crowd each other: 7 px a day, and a date label
+  // only every few weeks when the weeks are narrow.
+  const PX_PER_DAY = 7;
+  const NAME_COL = 220;
+  const everyWeeks = Math.max(1, Math.ceil(96 / (7 * PX_PER_DAY)));
   const weeks: { label: string; left: number }[] = [];
-  for (let d = min; d <= max; d = addDays(d, 7)) weeks.push({ label: formatDate(d, locale), left: pct(d) });
+  for (let d = min, i = 0; d <= max; d = addDays(d, 7), i += 1) if (i % everyWeeks === 0) weeks.push({ label: formatDate(d, locale), left: pct(d) });
   return (
     <Card className="gap-0 overflow-hidden p-0">
       <div className="overflow-x-auto">
-        <div className="min-w-[760px]">
+        <div style={{ minWidth: Math.max(760, NAME_COL + span * PX_PER_DAY) }}>
           <div className="grid grid-cols-[220px_minmax(0,1fr)] border-b bg-muted/40 text-[11px] text-muted-foreground">
-            <span className="px-4 py-2 font-semibold uppercase tracking-wider">{t("sch.tasks")}</span>
+            <span className="sticky left-0 z-10 bg-muted px-4 py-2 font-semibold uppercase tracking-wider">{t("sch.tasks")}</span>
             <div className="relative h-8">
               {weeks.map((w) => (
-                <span key={w.left} className="absolute top-2 whitespace-nowrap" style={{ left: `${w.left}%` }}>
+                <span key={w.left} className="absolute top-2 whitespace-nowrap tabular-nums" style={{ left: `${w.left}%` }}>
                   {w.label}
                 </span>
               ))}
@@ -528,7 +533,9 @@ function TaskGantt({ tasks, color, checkCount, onOpen }: { tasks: Task[]; color:
             const width = Math.max(pct(addDays(e, 1)) - left, 1.5);
             return (
               <button key={task.id} type="button" onClick={() => onOpen(task.id)} className="grid w-full grid-cols-[220px_minmax(0,1fr)] items-center border-b border-border/50 text-left transition-colors hover:bg-primary/5">
-                <span className="truncate px-4 py-3 text-sm font-medium">{task.title}</span>
+                <span className={cn("sticky left-0 z-10 truncate bg-card px-4 py-3 text-sm", task.kind === "task" ? "font-medium" : "font-bold")} title={task.title}>
+                  {task.title}
+                </span>
                 <span className="relative block h-12">
                   <span className="absolute inset-y-0 w-px bg-primary/60" style={{ left: `${pct(today)}%` }} />
                   <span
