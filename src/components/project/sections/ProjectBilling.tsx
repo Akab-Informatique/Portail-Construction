@@ -39,6 +39,8 @@ export function ProjectBilling({ project, client }: SectionProps) {
   const [files, setFiles] = useState<BillingFile[]>([]);
   const [requests, setRequests] = useState<BillingRequest[]>([]);
   const [folded, setFolded] = useState<Set<number>>(new Set());
+  /** Quotes and invoices are two pages of the same section: one button to go from one to the other. */
+  const [tab, setTab] = useState<"quotes" | "invoices">("quotes");
   // A client account never leaves this page: it opens, accepts, declines and asks for changes right here.
   const viewer = user?.user_type === "external" || user?.view_as === "client";
   const [viewingId, setViewingId] = useState<number | null>(null);
@@ -146,7 +148,30 @@ export function ProjectBilling({ project, client }: SectionProps) {
         </Card>
       ) : null}
 
+      <div className="flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-xl border bg-muted/40 p-1">
+        {(
+          [
+            ["quotes", t("pb.quotes"), FilePlus2, quotes.length, 0],
+            ["invoices", t("pb.invoices"), ReceiptText, invoices.length, late.length],
+          ] as const
+        ).map(([id, label, Icon, n, alert]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setTab(id)}
+            className={cn("flex h-9 items-center gap-2 rounded-lg px-4 text-sm font-medium transition-all", tab === id ? "text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+            style={tab === id ? { background: `color-mix(in srgb, ${color} 18%, var(--card))`, boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${color} 38%, transparent)` } : undefined}
+          >
+            <Icon className="size-4" style={tab === id ? { color } : undefined} />
+            {label}
+            <span className="text-xs tabular-nums text-muted-foreground">{n}</span>
+            {alert > 0 && viewer ? <span className="rounded-full bg-rose-500 px-1.5 py-px text-[10px] font-semibold text-white">{alert}</span> : null}
+          </button>
+        ))}
+      </div>
+
       {/* quotes */}
+      {tab === "quotes" ? (
       <section className="space-y-2">
         <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
           <FilePlus2 className="size-4" />
@@ -212,8 +237,10 @@ export function ProjectBilling({ project, client }: SectionProps) {
           })
         )}
       </section>
+      ) : null}
 
       {/* invoices */}
+      {tab === "invoices" ? (
       <section className="space-y-2">
         <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
           <ReceiptText className="size-4" />
@@ -241,6 +268,7 @@ export function ProjectBilling({ project, client }: SectionProps) {
           </Card>
         )}
       </section>
+      ) : null}
       {viewer ? (
         <BillingFileDialog
           file={viewing}
