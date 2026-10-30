@@ -13,6 +13,7 @@ import {
   currentRevision,
   displayStatus,
   listBillingFiles,
+  priceLabel,
   listBillingRequests,
   quoteEffectiveTotal,
   revisionStatus,
@@ -187,7 +188,7 @@ export function ProjectBilling({ project, client }: SectionProps) {
                       </span>
                     ) : null}
                     <StatusPill file={current} mode={pillMode} status={status} />
-                    <span className="w-28 text-right font-semibold tabular-nums">{moneyExact(quoteEffectiveTotal(q, mine), locale)}</span>
+                    <span className="w-28 text-right font-semibold tabular-nums">{priceLabel(q, quoteEffectiveTotal(q, mine), locale, t("billing.tm.short"))}</span>
                     <ChevronRight className="size-4 text-muted-foreground" />
                   </button>
                 </div>
@@ -200,7 +201,7 @@ export function ProjectBilling({ project, client }: SectionProps) {
                           <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{k.is_addon === 1 ? t("pb.addon") : t("pb.version")}</span>
                           <span className="min-w-0 flex-1 truncate text-muted-foreground">{k.title}</span>
                           <StatusPill file={k} mode={pillMode} status={revisionStatus(k, mine)} />
-                          <span className="w-28 text-right tabular-nums">{moneyExact(k.amount, locale)}</span>
+                          <span className="w-28 text-right tabular-nums">{priceLabel(k, k.amount, locale, t("billing.tm.short"))}</span>
                         </button>
                       </li>
                     ))}

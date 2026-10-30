@@ -368,6 +368,8 @@ export type BillingFile = {
   is_final: number;
   /** An add-on to the final quote. */
   is_addon: number;
+  /** 1 = time and material: no fixed amount. */
+  time_material: number;
   file_name: string | null;
   file_type: string | null;
   file_size: number | null;

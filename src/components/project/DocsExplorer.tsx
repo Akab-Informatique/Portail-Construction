@@ -249,8 +249,17 @@ export function DocsExplorer({ root, settings, color, rootLabel, caps }: { root:
 
   /** Shows a file in a page without handing it over: what the view-only level allows. */
   async function showFile(item: SpItem) {
-    setBusy(true);
     setError(null);
+    // Whoever may download is shown the file itself in the portal's viewer (Office documents converted to PDF);
+    // the others get SharePoint's own preview, which does not hand the file over.
+    if (here.download) {
+      const asPdf = !isPdf(item) && !isImage(item);
+      const query = new URLSearchParams({ action: "download", inline: "1", driveId: drive, itemId: item.id, name: item.name });
+      if (asPdf) query.set("format", "pdf");
+      setPreview({ name: item.name, url: `/api/sharepoint?${query.toString()}${isImage(item) ? "" : "#view=FitH&navpanes=0"}` });
+      return;
+    }
+    setBusy(true);
     try {
       const out = await callSharePoint<{ url: string }>("preview", { driveId: drive, itemId: item.id });
       if (!out.url) throw new Error("pdoc.noPreview");
@@ -467,11 +476,12 @@ export function DocsExplorer({ root, settings, color, rootLabel, caps }: { root:
               </span>
             ))}
           </nav>
-          <div className="grid grid-cols-[28px_minmax(0,1fr)_120px_90px] gap-3 border-b bg-muted/40 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground max-sm:grid-cols-[28px_minmax(0,1fr)_70px]">
+          <div className="grid grid-cols-[28px_minmax(0,1fr)_120px_90px_72px] gap-3 border-b bg-muted/40 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground max-sm:grid-cols-[28px_minmax(0,1fr)_70px_72px]">
             <span />
             <span>{t("pdoc.name")}</span>
             <span className="max-sm:hidden">{t("pdoc.modified")}</span>
             <span className="text-right">{t("pdoc.size")}</span>
+            <span />
           </div>
           {listing && items.length === 0 ? (
             <div className="flex items-center justify-center py-16 text-muted-foreground">
@@ -501,10 +511,10 @@ export function DocsExplorer({ root, settings, color, rootLabel, caps }: { root:
                 return (
                   <li
                     key={item.id}
-                    className={cn("grid cursor-default grid-cols-[28px_minmax(0,1fr)_120px_90px] items-center gap-3 px-4 py-2.5 text-sm transition-colors max-sm:grid-cols-[28px_minmax(0,1fr)_70px]", !on && "hover:bg-foreground/5")}
+                    className={cn("grid cursor-default grid-cols-[28px_minmax(0,1fr)_120px_90px_72px] items-center gap-3 px-4 py-2.5 text-sm transition-colors max-sm:grid-cols-[28px_minmax(0,1fr)_70px_72px]", !on && "hover:bg-foreground/5")}
                     style={on ? { background: `color-mix(in srgb, ${color} 14%, transparent)`, boxShadow: `inset 3px 0 0 ${color}` } : undefined}
                     onClick={(e) => toggle(e.shiftKey)}
-                    onDoubleClick={() => (item.isFolder ? openFolder() : here.download && item.webUrl ? window.open(item.webUrl, "_blank", "noopener") : void showFile(item))}
+                    onDoubleClick={() => (item.isFolder ? openFolder() : void showFile(item))}
                   >
                     <span onClick={(e) => e.stopPropagation()}>
                       <Checkbox checked={on} onCheckedChange={() => toggle()} aria-label={item.name} />
@@ -523,11 +533,34 @@ export function DocsExplorer({ root, settings, color, rootLabel, caps }: { root:
                           {item.name}
                         </button>
                       ) : (
-                        <span className="truncate font-medium">{item.name}</span>
+                        <button
+                          type="button"
+                          className="truncate text-left font-medium hover:underline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void showFile(item);
+                          }}
+                        >
+                          {item.name}
+                        </button>
                       )}
                     </span>
                     <span className="text-xs text-muted-foreground max-sm:hidden">{item.lastModified ? formatDate(item.lastModified, locale) : ""}</span>
                     <span className="text-right text-xs tabular-nums text-muted-foreground">{item.isFolder ? "" : kb(item.size)}</span>
+                    <span className="flex justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
+                      {item.isFolder ? null : (
+                        <>
+                          <Button size="icon-sm" variant="ghost" title={t("pdoc.view")} aria-label={t("pdoc.view")} onClick={() => void showFile(item)}>
+                            <Eye className="size-4" />
+                          </Button>
+                          {here.download ? (
+                            <Button size="icon-sm" variant="ghost" title={t("pdoc.download")} aria-label={t("pdoc.download")} onClick={() => void run(async () => downloadBlob(await fetchFile(item), item.name))}>
+                              <Download className="size-4" />
+                            </Button>
+                          ) : null}
+                        </>
+                      )}
+                    </span>
                   </li>
                 );
               })}

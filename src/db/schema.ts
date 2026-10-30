@@ -383,6 +383,8 @@ export const billing_files = pgTable("billing_files", {
   is_final: integer("is_final").notNull().default(0),
   /** 1 = an add-on to the final quote (its amount is added to the quote once the client accepts it). */
   is_addon: integer("is_addon").notNull().default(0),
+  /** 1 = a time and material quote: no fixed amount can be known in advance, so none is required or shown. */
+  time_material: integer("time_material").notNull().default(0),
   /** 0 until staff confirm the extracted data; clients only ever see published rows. */
   published: integer("published").notNull().default(0),
   file_name: text("file_name"),

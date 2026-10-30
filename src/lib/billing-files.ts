@@ -1,7 +1,8 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db, dbReady, schema } from "../db";
 import { AI_KEY, getSetting } from "./settings";
-import type { BillingFile, BillingRequest, ExtractedDocument } from "./types";
+import { moneyExact } from "./format";
+import type { BillingFile, BillingRequest, ExtractedDocument, Locale } from "./types";
 
 /** Fired after any uploaded document or change request is created/updated. */
 export const BILLING_FILES_EVENT = "frx:billing-files";
@@ -136,6 +137,11 @@ export async function setFinalVersion(file: BillingFile, all: BillingFile[], fin
 }
 
 /** Overdue is computed from the due date; staff only ever set sent/paid. */
+/** What to show as the price of a document: the amount, or the words "Time and material" when no fixed amount exists. */
+export function priceLabel(file: BillingFile, value: number, locale: Locale, tmText: string) {
+  return file.time_material === 1 && !value ? tmText : moneyExact(value, locale);
+}
+
 export function displayStatus(file: BillingFile) {
   if (file.kind === "invoice" && file.status !== "paid" && file.due_on && file.due_on < new Date().toISOString().slice(0, 10)) {
     return "overdue";
@@ -275,6 +281,8 @@ export type FileDetails = {
   tax_gst: number | null;
   tax_qst: number | null;
   amount: number;
+  /** 1 for a time and material quote, which needs no amount. */
+  time_material?: number;
   issued_on: string | null;
   due_on: string | null;
   status: string;

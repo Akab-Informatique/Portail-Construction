@@ -13,6 +13,7 @@ import {
   isPendingDecision,
   listBillingFiles,
   listBillingRequests,
+  priceLabel,
   quoteEffectiveTotal,
   revisionStatus,
 } from "@/lib/billing-files";
@@ -202,7 +203,7 @@ export function ClientBillingPage() {
                     <span className="hidden text-xs tabular-nums text-muted-foreground md:inline">{q.issued_on ? formatDate(q.issued_on, locale) : ""}</span>
                     {pending ? <span className="text-xs font-medium text-amber-700 dark:text-amber-300">{t("cb.waiting")}</span> : null}
                     <StatusPill file={current} mode="client" status={revisionStatus(current, mine)} />
-                    <span className="w-28 text-right font-semibold tabular-nums">{moneyExact(quoteEffectiveTotal(q, mine), locale)}</span>
+                    <span className="w-28 text-right font-semibold tabular-nums">{priceLabel(q, quoteEffectiveTotal(q, mine), locale, t("billing.tm.short"))}</span>
                     <ChevronRight className="size-4 text-muted-foreground" />
                   </button>
                 </li>

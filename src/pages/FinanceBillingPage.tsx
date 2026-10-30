@@ -272,7 +272,7 @@ export function FinanceBillingPage() {
         <td className={`px-3 py-3 text-right font-medium tabular-nums ${muted}`}>
           <span className={isVoid ? "line-through" : ""}>
             {isAddon ? "+ " : ""}
-            {money(file.amount, locale)}
+            {file.time_material === 1 && !file.amount ? t("billing.tm.short") : money(file.amount, locale)}
           </span>
         </td>
         <td className="px-3 py-3">
@@ -527,11 +527,13 @@ function EditDialog({ file, onClose, onSaved }: { file: BillingFile | null; onCl
   const { t, tr } = useI18n();
   const [form, setForm] = useState<Record<string, string>>({});
   const [publish, setPublish] = useState(true);
+  const [tm, setTm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!file) return;
+    setTm(file.time_material === 1);
     setForm({
       number: file.number ?? "",
       title: file.title ?? "",
@@ -553,8 +555,10 @@ function EditDialog({ file, onClose, onSaved }: { file: BillingFile | null; onCl
 
   async function save() {
     if (!file) return;
-    const amount = num(form.amount ?? "");
-    if (amount === null || amount <= 0) {
+    const typed = num(form.amount ?? "");
+    const isTm = tm && file.kind === "quote";
+    const amount = isTm ? (typed && typed > 0 ? typed : 0) : typed;
+    if (amount === null || (amount <= 0 && !isTm)) {
       setError(t("billing.review.needTotal"));
       return;
     }
@@ -570,6 +574,7 @@ function EditDialog({ file, onClose, onSaved }: { file: BillingFile | null; onCl
           tax_gst: num(form.tax_gst ?? ""),
           tax_qst: num(form.tax_qst ?? ""),
           amount,
+          time_material: isTm ? 1 : 0,
           issued_on: form.issued_on || null,
           due_on: form.due_on || null,
           status: form.status || file.status,
@@ -606,7 +611,16 @@ function EditDialog({ file, onClose, onSaved }: { file: BillingFile | null; onCl
           {field("subtotal", t("invoice.subtotal"), "number")}
           {field("tax_gst", t("invoice.gst"), "number")}
           {field("tax_qst", t("invoice.qst"), "number")}
-          {field("amount", t("invoice.total"), "number")}
+          {field("amount", tm && file.kind === "quote" ? t("billing.tm.optionalTotal") : t("invoice.total"), "number")}
+          {file.kind === "quote" ? (
+            <label className="flex items-start gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm sm:col-span-2">
+              <input type="checkbox" className="mt-1" checked={tm} onChange={(e) => setTm(e.target.checked)} />
+              <span>
+                <span className="font-medium">{t("billing.tm.label")}</span>
+                <span className="block text-xs text-muted-foreground">{t("billing.tm.hint")}</span>
+              </span>
+            </label>
+          ) : null}
           <div className="space-y-1.5 sm:col-span-2">
             <Label>{t("billing.status")}</Label>
             <Select value={form.status ?? file.status} onValueChange={(v) => setForm((f) => ({ ...f, status: v }))}>

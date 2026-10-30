@@ -12,6 +12,7 @@ import {
   currentRevision,
   decideFile,
   fileViewUrl,
+  priceLabel,
   finalVersion,
   isPendingDecision,
   quoteEffectiveTotal,
@@ -215,7 +216,7 @@ export function BillingFileDialog({
         <div className="flex flex-wrap items-center gap-2">
           <span className={cn("font-medium tabular-nums", status === "void" && "line-through")}>
             {kind === "addon" ? "+ " : ""}
-            {moneyExact(doc.amount, locale)}
+            {priceLabel(doc, doc.amount, locale, t("billing.tm.short"))}
           </span>
           <StatusPill file={doc} mode={mode} status={status} />
           <Button type="button" size="sm" variant="outline" onClick={() => setViewingId(doc.id)}>
@@ -275,7 +276,7 @@ export function BillingFileDialog({
                 {shown.title}
                 {shown.issued_on ? ` · ${formatDate(shown.issued_on, locale)}` : ""}
                 {shown.kind === "invoice" && shown.due_on ? ` · ${t("billing.due")} ${formatDate(shown.due_on, locale)}` : ""}
-                {` · ${moneyExact(shown.amount, locale)}`}
+                {` · ${priceLabel(shown, shown.amount, locale, t("billing.tm.short"))}`}
               </p>
               <div className="flex flex-wrap gap-2">
                 {pendingShown ? (
@@ -315,7 +316,7 @@ export function BillingFileDialog({
               ) : isImage ? (
                 <img src={url} alt={shown.file_name ?? ""} className="mx-auto max-h-[70vh] w-auto" />
               ) : (
-                <iframe ref={frame} title={shown.file_name ?? "document"} src={url} className="h-[68vh] w-full bg-white" />
+                <iframe ref={frame} title={shown.file_name ?? "document"} src={(shown.file_type ?? "").includes("pdf") ? `${url}#view=FitH&navpanes=0` : url} className="h-[68vh] w-full bg-white" />
               )}
             </div>
 
@@ -340,7 +341,7 @@ export function BillingFileDialog({
                     <div className="ml-auto w-full max-w-sm space-y-1 text-sm">
                       <div className="flex items-center justify-between text-muted-foreground">
                         <span>{t("billing.totals.final")}</span>
-                        <span className="tabular-nums text-foreground">{moneyExact(current.amount, locale)}</span>
+                        <span className="tabular-nums text-foreground">{priceLabel(current, current.amount, locale, t("billing.tm.short"))}</span>
                       </div>
                       <div className="flex items-center justify-between text-muted-foreground">
                         <span>{t("billing.totals.addons")}</span>

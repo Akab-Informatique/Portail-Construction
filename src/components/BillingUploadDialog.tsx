@@ -86,6 +86,7 @@ export function BillingUploadDialog({
   const [gst, setGst] = useState("");
   const [qst, setQst] = useState("");
   const [total, setTotal] = useState("");
+  const [tm, setTm] = useState(false);
   const [status, setStatus] = useState("sent");
 
   const kind = target?.kind ?? "invoice";
@@ -158,6 +159,7 @@ export function BillingUploadDialog({
       setGst(numStr(r.tax_gst));
       setQst(numStr(r.tax_qst));
       setTotal(r.amount ? String(r.amount) : "");
+      setTm(false);
       setStatus("sent");
       if (result.extracted) {
         const conf = result.extracted.confidence ?? "low";
@@ -198,8 +200,10 @@ export function BillingUploadDialog({
 
   async function finish(publish: boolean) {
     if (!record) return;
-    const amount = toNum(total);
-    if (amount === null || amount <= 0) {
+    const typed = toNum(total);
+    // A time and material quote has no fixed amount: none is needed.
+    const amount = tm && kind === "quote" ? (typed && typed > 0 ? typed : 0) : typed;
+    if (amount === null || (amount <= 0 && !(tm && kind === "quote"))) {
       setError(t("billing.review.needTotal"));
       return;
     }
@@ -218,6 +222,7 @@ export function BillingUploadDialog({
         tax_gst: toNum(gst),
         tax_qst: toNum(qst),
         amount,
+        time_material: tm && kind === "quote" ? 1 : 0,
         issued_on: issuedOn || null,
         due_on: dueOn || null,
         status: kind === "invoice" ? status : "sent",
@@ -385,10 +390,19 @@ export function BillingUploadDialog({
               <Field label={t("invoice.qst")}>
                 <Input type="number" min="0" step="0.01" value={qst} onChange={(e) => setQst(e.target.value)} />
               </Field>
-              <Field label={t("invoice.total")}>
+              <Field label={tm ? t("billing.tm.optionalTotal") : t("invoice.total")}>
                 <Input type="number" min="0" step="0.01" value={total} onChange={(e) => setTotal(e.target.value)} />
               </Field>
             </div>
+            {kind === "quote" ? (
+              <label className="flex items-start gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                <input type="checkbox" className="mt-1" checked={tm} onChange={(e) => setTm(e.target.checked)} />
+                <span>
+                  <span className="font-medium">{t("billing.tm.label")}</span>
+                  <span className="block text-xs text-muted-foreground">{t("billing.tm.hint")}</span>
+                </span>
+              </label>
+            ) : null}
             <div>
               <Button type="button" size="sm" variant="outline" onClick={computeFromSubtotal}>
                 {t("billing.review.compute")}

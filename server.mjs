@@ -269,7 +269,7 @@ const server = createServer(async (req, res) => {
       "font-src 'self' data: https://fonts.gstatic.com",
       "img-src 'self' data: blob: https:",
       "connect-src 'self'",
-      "frame-src 'self' blob:",
+      "frame-src 'self' blob: https://*.sharepoint.com https://*.officeapps.live.com",
       "worker-src 'self' blob:",
       "object-src 'none'",
       "base-uri 'self'",

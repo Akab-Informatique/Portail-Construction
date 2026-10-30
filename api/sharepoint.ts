@@ -227,13 +227,19 @@ export default async function handler(req: Req, res: Res) {
       if (!(await allowed(user, token, driveId, itemId, "download"))) return res.status(403).json({ error: "err.forbidden" });
       const name = String(q(req, "name") ?? "file");
       const asPdf = String(q(req, "format") ?? "") === "pdf";
+      const inline = String(q(req, "inline") ?? "") === "1";
       const { buf, contentType } = await downloadFile(token, driveId, itemId, asPdf ? "pdf" : undefined);
       res.setHeader("Content-Type", contentType);
       res.setHeader("X-Content-Type-Options", "nosniff");
       res.setHeader(
         "Content-Disposition",
-        `attachment; filename="${name.replace(/[^\x20-\x7e]|["\\]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+        `${inline ? "inline" : "attachment"}; filename="${name.replace(/[^\x20-\x7e]|["\\]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(name)}`,
       );
+      if (inline) {
+        // Shown in the portal's own viewer: allow same-origin framing for this response only.
+        res.setHeader("X-Frame-Options", "SAMEORIGIN");
+        res.setHeader("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; frame-ancestors 'self'");
+      }
       res.status(200);
       return res.end(buf);
     }
