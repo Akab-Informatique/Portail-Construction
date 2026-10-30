@@ -160,7 +160,7 @@ export function MyCalendarPage() {
         eyebrow={t("nav.section.client")}
         title={t("nav.myCalendar")}
         actions={
-          <div className="flex items-center gap-1 rounded-xl border bg-muted/40 p-1">
+          <div className="flex items-center gap-1 rounded-xl border bg-muted/40 p-1 max-w-full overflow-x-auto">
             <Button size="icon-sm" variant="ghost" aria-label="‹" onClick={() => shift(-1)}>
               <ChevronLeft className="size-4" />
             </Button>

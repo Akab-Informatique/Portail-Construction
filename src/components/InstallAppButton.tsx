@@ -22,8 +22,36 @@ if (typeof window !== "undefined") {
   });
 }
 
+/** Shared with the dashboard banner: the same install flow, whichever component shows it. */
+export function useInstallPrompt() {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const fn = () => force((n) => n + 1);
+    listeners.add(fn);
+    return () => {
+      listeners.delete(fn);
+    };
+  }, []);
+  return {
+    standalone: typeof window !== "undefined" && isStandalone(),
+    native: deferredPrompt !== null,
+    ios: typeof navigator !== "undefined" && isIos(),
+    helpKey: typeof navigator !== "undefined" ? helpKey() : ("install.other" as HelpKey),
+    /** Opens the browser's own install dialog; false when the browser has none (the caller then shows the steps). */
+    async install() {
+      if (!deferredPrompt) return false;
+      const evt = deferredPrompt;
+      deferredPrompt = null;
+      await evt.prompt();
+      await evt.userChoice.catch(() => undefined);
+      listeners.forEach((fn) => fn());
+      return true;
+    },
+  };
+}
+
 /** Down arrow dropping into a software package (box). */
-function PackageDownIcon({ className }: { className?: string }) {
+export function PackageDownIcon({ className }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"

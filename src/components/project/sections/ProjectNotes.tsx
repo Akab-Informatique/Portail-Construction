@@ -125,7 +125,7 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
       <Card className="h-fit gap-4 p-5 lg:sticky lg:top-36">
         <Textarea rows={5} value={body} placeholder={t("note.placeholder")} onChange={(e) => setBody(e.target.value)} />
 
-        <div className="flex gap-1 rounded-xl border bg-muted/40 p-1">
+        <div className="flex gap-1 rounded-xl border bg-muted/40 p-1 max-w-full overflow-x-auto">
           {(["internal", "everyone"] as const).map((v) => (
             <button
               key={v}
@@ -178,7 +178,7 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
 
       {/* journal */}
       <div className="space-y-3">
-        <div className={cn("flex items-center gap-1 rounded-lg border bg-muted/40 p-0.5 self-start w-fit", viewer && "hidden")}>
+        <div className={cn("flex items-center gap-1 rounded-lg border bg-muted/40 p-0.5 max-w-full overflow-x-auto self-start w-fit", viewer && "hidden")}>
           {(isAdminUser ? (["all", "everyone", "internal", "auto"] as const) : (["all", "everyone", "internal"] as const)).map((f) => (
             <Button key={f} type="button" size="sm" variant={filter === f ? "default" : "ghost"} className="h-7 px-3 text-xs" onClick={() => setFilter(f)}>
               {f === "all" ? t("sch.filter.all") : f === "auto" ? t("note.filter.auto") : t(`note.vis.${f}`)}

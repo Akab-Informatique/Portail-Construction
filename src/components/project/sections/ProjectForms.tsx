@@ -107,7 +107,7 @@ export function ProjectForms({ project, people }: SectionProps) {
     <div className="space-y-5">
       {/* top: the form creator and the two views */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-1 rounded-xl border bg-muted/40 p-1">
+        <div className="flex items-center gap-1 rounded-xl border bg-muted/40 p-1 max-w-full overflow-x-auto">
           {tabs.map((tab) => (
             <button
               key={tab.id}

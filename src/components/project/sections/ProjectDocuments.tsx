@@ -73,7 +73,7 @@ export function ProjectDocuments({ project, client }: SectionProps) {
   return (
     <div className="space-y-4">
       {isAdmin ? (
-        <div className="flex w-fit items-center gap-1 rounded-xl border bg-muted/40 p-1">
+        <div className="flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-xl border bg-muted/40 p-1">
           {(
             [
               ["files", t("pdoc.tabFiles"), FolderOpen],

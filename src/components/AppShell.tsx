@@ -283,6 +283,48 @@ function SectionBlock({ section, index }: { section: NavSection; index: number }
   );
 }
 
+/**
+ * Phones and tablets: the places used most are one thumb away at the bottom of the screen, with the full menu behind
+ * the last button. Hidden on a computer, where the sidebar does this job.
+ */
+function MobileTabBar({ onMenu }: { onMenu: () => void }) {
+  const { t } = useI18n();
+  const location = useLocation();
+  const sections = useNavModel();
+  const all = sections.flatMap((s) => s.items);
+  const items = ["dashboard", "allProjects", "clientDocuments", "clientBilling", "timeOnSite", "billingMgmt"]
+    .map((id) => all.find((i) => i.id === id))
+    .filter((i): i is NavItem => Boolean(i))
+    .slice(0, 4);
+  return (
+    <nav
+      aria-label={t("nav.openMenu")}
+      className="frx-safe-bottom fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 shadow-[0_-8px_24px_-16px_rgba(0,0,0,0.35)] backdrop-blur-md lg:hidden"
+    >
+      <ul className="mx-auto grid max-w-xl grid-cols-5">
+        {items.map((item) => {
+          const Icon = item.icon;
+          const active = item.activePrefix ? location.pathname.startsWith(item.activePrefix) || location.pathname === item.to : item.end ? location.pathname === item.to : location.pathname.startsWith(item.to);
+          return (
+            <li key={item.id}>
+              <NavLink to={item.to} end={item.end} className="flex h-16 flex-col items-center justify-center gap-1 px-1 text-[10.5px] font-medium transition-colors active:scale-95">
+                <Icon className={cn("size-[22px] transition-transform", active ? "scale-110 text-primary" : "text-muted-foreground")} />
+                <span className={cn("max-w-full truncate", active ? "text-foreground" : "text-muted-foreground")}>{item.label}</span>
+              </NavLink>
+            </li>
+          );
+        })}
+        <li>
+          <button type="button" onClick={onMenu} className="flex h-16 w-full flex-col items-center justify-center gap-1 px-1 text-[10.5px] font-medium text-muted-foreground active:scale-95">
+            <Menu className="size-[22px]" />
+            <span>Menu</span>
+          </button>
+        </li>
+      </ul>
+    </nav>
+  );
+}
+
 function SidebarBody({
   onNavigate,
   collapsed = false,
@@ -544,7 +586,7 @@ export function AppShell() {
   const showClientCrumb = Boolean(activeProject && selectedClient && named[0] === "projects");
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-dvh bg-background">
       <ForcePasswordDialog />
       <MenuTour />
       <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
@@ -559,7 +601,7 @@ export function AppShell() {
       </aside>
 
       <div className="frx-paper flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/85 px-4 backdrop-blur-md sm:px-6">
+        <header className="frx-safe-top sticky top-0 z-30 flex min-h-14 items-center gap-3 border-b bg-background/85 px-4 backdrop-blur-md sm:px-6">
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon-sm" className="lg:hidden" aria-label={t("nav.openMenu")}>
@@ -638,7 +680,7 @@ export function AppShell() {
               </DropdownMenu>
             ) : null}
             <ChangeNotifications />
-            <InstallAppButton className="[&>button]:size-8" />
+            <InstallAppButton className="hidden sm:block [&>button]:size-8" />
             <div className="flex items-center overflow-hidden rounded-sm border">
               {(["en", "fr"] as const).map((code) => (
                 <button
@@ -673,16 +715,19 @@ export function AppShell() {
           </div>
         </header>
 
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
+        <main className="min-w-0 flex-1 px-4 py-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-10 lg:py-8 lg:pb-8">
           <div className={cn("mx-auto", wideLayout ? "max-w-none" : "max-w-6xl")}>
             {/* Keyed by path so a crash on one page clears when the user navigates away. */}
             <ErrorBoundary key={location.pathname} inline>
-              <Suspense fallback={<PageSkeleton />}>
-                <Outlet />
-              </Suspense>
+              <div key={location.pathname} className="frx-page-in">
+                <Suspense fallback={<PageSkeleton />}>
+                  <Outlet />
+                </Suspense>
+              </div>
             </ErrorBoundary>
           </div>
         </main>
+        <MobileTabBar onMenu={() => setOpen(true)} />
       </div>
     </div>
   );

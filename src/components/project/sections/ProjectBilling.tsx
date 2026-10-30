@@ -117,7 +117,7 @@ export function ProjectBilling({ project, client }: SectionProps) {
                   <span className="hidden text-xs text-rose-800 sm:inline dark:text-rose-300">
                     {t("pb.dueOn", { date: formatDate(inv.due_on ?? "", locale) })} · {t("pb.daysLate", { n: daysLate(inv.due_on ?? today) })}
                   </span>
-                  <span className="w-28 text-right font-semibold tabular-nums">{moneyExact(inv.amount, locale)}</span>
+                  <span className="ml-auto min-w-24 text-right sm:w-28 font-semibold tabular-nums">{moneyExact(inv.amount, locale)}</span>
                   <ChevronRight className="size-4 text-muted-foreground" />
                 </button>
               </li>
@@ -178,7 +178,7 @@ export function ProjectBilling({ project, client }: SectionProps) {
                   ) : (
                     <span className="size-6" />
                   )}
-                  <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => open(q.id)}>
+                  <button type="button" className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-left" onClick={() => open(q.id)}>
                     <span className="font-semibold tabular-nums">{q.number}</span>
                     <span className="min-w-0 flex-1 truncate">{q.title}</span>
                     {kids.length ? (
@@ -188,7 +188,7 @@ export function ProjectBilling({ project, client }: SectionProps) {
                       </span>
                     ) : null}
                     <StatusPill file={current} mode={pillMode} status={status} />
-                    <span className="w-28 text-right font-semibold tabular-nums">{priceLabel(q, quoteEffectiveTotal(q, mine), locale, t("billing.tm.short"))}</span>
+                    <span className="ml-auto min-w-24 text-right sm:w-28 font-semibold tabular-nums">{priceLabel(q, quoteEffectiveTotal(q, mine), locale, t("billing.tm.short"))}</span>
                     <ChevronRight className="size-4 text-muted-foreground" />
                   </button>
                 </div>
@@ -196,12 +196,12 @@ export function ProjectBilling({ project, client }: SectionProps) {
                   <ul className="divide-y border-t bg-muted/20">
                     {kids.map((k) => (
                       <li key={k.id}>
-                        <button type="button" className="flex w-full items-center gap-3 py-2 pr-4 pl-16 text-left text-sm hover:bg-muted/50" onClick={() => open(k.id)}>
+                        <button type="button" className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 py-2 pr-4 pl-10 text-left text-sm hover:bg-muted/50 sm:pl-16" onClick={() => open(k.id)}>
                           <span className="tabular-nums">{k.number}</span>
                           <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{k.is_addon === 1 ? t("pb.addon") : t("pb.version")}</span>
                           <span className="min-w-0 flex-1 truncate text-muted-foreground">{k.title}</span>
                           <StatusPill file={k} mode={pillMode} status={revisionStatus(k, mine)} />
-                          <span className="w-28 text-right tabular-nums">{priceLabel(k, k.amount, locale, t("billing.tm.short"))}</span>
+                          <span className="ml-auto min-w-24 text-right sm:w-28 tabular-nums">{priceLabel(k, k.amount, locale, t("billing.tm.short"))}</span>
                         </button>
                       </li>
                     ))}
@@ -227,12 +227,12 @@ export function ProjectBilling({ project, client }: SectionProps) {
             <ul className="divide-y">
               {invoices.map((inv) => (
                 <li key={inv.id}>
-                  <button type="button" className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/50" onClick={() => open(inv.id)}>
+                  <button type="button" className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-left hover:bg-muted/50" onClick={() => open(inv.id)}>
                     <span className="font-semibold tabular-nums">{inv.number}</span>
                     <span className="min-w-0 flex-1 truncate">{inv.title}</span>
                     <span className="hidden text-xs tabular-nums text-muted-foreground sm:inline">{inv.issued_on ? formatDate(inv.issued_on, locale) : ""}</span>
                     <StatusPill file={inv} mode={pillMode} status={displayStatus(inv)} />
-                    <span className="w-28 text-right font-semibold tabular-nums">{moneyExact(inv.amount, locale)}</span>
+                    <span className="ml-auto min-w-24 text-right sm:w-28 font-semibold tabular-nums">{moneyExact(inv.amount, locale)}</span>
                     <ChevronRight className="size-4 text-muted-foreground" />
                   </button>
                 </li>

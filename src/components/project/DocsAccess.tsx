@@ -197,7 +197,7 @@ export function DocsAccess({
           </div>
         </td>
         <td className="py-3 text-center">
-          <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
+          <div className="inline-flex rounded-lg border bg-muted/40 p-0.5 max-w-full overflow-x-auto">
             {DOC_LEVELS.map((lv) => {
               const on = shown === lv;
               const blocked = Boolean(max) && rank(lv) > rank(max as DocLevel);
@@ -246,7 +246,7 @@ export function DocsAccess({
 
         <p className="rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">{t("pda.levelsHelp")}</p>
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex w-fit items-center gap-1 rounded-xl border bg-muted/40 p-1">
+          <div className="flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-xl border bg-muted/40 p-1">
             {(
               [
                 ["staff", t("pda.staff"), HardHat, staff.length],

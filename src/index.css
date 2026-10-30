@@ -223,9 +223,21 @@
   }
   html {
     @apply font-sans antialiased;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
   }
   body {
     @apply bg-background text-foreground;
+    overscroll-behavior-x: none;
+  }
+  /* A grid cell may shrink below its content: a wide table or a long word no longer pushes the whole page sideways on a phone. */
+  .grid > * {
+    min-width: 0;
+  }
+  /* No 300 ms wait or accidental zoom when tapping controls. */
+  button, a, summary, label, [role="button"], [role="tab"] {
+    touch-action: manipulation;
   }
   h1, h2, .font-display {
     font-family: var(--font-display);
@@ -476,4 +488,61 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+
+/* ---- Phones and tablets ---- */
+
+/* Page change: a short fade and rise, so moving around feels like an app, not a reload. */
+@keyframes frx-page-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.frx-page-in {
+  animation: frx-page-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Safe areas: the notch, the status bar and the home bar of a phone installed on the home screen. */
+.frx-safe-top { padding-top: env(safe-area-inset-top); }
+.frx-safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+
+/* Lighter paint on small screens: blurring every card and a fixed background make scrolling stutter on a phone. */
+@media (max-width: 1023px) {
+  .frx-paper { background-attachment: scroll; }
+  .frx-glass {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: color-mix(in srgb, var(--card) 96%, transparent);
+  }
+  .frx-glass-strong {
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
+}
+
+/* Touch screens: fingers need bigger targets, and a 16 px field stops iPhones zooming in when it is focused. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+  [data-slot="button"]:not([data-size="xs"]):not([data-size="icon-xs"]) {
+    min-height: 40px;
+  }
+  [data-slot="button"][data-size="icon"],
+  [data-slot="button"][data-size="icon-sm"] {
+    min-width: 40px;
+  }
+  [role="menuitem"], [role="option"] {
+    min-height: 40px;
+  }
+}
+
+/* Smooth scrolling for people who have not asked for less motion; momentum scrolling inside panels. */
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
+.overflow-y-auto, .overflow-auto, .overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
 }

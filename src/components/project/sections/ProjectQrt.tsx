@@ -154,7 +154,7 @@ export function ProjectQrt({ project, client, people, members }: SectionProps) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1 rounded-lg border bg-muted/40 p-0.5">
+          <div className="flex items-center gap-1 rounded-lg border bg-muted/40 p-0.5 max-w-full overflow-x-auto">
             {(["all", "open", "answered"] as const).map((f) => (
               <Button key={f} type="button" size="sm" variant={filter === f ? "default" : "ghost"} className="h-7 px-3 text-xs" onClick={() => setFilter(f)}>
                 {t(`qrt.filter.${f}`)}

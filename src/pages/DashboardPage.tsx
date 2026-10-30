@@ -26,6 +26,7 @@ import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
 import type { Client, Project } from "@/lib/types";
 import { getAccessibleClientIds, getAccessibleProjectIds } from "@/lib/access";
+import { InstallAppBanner } from "@/components/InstallAppBanner";
 import {
   DEFAULT_DASHBOARD,
   loadDashboardLayout,
@@ -211,6 +212,7 @@ export function DashboardPage() {
           )
         }
       />
+      <InstallAppBanner />
       {isClient ? null : (
       <DailySummary
         userId={user?.id}

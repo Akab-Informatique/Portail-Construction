@@ -94,7 +94,7 @@ export function ClientBillingPage() {
       <PageHeader eyebrow={t("nav.section.accounting")} title={t("nav.clientBilling")} />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex w-fit items-center gap-1 rounded-xl border bg-muted/40 p-1">
+        <div className="flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-xl border bg-muted/40 p-1">
           {(
             [
               ["invoices", t("pb.invoices"), ReceiptText, invoices.length, late.length],

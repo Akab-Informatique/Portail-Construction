@@ -141,7 +141,7 @@ export function ReportsPage() {
       </Card>
 
       {standard.length > 0 && canCustom ? (
-        <div className="flex w-fit items-center gap-1 rounded-xl border bg-muted/40 p-1">
+        <div className="flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-xl border bg-muted/40 p-1">
           {(["standard", "custom"] as const).map((id) => (
             <button
               key={id}
