@@ -493,13 +493,14 @@
 
 /* ---- Phones and tablets ---- */
 
-/* Page change: a short fade and rise, so moving around feels like an app, not a reload. */
+/* Page change: a short fade, so moving around feels like an app, not a reload. Opacity only, and never held after it ends:
+   a transform on the page would turn a full-screen panel inside it (like Setup) into a thin bar. */
 @keyframes frx-page-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: none; }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 .frx-page-in {
-  animation: frx-page-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: frx-page-in 0.22s ease-out backwards;
 }
 
 /* Safe areas: the notch, the status bar and the home bar of a phone installed on the home screen. */
