@@ -142,6 +142,8 @@ ALTER TABLE project_tasks ADD COLUMN IF NOT EXISTS updated_on TEXT;
 UPDATE project_tasks SET updated_on = to_char(created_at, 'YYYY-MM-DD') WHERE updated_on IS NULL;
 ALTER TABLE project_notes ADD COLUMN IF NOT EXISTS auto INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE project_notes ADD COLUMN IF NOT EXISTS auto_key TEXT;
+ALTER TABLE project_notes ADD COLUMN IF NOT EXISTS dismissed INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE project_notes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;
 CREATE TABLE IF NOT EXISTS form_templates (id SERIAL PRIMARY KEY, name TEXT NOT NULL, description TEXT, definition TEXT NOT NULL, created_by INTEGER, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
 CREATE TABLE IF NOT EXISTS form_entries (id SERIAL PRIMARY KEY, project_id INTEGER NOT NULL, template_key TEXT NOT NULL, template_name TEXT NOT NULL, definition TEXT NOT NULL, data TEXT NOT NULL, entry_date TEXT NOT NULL, created_by INTEGER, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
 CREATE TABLE IF NOT EXISTS personal_notes (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL, title TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', project_id INTEGER, shared_note_id INTEGER, shared_visibility TEXT, created_on TEXT NOT NULL, updated_on TEXT NOT NULL);

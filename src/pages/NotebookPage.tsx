@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { and, desc, eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { Check, Loader2, Lock, NotebookPen, Plus, Search, Send, Trash2, Undo2 } from "lucide-react";
 import { db, dbReady, schema } from "../db";
 import { useAuth } from "@/lib/auth";
@@ -9,6 +9,7 @@ import { useWorkspace } from "@/lib/workspace";
 import { formatDateTime } from "@/lib/format";
 import { projectColor } from "@/lib/project-colors";
 import { copyAttachments, removeAttachmentsOf } from "@/lib/project-files";
+import { NOTES_EVENT, deletePersonalNote, deleteProjectNote, notifyNotesChanged, projectNoteText, pushToProjectNote, reconcileNotebook } from "@/lib/notes-sync";
 import { Attachments } from "@/components/project/Attachments";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -27,7 +28,6 @@ const NO_PROJECT = 0;
 const SAVE_DELAY = 700;
 
 const stamp = () => new Date().toISOString();
-const projectNoteText = (n: { title: string; body: string }) => [n.title.trim(), n.body.trim()].filter(Boolean).join("\n\n");
 const draftValues = (d: Draft) => ({ title: d.title, body: d.body, project_id: d.project_id === "none" ? null : Number(d.project_id), updated_on: stamp() });
 
 /**
@@ -50,17 +50,33 @@ export function NotebookPage() {
   const timer = useRef<number | undefined>(undefined);
   const latest = useRef(draft);
   latest.current = draft;
+  const notesRef = useRef<Note[]>([]);
+  notesRef.current = notes;
+  const selectedRef = useRef<number | null>(null);
+  selectedRef.current = selected;
 
   const load = useCallback(async () => {
     await dbReady;
     if (!user) return;
-    const rows = await db.select().from(schema.personal_notes).where(eq(schema.personal_notes.user_id, user.id)).orderBy(desc(schema.personal_notes.updated_on), desc(schema.personal_notes.id));
+    const read = () => db.select().from(schema.personal_notes).where(eq(schema.personal_notes.user_id, user.id)).orderBy(desc(schema.personal_notes.updated_on), desc(schema.personal_notes.id));
+    let rows = await read();
+    // a page whose project note was edited or deleted in the project catches up with it
+    if (await reconcileNotebook(rows).catch(() => false)) rows = await read();
     setNotes(rows);
+    // the open page shows what the project changed, unless there are keystrokes still waiting to be saved
+    const open = rows.find((n) => n.id === selectedRef.current);
+    if (open && !dirty.current) {
+      setDraft({ title: open.title, body: open.body, project_id: open.project_id ? String(open.project_id) : "none" });
+      setVisibility((open.shared_visibility as Visibility) || "internal");
+    }
     return rows;
   }, [user]);
 
   useEffect(() => {
     void load().then((rows) => rows?.length && setSelected((cur) => cur ?? rows[0].id));
+    const on = () => void load();
+    window.addEventListener(NOTES_EVENT, on);
+    return () => window.removeEventListener(NOTES_EVENT, on);
   }, [load]);
 
   const note = notes.find((n) => n.id === selected) ?? null;
@@ -84,6 +100,9 @@ export function NotebookPage() {
       setState("saving");
       await db.update(schema.personal_notes).set(draftValues(value)).where(eq(schema.personal_notes.id, id));
       dirty.current = false;
+      // a page already sent to its project keeps that project note in step, as it is edited
+      const page = notesRef.current.find((n) => n.id === id);
+      if (page?.shared_note_id && page.project_id === (value.project_id === "none" ? null : Number(value.project_id))) await pushToProjectNote(page, value);
       setState("saved");
       await load();
     },
@@ -107,7 +126,12 @@ export function NotebookPage() {
     return () => {
       if (dirty.current && id) {
         window.clearTimeout(timer.current);
-        void db.update(schema.personal_notes).set(draftValues(latest.current)).where(eq(schema.personal_notes.id, id));
+        const page = notesRef.current.find((n) => n.id === id);
+        void db
+          .update(schema.personal_notes)
+          .set(draftValues(latest.current))
+          .where(eq(schema.personal_notes.id, id))
+          .then(() => (page?.shared_note_id ? pushToProjectNote(page, latest.current) : undefined));
       }
     };
   }, [selected]);
@@ -120,11 +144,11 @@ export function NotebookPage() {
   }
 
   async function remove(n: Note) {
-    if (!window.confirm(t("nb.confirmDelete"))) return;
+    if (!window.confirm(n.shared_note_id ? t("nb.confirmDeleteShared") : t("nb.confirmDelete"))) return;
     window.clearTimeout(timer.current);
     dirty.current = false;
-    await removeAttachmentsOf(NO_PROJECT, "pnote", n.id);
-    await db.delete(schema.personal_notes).where(eq(schema.personal_notes.id, n.id));
+    // the copy sent to the project goes too, with its files and comments
+    await deletePersonalNote(n);
     const rows = await load();
     setSelected(rows?.[0]?.id ?? null);
   }
@@ -137,15 +161,16 @@ export function NotebookPage() {
       await save(note.id, draft);
       const text = projectNoteText(draft);
       if (note.shared_note_id) {
-        await db.update(schema.project_notes).set({ body: text, visibility }).where(eq(schema.project_notes.id, note.shared_note_id));
+        await db.update(schema.project_notes).set({ body: text, visibility, updated_at: new Date() }).where(eq(schema.project_notes.id, note.shared_note_id));
         await removeAttachmentsOf(projectId, "note", note.shared_note_id);
         await copyAttachments({ projectId: NO_PROJECT, owner: "pnote", ownerId: note.id }, { projectId, owner: "note", ownerId: note.shared_note_id }, user.id);
         await db.update(schema.personal_notes).set({ shared_visibility: visibility }).where(eq(schema.personal_notes.id, note.id));
       } else {
-        const [created] = await db.insert(schema.project_notes).values({ project_id: projectId, user_id: user.id, body: text, visibility }).returning();
+        const [created] = await db.insert(schema.project_notes).values({ project_id: projectId, user_id: user.id, body: text, visibility, created_at: new Date() }).returning();
         await copyAttachments({ projectId: NO_PROJECT, owner: "pnote", ownerId: note.id }, { projectId, owner: "note", ownerId: created.id }, user.id);
         await db.update(schema.personal_notes).set({ shared_note_id: created.id, shared_visibility: visibility }).where(eq(schema.personal_notes.id, note.id));
       }
+      notifyNotesChanged();
       await load();
     } finally {
       setSending(false);
@@ -154,9 +179,7 @@ export function NotebookPage() {
 
   async function unlink() {
     if (!note?.shared_note_id || !note.project_id) return;
-    await removeAttachmentsOf(note.project_id, "note", note.shared_note_id);
-    await db.delete(schema.project_notes).where(and(eq(schema.project_notes.id, note.shared_note_id), eq(schema.project_notes.project_id, note.project_id)));
-    await db.update(schema.personal_notes).set({ shared_note_id: null, shared_visibility: null }).where(eq(schema.personal_notes.id, note.id));
+    await deleteProjectNote({ id: note.shared_note_id, project_id: note.project_id, auto: 0 });
     await load();
   }
 
@@ -327,7 +350,11 @@ export function NotebookPage() {
                 {draft.project_id !== "none" ? (
                   <div className="w-full max-w-xs space-y-1.5">
                     <Label className="text-[11px] uppercase tracking-wider text-[#6b665a]">{t("nb.sendAs")}</Label>
-                    <Select value={visibility} onValueChange={(v) => setVisibility(v as Visibility)}>
+                    <Select value={visibility} onValueChange={(v) => {
+                      setVisibility(v as Visibility);
+                      // already sent: who can read it changes in the project at once
+                      if (note.shared_note_id) void pushToProjectNote(note, draft, v).then(() => db.update(schema.personal_notes).set({ shared_visibility: v }).where(eq(schema.personal_notes.id, note.id)));
+                    }}>
                       <SelectTrigger className="w-full bg-white/80 dark:bg-white/80 dark:hover:bg-white/90">
                         <SelectValue />
                       </SelectTrigger>

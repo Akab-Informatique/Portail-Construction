@@ -48,7 +48,8 @@ export function formatDate(value: string | Date | null | undefined, locale?: Loc
 
 export function formatDateTime(value: string | Date | null | undefined, locale?: Locale) {
   if (!value) return "—";
-  const d = typeof value === "string" ? new Date(value) : value;
+  // A database may give "2026-10-30 14:05:00" (a space, no zone), which some browsers cannot read: make it ISO.
+  const d = typeof value === "string" ? new Date(/^\d{4}-\d{2}-\d{2} \d/.test(value) ? `${value.replace(" ", "T")}${/[zZ]|[+-]\d{2}:?\d{2}$/.test(value) ? "" : "Z"}` : value) : value;
   if (Number.isNaN(d.getTime())) return typeof value === "string" ? value : "—";
   return new Intl.DateTimeFormat(localeTag(locale), {
     year: "numeric",

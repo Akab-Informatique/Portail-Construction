@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { asc, desc, eq } from "drizzle-orm";
-import { Bot, Camera, MessageSquare, Eye, EyeOff, Loader2, Paperclip, Send, Trash2, X } from "lucide-react";
+import { Bot, Camera, Check, MessageSquare, Eye, EyeOff, Loader2, Paperclip, Pencil, Send, Trash2, X } from "lucide-react";
 import { syncAutoNotes } from "@/lib/task-activity";
 import { db, schema } from "../../../db";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { formatDateTime } from "@/lib/format";
 import { projectColor } from "@/lib/project-colors";
-import { addAttachment, countAttachments, removeAttachmentsOf } from "@/lib/project-files";
+import { addAttachment, countAttachments } from "@/lib/project-files";
+import { NOTES_EVENT, deleteProjectNote, notifyNotesChanged, updateProjectNote } from "@/lib/notes-sync";
 import { notifyEvent, notifySummary, sendNotification } from "@/lib/notify";
 import { logActivity } from "@/lib/activity";
 import { Attachments } from "@/components/project/Attachments";
@@ -49,6 +50,9 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
   const [comments, setComments] = useState<Record<number, Comment[]>>({});
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [sendingComment, setSendingComment] = useState<number | null>(null);
+  /** The note being edited here, with its new text and who it is for. */
+  const [editing, setEditing] = useState<{ id: number; body: string; visibility: string } | null>(null);
+  const [saving, setSaving] = useState(false);
   const load = useCallback(async () => {
     // The portal's own notes about late or stalled tasks, for administrators only.
     if (isAdminUser) await syncAutoNotes(project, t as never, locale).catch(() => 0);
@@ -66,6 +70,10 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
   }, [project.id, isAdminUser]);
   useEffect(() => {
     void load();
+    // an edit or a deletion made from the notebook (or another tab of the project) shows here at once
+    const on = () => void load();
+    window.addEventListener(NOTES_EVENT, on);
+    return () => window.removeEventListener(NOTES_EVENT, on);
   }, [load]);
 
   const staff = people.filter((p) => p.user_type === "internal");
@@ -94,7 +102,7 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
     setBusy(true);
     setMessage(null);
     try {
-      const [row] = await db.insert(schema.project_notes).values({ project_id: project.id, user_id: user?.id ?? null, body: text, visibility }).returning();
+      const [row] = await db.insert(schema.project_notes).values({ project_id: project.id, user_id: user?.id ?? null, body: text, visibility, created_at: new Date() }).returning();
       for (const file of pending) await addAttachment(file, { projectId: project.id, owner: "note", ownerId: row.id, userId: user?.id ?? null }).catch(() => undefined);
       await logActivity({ action: "added note", details: text.slice(0, 80), projectId: project.id, userId: user?.id });
       if (notify.userIds.length && notify.channels.length) {
@@ -109,13 +117,27 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
       setBody("");
       setPending([]);
       await load();
+      notifyNotesChanged();
     } finally {
       setBusy(false);
     }
   }
 
+  async function saveEdit() {
+    if (!editing || !editing.body.trim()) return;
+    setSaving(true);
+    try {
+      await updateProjectNote(editing.id, { body: editing.body.trim(), visibility: editing.visibility });
+      await logActivity({ action: "edited note", details: editing.body.trim().slice(0, 80), projectId: project.id, userId: user?.id });
+      setEditing(null);
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  }
+
   // Notes written by the portal are for administrators only, for now.
-  const visible = notes.filter((n) => (viewer ? n.visibility === "everyone" && n.auto === 0 : n.visibility !== "admin" || isAdminUser));
+  const visible = notes.filter((n) => n.dismissed !== 1).filter((n) => (viewer ? n.visibility === "everyone" && n.auto === 0 : n.visibility !== "admin" || isAdminUser));
   const shown = visible.filter((n) => (filter === "auto" ? n.auto === 1 : filter === "all" || n.visibility === filter));
 
   return (
@@ -204,12 +226,20 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
                       )}
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{n.auto === 1 ? t("note.autoAuthor") : who(n.user_id)}</p>
-                        <p className="text-xs text-muted-foreground">{formatDateTime(n.created_at, locale)}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatDateTime(n.created_at, locale)}
+                          {n.updated_at ? ` · ${t("note.edited")} ${formatDateTime(n.updated_at, locale)}` : ""}
+                        </p>
                       </div>
                       <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold", n.visibility === "everyone" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : n.visibility === "admin" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-muted text-muted-foreground")}>
                         {n.visibility === "everyone" ? <Eye className="size-3" /> : <EyeOff className="size-3" />}
                         {n.visibility === "admin" ? t("note.vis.admin") : t(`note.vis.${n.visibility === "everyone" ? "everyone" : "internal"}`)}
                       </span>
+                      {!viewer && (mine || isAdmin) && n.auto === 0 ? (
+                        <Button size="icon-sm" variant="ghost" aria-label={t("note.edit")} title={t("note.edit")} onClick={() => setEditing({ id: n.id, body: n.body, visibility: n.visibility })}>
+                          <Pencil className="size-4" />
+                        </Button>
+                      ) : null}
                       {!viewer && (mine || isAdmin) ? (
                         <Button
                           size="icon-sm"
@@ -217,8 +247,7 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
                           aria-label={t("exp.delete")}
                           onClick={async () => {
                             if (!window.confirm(t("note.deleteConfirm"))) return;
-                            await removeAttachmentsOf(project.id, "note", n.id);
-                            await db.delete(schema.project_notes).where(eq(schema.project_notes.id, n.id));
+                            await deleteProjectNote({ id: n.id, project_id: project.id, auto: n.auto });
                             await load();
                           }}
                         >
@@ -226,7 +255,31 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
                         </Button>
                       ) : null}
                     </div>
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed">{n.body}</p>
+                    {editing?.id === n.id ? (
+                      <div className="space-y-2">
+                        <Textarea rows={5} value={editing.body} onChange={(e) => setEditing({ ...editing, body: e.target.value })} />
+                        <div className="flex flex-wrap items-center gap-2">
+                          {n.visibility !== "admin" ? (
+                            <div className="flex gap-1 rounded-lg border bg-muted/40 p-0.5">
+                              {(["internal", "everyone"] as const).map((v) => (
+                                <Button key={v} type="button" size="sm" variant={editing.visibility === v ? "default" : "ghost"} className="h-7 px-3 text-xs" onClick={() => setEditing({ ...editing, visibility: v })}>
+                                  {t(`note.vis.${v}`)}
+                                </Button>
+                              ))}
+                            </div>
+                          ) : null}
+                          <Button type="button" size="sm" onClick={() => void saveEdit()} disabled={saving || !editing.body.trim()}>
+                            {saving ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
+                            {t("settings.save")}
+                          </Button>
+                          <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(null)}>
+                            {t("clients.cancel")}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed">{n.body}</p>
+                    )}
                     {fileCount[n.id] ? <Attachments projectId={project.id} owner="note" ownerId={n.id} canEdit={!viewer && (mine || isAdmin)} onChange={() => void load()} /> : null}
                     <div className="space-y-2 border-t pt-3">
                       {(comments[n.id] ?? []).map((c) => (

@@ -1,4 +1,16 @@
-import { integer, pgTable, real, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { customType, integer, pgTable, real, serial, text } from "drizzle-orm/pg-core";
+
+/**
+ * A timestamp column. The database API sends timestamps as ISO text ("2026-10-30T14:05:00.000Z"); drizzle's own
+ * timestamp type expects another form and turned every one into "Invalid Date", so no date saved with a note, a question
+ * or a comment could be shown. This reads either form, in every browser.
+ */
+const timestamp = customType<{ data: Date; driverData: string }>({
+  dataType: () => "timestamp",
+  fromDriver: (value) => new Date(/[zZ]$|[+-]d{2}:?d{2}$/.test(value) ? value : `${value.replace(" ", "T")}Z`),
+  toDriver: (value) => value.toISOString(),
+});
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -16,7 +28,7 @@ export const users = pgTable("users", {
   all_clients: integer("all_clients").notNull().default(1),
   must_change_password: integer("must_change_password").notNull().default(0),
   tutorial_done: integer("tutorial_done").notNull().default(0),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const clients = pgTable("clients", {
@@ -31,7 +43,7 @@ export const clients = pgTable("clients", {
   zip: text("zip"),
   notes: text("notes"),
   status: text("status").notNull(),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const client_users = pgTable("client_users", {
@@ -39,7 +51,7 @@ export const client_users = pgTable("client_users", {
   client_id: integer("client_id").notNull(),
   user_id: integer("user_id").notNull(),
   is_primary: integer("is_primary").notNull(),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const projects = pgTable("projects", {
@@ -63,7 +75,7 @@ export const projects = pgTable("projects", {
   geo_radius_m: integer("geo_radius_m"),
   require_geofence: integer("require_geofence").notNull().default(0),
   color: text("color"),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const board_columns = pgTable("board_columns", {
@@ -73,7 +85,7 @@ export const board_columns = pgTable("board_columns", {
   sort_order: integer("sort_order").notNull(),
   is_system: integer("is_system").notNull(),
   color: text("color").notNull(),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const project_members = pgTable("project_members", {
@@ -81,7 +93,7 @@ export const project_members = pgTable("project_members", {
   project_id: integer("project_id").notNull(),
   user_id: integer("user_id").notNull(),
   role: text("role").notNull(),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const user_permissions = pgTable("user_permissions", {
@@ -94,7 +106,7 @@ export const user_permissions = pgTable("user_permissions", {
   can_create: integer("can_create").notNull(),
   can_edit: integer("can_edit").notNull(),
   can_delete: integer("can_delete").notNull(),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const project_tasks = pgTable("project_tasks", {
@@ -119,7 +131,7 @@ export const project_tasks = pgTable("project_tasks", {
   progress: integer("progress"),
   /** The day anything about the task last changed (fields, checklist, notes, files), as YYYY-MM-DD. */
   updated_on: text("updated_on"),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const budget_items = pgTable("budget_items", {
@@ -130,7 +142,7 @@ export const budget_items = pgTable("budget_items", {
   estimated: real("estimated").notNull(),
   actual: real("actual").notNull(),
   status: text("status").notNull(),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const calendar_events = pgTable("calendar_events", {
@@ -141,7 +153,7 @@ export const calendar_events = pgTable("calendar_events", {
   end_date: text("end_date"),
   event_type: text("event_type").notNull(),
   description: text("description"),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const documents = pgTable("documents", {
@@ -151,7 +163,7 @@ export const documents = pgTable("documents", {
   category: text("category").notNull(),
   notes: text("notes"),
   uploaded_by: integer("uploaded_by"),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const sharepoint_folders = pgTable("sharepoint_folders", {
@@ -161,7 +173,7 @@ export const sharepoint_folders = pgTable("sharepoint_folders", {
   sp_item_id: text("sp_item_id").notNull(),
   sp_drive_id: text("sp_drive_id").notNull(),
   path: text("path").notNull(),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const sharepoint_shares = pgTable("sharepoint_shares", {
@@ -174,7 +186,7 @@ export const sharepoint_shares = pgTable("sharepoint_shares", {
   can_view: integer("can_view").notNull(),
   can_upload: integer("can_upload").notNull(),
   can_edit: integer("can_edit").notNull(),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const rfis = pgTable("rfis", {
@@ -186,7 +198,7 @@ export const rfis = pgTable("rfis", {
   status: text("status").notNull(),
   assigned_to: integer("assigned_to"),
   due_date: text("due_date"),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const change_orders = pgTable("change_orders", {
@@ -197,7 +209,7 @@ export const change_orders = pgTable("change_orders", {
   description: text("description"),
   amount: real("amount").notNull(),
   status: text("status").notNull(),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const daily_logs = pgTable("daily_logs", {
@@ -208,7 +220,7 @@ export const daily_logs = pgTable("daily_logs", {
   crew_count: integer("crew_count").notNull(),
   notes: text("notes"),
   created_by: integer("created_by"),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const punch_items = pgTable("punch_items", {
@@ -220,7 +232,7 @@ export const punch_items = pgTable("punch_items", {
   priority: text("priority").notNull(),
   assigned_to: integer("assigned_to"),
   due_date: text("due_date"),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const safety_incidents = pgTable("safety_incidents", {
@@ -237,7 +249,7 @@ export const safety_incidents = pgTable("safety_incidents", {
   immediate_action: text("immediate_action"),
   corrective_action: text("corrective_action"),
   reported_by: integer("reported_by"),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const project_reports = pgTable("project_reports", {
@@ -246,7 +258,7 @@ export const project_reports = pgTable("project_reports", {
   name: text("name").notNull(),
   sections: text("sections").notNull(),
   created_by: integer("created_by"),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const activities = pgTable("activities", {
@@ -256,7 +268,7 @@ export const activities = pgTable("activities", {
   user_id: integer("user_id"),
   action: text("action").notNull(),
   details: text("details"),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const access_groups = pgTable("access_groups", {
@@ -265,7 +277,7 @@ export const access_groups = pgTable("access_groups", {
   description: text("description"),
   audience: text("audience").notNull(),
   all_clients: integer("all_clients").notNull(),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const access_group_permissions = pgTable("access_group_permissions", {
@@ -276,28 +288,28 @@ export const access_group_permissions = pgTable("access_group_permissions", {
   can_create: integer("can_create").notNull(),
   can_edit: integer("can_edit").notNull(),
   can_delete: integer("can_delete").notNull(),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const access_group_clients = pgTable("access_group_clients", {
   id: serial("id").primaryKey(),
   group_id: integer("group_id").notNull(),
   client_id: integer("client_id").notNull(),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const user_access_groups = pgTable("user_access_groups", {
   id: serial("id").primaryKey(),
   user_id: integer("user_id").notNull(),
   group_id: integer("group_id").notNull(),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const user_clients = pgTable("user_clients", {
   id: serial("id").primaryKey(),
   user_id: integer("user_id").notNull(),
   client_id: integer("client_id").notNull(),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const billing_documents = pgTable("billing_documents", {
@@ -324,7 +336,7 @@ export const billing_documents = pgTable("billing_documents", {
   signed_by: text("signed_by"),
   signed_at: text("signed_at"),
   signature: text("signature"),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 /** Client change requests and the priced annexes (add-ons) that go with a quote. */
@@ -354,7 +366,7 @@ export const quote_changes = pgTable("quote_changes", {
   signature: text("signature"),
   /** 0 = FRX staff have not looked at this yet (drives the notification bubble). */
   staff_seen: integer("staff_seen").notNull().default(0),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 /**
@@ -399,7 +411,7 @@ export const billing_files = pgTable("billing_files", {
   signature: text("signature"),
   /** 0 = staff have not seen the client's decision yet (drives the notification bubble). */
   staff_seen: integer("staff_seen").notNull().default(1),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 /** The file bytes (base64), kept apart so list queries stay light. Read only through the server. */
@@ -407,7 +419,7 @@ export const billing_file_blobs = pgTable("billing_file_blobs", {
   id: serial("id").primaryKey(),
   file_id: integer("file_id").notNull(),
   data: text("data").notNull(),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 /** A client's request to modify or add to an uploaded quote. */
@@ -423,7 +435,7 @@ export const billing_requests = pgTable("billing_requests", {
   requested_by: integer("requested_by"),
   requested_at: text("requested_at"),
   staff_seen: integer("staff_seen").notNull().default(0),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 /**
@@ -443,7 +455,7 @@ export const project_costs = pgTable("project_costs", {
   paid: integer("paid").notNull().default(0),
   /** The supplier invoice PDF (a private billing_files row of kind "supplier"). */
   file_id: integer("file_id"),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 /** PRIVATE to FRX staff (clients can never read it): the target margin of a project. */
@@ -454,14 +466,14 @@ export const project_finance = pgTable("project_finance", {
   target_margin_pct: real("target_margin_pct"),
   /** Quick single amount: what FRX expects the whole project to cost (before taxes). */
   planned_cost: real("planned_cost"),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const app_settings = pgTable("app_settings", {
   id: serial("id").primaryKey(),
   key: text("key").notNull(),
   value: text("value"),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const sessions = pgTable("sessions", {
@@ -470,7 +482,7 @@ export const sessions = pgTable("sessions", {
   user_id: integer("user_id").notNull(),
   expires_at: text("expires_at").notNull(),
   view_as: text("view_as").notNull().default("admin"),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const time_punches = pgTable("time_punches", {
@@ -485,7 +497,7 @@ export const time_punches = pgTable("time_punches", {
   distance_m: integer("distance_m"),
   status: text("status").notNull(),
   note: text("note"),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 /** Employee expenses. Staff see and edit only their own while submitted; an administrator approves and reimburses. */
@@ -499,7 +511,7 @@ export const expenses = pgTable("expenses", {
   description: text("description"),
   amount: real("amount").notNull(),
   status: text("status").notNull(),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 /** A note on a task. */
@@ -509,7 +521,7 @@ export const task_notes = pgTable("task_notes", {
   task_id: integer("task_id").notNull(),
   user_id: integer("user_id"),
   body: text("body").notNull(),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 export const task_checklist = pgTable("task_checklist", {
@@ -519,7 +531,7 @@ export const task_checklist = pgTable("task_checklist", {
   label: text("label").notNull(),
   done: integer("done").notNull().default(0),
   sort_order: integer("sort_order").notNull().default(0),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 /** Project notes (a site journal). visibility: "internal" = FRX staff only, "everyone" = shown to the client too. */
@@ -534,7 +546,11 @@ export const project_notes = pgTable("project_notes", {
   auto: integer("auto").notNull().default(0),
   /** What the automatic note is about, so it is only written once ("late:12"). */
   auto_key: text("auto_key"),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  /** 1 = an automatic note the administrator deleted: kept hidden so it is not written again while the cause lasts. */
+  dismissed: integer("dismissed").notNull().default(0),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
+  /** When the note was last edited (null = never). */
+  updated_at: timestamp("updated_at"),
 });
 
 /** QRT: a question and its answer. origin: "staff" or "client". */
@@ -549,7 +565,7 @@ export const project_qrt = pgTable("project_qrt", {
   answered_by: integer("answered_by"),
   answered_at: timestamp("answered_at"),
   prefilled: integer("prefilled").notNull().default(0),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 /**
@@ -566,7 +582,7 @@ export const project_attachments = pgTable("project_attachments", {
   file_size: integer("file_size").notNull(),
   data: text("data").notNull(),
   uploaded_by: integer("uploaded_by"),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 /** "task_id can only start once depends_on_id is finished" (finish to start). */
@@ -575,7 +591,7 @@ export const task_dependencies = pgTable("task_dependencies", {
   project_id: integer("project_id").notNull(),
   task_id: integer("task_id").notNull(),
   depends_on_id: integer("depends_on_id").notNull(),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 /** Form models made in the form creator (the three built-in ones live in code). */
@@ -586,7 +602,7 @@ export const form_templates = pgTable("form_templates", {
   /** JSON: the sections and their questions. */
   definition: text("definition").notNull(),
   created_by: integer("created_by"),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 /** A filled-in form, kept in the project's binder. It carries a copy of the questions so it never changes afterwards. */
@@ -599,7 +615,7 @@ export const form_entries = pgTable("form_entries", {
   data: text("data").notNull(),
   entry_date: text("entry_date").notNull(),
   created_by: integer("created_by"),
-  created_at: timestamp("created_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
 /** A person's private notebook. Only its owner reads it (not even administrators); a note can be sent to a project's notes. */

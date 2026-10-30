@@ -25,7 +25,7 @@ export function ProjectTopNav({ project, backLabel }: { project: Project; backLa
   const [autoCount, setAutoCount] = useState(0);
   const countAuto = useCallback(async () => {
     if (!isAdmin) return;
-    const rows = await db.select({ id: schema.project_notes.id }).from(schema.project_notes).where(and(eq(schema.project_notes.project_id, project.id), eq(schema.project_notes.auto, 1)));
+    const rows = await db.select({ id: schema.project_notes.id }).from(schema.project_notes).where(and(eq(schema.project_notes.project_id, project.id), eq(schema.project_notes.auto, 1), eq(schema.project_notes.dismissed, 0)));
     setAutoCount(rows.length);
   }, [isAdmin, project.id]);
   useEffect(() => {
