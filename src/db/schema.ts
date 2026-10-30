@@ -661,3 +661,15 @@ export const report_access = pgTable("report_access", {
   subject_type: text("subject_type").notNull(),
   subject_id: integer("subject_id").notNull(),
 });
+
+/** Administrators' own to-do list for the portal: features and changes they want, with a priority from 1 (can wait) to 10 (now). */
+export const feature_requests = pgTable("feature_requests", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  notes: text("notes"),
+  priority: integer("priority").notNull().default(5),
+  done: integer("done").notNull().default(0),
+  done_at: timestamp("done_at"),
+  created_by: integer("created_by"),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
+});

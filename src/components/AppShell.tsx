@@ -15,6 +15,7 @@ import {
   FolderKanban,
   LayoutDashboard,
   LayoutGrid,
+  ListChecks,
   LogOut,
   Menu,
   Moon,
@@ -427,6 +428,21 @@ function SidebarBody({
             </button>
           ) : null}
           {isAdmin ? (
+            <button
+              type="button"
+              onClick={() => {
+                onNavigate?.();
+                navigate("/updates");
+              }}
+              title={collapsed ? t("nav.updates") : undefined}
+              aria-label={collapsed ? t("nav.updates") : undefined}
+              className={cn(itemClass(location.pathname.startsWith("/updates"), collapsed), "mb-0.5 w-full")}
+            >
+              <ListChecks className={cn("size-[17px] shrink-0", location.pathname.startsWith("/updates") ? "text-primary" : "opacity-75")} />
+              {!collapsed && t("nav.updates")}
+            </button>
+          ) : null}
+          {isAdmin ? (
             <div className={cn("flex items-center", collapsed && "flex-col gap-1")}>
               <button
                 type="button"
@@ -522,6 +538,7 @@ const CRUMB: Record<string, MessageKey> = {
   tools: "nav.section.client",
   documents: "nav.documents",
   reports: "nav.reports",
+  updates: "nav.updates",
 };
 
 function readCollapsed() {
