@@ -627,7 +627,7 @@ export function AppShell() {
             </SheetTrigger>
             <SheetContent
               side="left"
-              className="w-72 border-none bg-sidebar p-0 text-sidebar-foreground [&>button]:text-sidebar-foreground"
+              className="w-72 max-w-[85vw] border-none bg-sidebar bg-none p-0 text-sidebar-foreground backdrop-blur-none [-webkit-backdrop-filter:none] [&>button]:text-sidebar-foreground"
             >
               <SidebarBody
                 onNavigate={() => setOpen(false)}
