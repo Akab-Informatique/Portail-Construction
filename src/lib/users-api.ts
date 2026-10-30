@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, schema } from "../db";
 import type { User } from "./types";
 
@@ -57,6 +57,8 @@ async function postDb(body: Record<string, unknown>) {
     user?: unknown;
     local?: boolean;
     error?: string;
+    ok?: boolean;
+    email?: string;
   };
   return { ok: res.ok, status: res.status, data };
 }
@@ -179,4 +181,30 @@ export async function updateUser(input: {
   }
   if (ok && data.user) return rowToUser(data.user);
   throw new Error(data.error || "users.error.updateFailed");
+}
+
+/** Sends the person a link to choose their password: "invite" (a new account, valid 7 days) or "reset" (a forgotten password, valid 1 hour). */
+export async function sendUserLink(id: number, kind: "invite" | "reset", locale: string): Promise<{ sent: boolean; local?: boolean; email?: string }> {
+  const { ok, data } = await postDb({ action: "send_user_link", id, kind, locale });
+  if (data.local) return { sent: false, local: true };
+  if (ok && data.ok) return { sent: true, email: String(data.email ?? "") };
+  throw new Error(String(data.error || "users.link.failed"));
+}
+
+/**
+ * Takes a person off a client. Someone who belongs to no other client is deleted with everything that was theirs (rights,
+ * groups, project assignments, notebook); someone who also belongs to another client only leaves this one.
+ */
+export async function removeClientUser(userId: number, clientId: number): Promise<"deleted" | "unlinked"> {
+  await db.delete(schema.client_users).where(and(eq(schema.client_users.user_id, userId), eq(schema.client_users.client_id, clientId)));
+  await db.delete(schema.sharepoint_shares).where(and(eq(schema.sharepoint_shares.user_id, userId), eq(schema.sharepoint_shares.client_id, clientId)));
+  const remaining = await db.select({ id: schema.client_users.id }).from(schema.client_users).where(eq(schema.client_users.user_id, userId));
+  if (remaining.length > 0) return "unlinked";
+  await db.delete(schema.user_permissions).where(eq(schema.user_permissions.user_id, userId));
+  await db.delete(schema.user_access_groups).where(eq(schema.user_access_groups.user_id, userId));
+  await db.delete(schema.user_clients).where(eq(schema.user_clients.user_id, userId));
+  await db.delete(schema.project_members).where(eq(schema.project_members.user_id, userId));
+  await db.delete(schema.sharepoint_shares).where(eq(schema.sharepoint_shares.user_id, userId));
+  await db.delete(schema.users).where(eq(schema.users.id, userId));
+  return "deleted";
 }

@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { eq } from "drizzle-orm";
-import { Building2, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { and, eq, ne } from "drizzle-orm";
+import { Building2, KeyRound, Loader2, Mail, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { db, dbReady, schema } from "../../db";
 import { useAuth } from "@/lib/auth";
 import { logActivity } from "@/lib/activity";
@@ -35,10 +35,12 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useI18n } from "@/lib/i18n";
 import { groupFitsUser, isDefaultClientGroup, setUserGroups } from "@/lib/access";
+import { cn } from "@/lib/utils";
 import { GroupPicker } from "./GroupPicker";
 import { GroupsEditor } from "./GroupsEditor";
 import type { AccessGroup, Client, Project, User } from "@/lib/types";
 import { hashPassword, randomPassword } from "@/lib/password";
+import { removeClientUser, sendUserLink, updateUser } from "@/lib/users-api";
 
 const emptyClient = {
   name: "",
@@ -66,9 +68,15 @@ const emptyUser = {
 export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) {
   const { user } = useAuth();
   const { refresh } = useWorkspace();
-  const { t } = useI18n();
+  const { t, tr, locale } = useI18n();
   const [loading, setLoading] = useState(true);
   const [clients, setClients] = useState<Client[]>([]);
+  /** The client user being edited or removed, with the client they were opened from. */
+  const [editUser, setEditUser] = useState<{ person: User; clientId: number } | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", email: "", title: "", phone: "", is_primary: false, active: true });
+  const [removeUser, setRemoveUser] = useState<{ person: User; clientId: number; others: number } | null>(null);
+  const [linkBusy, setLinkBusy] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ tone: "ok" | "bad"; text: string; clientId?: number } | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [people, setPeople] = useState<User[]>([]);
   const [links, setLinks] = useState<{ client_id: number; user_id: number; is_primary: number }[]>([]);
@@ -211,6 +219,71 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
       await load();
     } catch (err) {
       console.error("invite user failed", err);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function openEditUser(person: User, clientId: number) {
+    const link = links.find((l) => l.user_id === person.id && l.client_id === clientId);
+    setEditForm({ name: person.name, email: person.email, title: person.title ?? "", phone: person.phone ?? "", is_primary: link?.is_primary === 1, active: person.is_active === 1 });
+    setEditUser({ person, clientId });
+    setNotice(null);
+  }
+
+  async function onSaveUser(e: FormEvent) {
+    e.preventDefault();
+    if (!editUser || !editForm.name.trim() || !editForm.email.trim()) return;
+    setSaving(true);
+    try {
+      const { person, clientId } = editUser;
+      await updateUser({
+        id: person.id,
+        name: editForm.name.trim(),
+        email: editForm.email.trim().toLowerCase(),
+        title: editForm.title.trim() || null,
+        phone: editForm.phone.trim() || null,
+        is_admin: false,
+        is_active: editForm.active,
+        avatar_initials: initials(editForm.name.trim()),
+        must_change_password: person.must_change_password === 1,
+      });
+      await db.update(schema.client_users).set({ is_primary: editForm.is_primary ? 1 : 0 }).where(and(eq(schema.client_users.user_id, person.id), eq(schema.client_users.client_id, clientId)));
+      if (editForm.is_primary) await db.update(schema.client_users).set({ is_primary: 0 }).where(and(eq(schema.client_users.client_id, clientId), ne(schema.client_users.user_id, person.id)));
+      await logActivity({ action: "edited client user", details: editForm.name.trim(), clientId, userId: user?.id });
+      setEditUser(null);
+      await load();
+    } catch (err) {
+      setNotice({ tone: "bad", text: tr(err, "users.error.updateFailed") });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /** An invitation (a new account) or a password reset: the person gets a link by email to choose their password. */
+  async function onSendLink(person: User, kind: "invite" | "reset", clientId: number) {
+    setLinkBusy(`${kind}-${person.id}`);
+    setNotice(null);
+    try {
+      const out = await sendUserLink(person.id, kind, locale);
+      setNotice(out.local ? { tone: "bad", text: t("cu.linkLocal"), clientId } : { tone: "ok", text: t(kind === "invite" ? "cu.inviteSent" : "cu.resetSent", { email: out.email ?? person.email }), clientId });
+    } catch (err) {
+      setNotice({ tone: "bad", text: tr(err, "users.link.failed"), clientId });
+    } finally {
+      setLinkBusy(null);
+    }
+  }
+
+  async function onRemoveUser() {
+    if (!removeUser) return;
+    setSaving(true);
+    try {
+      await removeClientUser(removeUser.person.id, removeUser.clientId);
+      await logActivity({ action: "removed client user", details: removeUser.person.name, clientId: removeUser.clientId, userId: user?.id });
+      setRemoveUser(null);
+      await load();
+    } catch (err) {
+      setNotice({ tone: "bad", text: tr(err, "users.error.updateFailed") });
     } finally {
       setSaving(false);
     }
@@ -361,6 +434,7 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
                       {t("clients.invite")}
                     </Button>
                   </div>
+                  {notice && notice.clientId === c.id ? <p className={cn("mb-2 rounded-lg border px-3 py-2 text-sm", notice.tone === "ok" ? "border-emerald-500/40 bg-emerald-500/10" : "border-destructive/40 bg-destructive/10 text-destructive")}>{notice.text}</p> : null}
                   {members.length === 0 ? (
                     <p className="py-2 text-sm text-muted-foreground">{t("clients.noUsers")}</p>
                   ) : (
@@ -377,9 +451,24 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
                             </p>
                             <p className="truncate text-[11px] text-muted-foreground">{m.person!.email}</p>
                           </div>
-                          <Button variant="ghost" size="sm" asChild>
-                            <Link to={`/config/users/${m.user_id}`}>{t("clients.access")}</Link>
-                          </Button>
+                          {m.person!.is_active !== 1 ? <span className="hidden rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground sm:inline">{t("cu.inactive")}</span> : null}
+                          <div className="flex shrink-0 items-center gap-0.5">
+                            <Button variant="ghost" size="icon-sm" title={t("cu.edit")} aria-label={t("cu.edit")} onClick={() => openEditUser(m.person!, c.id)}>
+                              <Pencil className="size-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon-sm" title={t("cu.resendInvite")} aria-label={t("cu.resendInvite")} disabled={linkBusy !== null || m.person!.is_active !== 1} onClick={() => void onSendLink(m.person!, "invite", c.id)}>
+                              {linkBusy === `invite-${m.user_id}` ? <Loader2 className="size-4 animate-spin" /> : <Mail className="size-4" />}
+                            </Button>
+                            <Button variant="ghost" size="icon-sm" title={t("cu.resetPassword")} aria-label={t("cu.resetPassword")} disabled={linkBusy !== null || m.person!.is_active !== 1} onClick={() => void onSendLink(m.person!, "reset", c.id)}>
+                              {linkBusy === `reset-${m.user_id}` ? <Loader2 className="size-4 animate-spin" /> : <KeyRound className="size-4" />}
+                            </Button>
+                            <Button variant="ghost" size="sm" asChild>
+                              <Link to={`/config/users/${m.user_id}`}>{t("clients.access")}</Link>
+                            </Button>
+                            <Button variant="ghost" size="icon-sm" className="text-destructive hover:text-destructive" title={t("cu.delete")} aria-label={t("cu.delete")} onClick={() => setRemoveUser({ person: m.person!, clientId: c.id, others: links.filter((l) => l.user_id === m.user_id && l.client_id !== c.id).length })}>
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </div>
                         </li>
                       ))}
                     </ul>
@@ -487,6 +576,68 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
             </Button>
             <Button type="button" variant="destructive" disabled={saving} onClick={() => void onDeleteClient()}>
               {saving ? t("clients.saving") : t("config.clients.deleteConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(editUser)} onOpenChange={(o) => !o && setEditUser(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("cu.editTitle")}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={onSaveUser} className="grid gap-4">
+            <Field label={t("clients.fullName")} required>
+              <Input required value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+            </Field>
+            <Field label={t("clients.email")} required>
+              <Input type="email" required value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
+            </Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={t("clients.titleField")}>
+                <Input value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} />
+              </Field>
+              <Field label={t("clients.phone")}>
+                <Input value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
+              </Field>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={editForm.is_primary} onChange={(e) => setEditForm({ ...editForm, is_primary: e.target.checked })} />
+              {t("clients.markPrimary")}
+            </label>
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" className="mt-1" checked={editForm.active} onChange={(e) => setEditForm({ ...editForm, active: e.target.checked })} />
+              <span>
+                {t("cu.active")}
+                <span className="block text-xs text-muted-foreground">{t("cu.activeHint")}</span>
+              </span>
+            </label>
+            {notice?.tone === "bad" ? <p className="text-sm text-destructive">{notice.text}</p> : null}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditUser(null)}>
+                {t("clients.cancel")}
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {t("settings.save")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(removeUser)} onOpenChange={(o) => !o && setRemoveUser(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("cu.deleteTitle", { name: removeUser?.person.name ?? "" })}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">{removeUser && removeUser.others > 0 ? t("cu.unlinkBody") : t("cu.deleteBody")}</p>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setRemoveUser(null)}>
+              {t("clients.cancel")}
+            </Button>
+            <Button type="button" variant="destructive" disabled={saving} onClick={() => void onRemoveUser()}>
+              <Trash2 className="size-4" />
+              {removeUser && removeUser.others > 0 ? t("cu.unlink") : t("cu.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>

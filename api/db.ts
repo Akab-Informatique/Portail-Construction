@@ -889,6 +889,57 @@ async function startPasswordReset(emailRaw: string, locale: string) {
   }
 }
 
+const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const INVITE_DEFAULTS = {
+  en: {
+    subject: "Your {company} portal access",
+    body: "Hello {name},\n\nAn account was created for you on the {company} portal. Choose your password with the link below (valid for 7 days):\n\n{link}\n\nThen sign in with this email address.\n\n{company}",
+  },
+  fr: {
+    subject: "Votre accès au portail {company}",
+    body: "Bonjour {name},\n\nUn compte a été créé pour vous sur le portail {company}. Choisissez votre mot de passe avec le lien ci-dessous (valide 7 jours) :\n\n{link}\n\nConnectez-vous ensuite avec cette adresse courriel.\n\n{company}",
+  },
+};
+
+/**
+ * An administrator sends someone a link to choose a new password: "invite" for a new or not yet activated account (valid
+ * 7 days), "reset" for a forgotten password (valid 1 hour). Unlike the public reset, this says plainly why it failed.
+ */
+async function sendUserLink(userId: number, kind: "invite" | "reset", locale: string) {
+  const found = await getPool().query("SELECT id, name, email, is_active FROM users WHERE id = $1 LIMIT 1", [userId]);
+  const user = found.rows[0] as { id: number; name: string; email: string; is_active: number } | undefined;
+  if (!user) return { error: "users.error.notFound" };
+  if (Number(user.is_active) !== 1) return { error: "users.link.inactive" };
+  const smtpStored = await storedJson<Smtp & { portal_url?: string }>("smtp");
+  const baseUrl = String(process.env.APP_URL || smtpStored?.portal_url || "").trim().replace(/\/+$/, "");
+  if (!/^https?:\/\//i.test(baseUrl)) return { error: "users.link.noPortalUrl" };
+
+  const token = randomBytes(32).toString("hex");
+  const hash = createHash("sha256").update(token).digest("hex");
+  await getPool().query("DELETE FROM password_resets WHERE user_id = $1 OR expires_at < $2", [user.id, new Date().toISOString()]);
+  await getPool().query("INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES ($1, $2, $3)", [
+    hash,
+    user.id,
+    new Date(Date.now() + (kind === "invite" ? INVITE_TTL_MS : RESET_TTL_MS)).toISOString(),
+  ]);
+
+  const lang = locale === "fr" ? "fr" : "en";
+  const templates = await storedJson<Record<string, { subject?: string; body?: string }>>("email_templates");
+  const tpl =
+    kind === "invite"
+      ? INVITE_DEFAULTS[lang]
+      : { subject: templates?.password_reset?.subject || RESET_DEFAULTS[lang].subject, body: templates?.password_reset?.body || RESET_DEFAULTS[lang].body };
+  const company = await storedJson<{ legal_name?: string }>("company");
+  const vars = { name: user.name, link: `${baseUrl}/reset-password?token=${token}`, company: company?.legal_name || "FRX Construction" };
+  try {
+    await sendSystemMail(user.email, fillTemplate(tpl.subject, vars), fillTemplate(tpl.body, vars));
+  } catch (err) {
+    console.error("user link mail failed", err);
+    return { error: "users.link.mailFailed" };
+  }
+  return { ok: true, email: user.email };
+}
+
 async function finishPasswordReset(tokenRaw: string, password: string) {
   if (password.trim().length < 8) return { error: "profile.passwordShort" };
   const hash = createHash("sha256").update(tokenRaw).digest("hex");
@@ -1317,6 +1368,21 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       const result = await finishPasswordReset(String(req.body?.token ?? ""), String(req.body?.password ?? ""));
       if ("error" in result && clientIp) recordLoginFailure(`reset:${clientIp}`);
       return res.status("error" in result ? 400 : 200).json(result);
+    }
+    if (action === "send_user_link") {
+      if (!hasRemoteDb()) return res.status(200).json({ local: true });
+      const session = await loadSessionUser(req);
+      if (!session) {
+        res.status(401).json({ error: "err.unauthorized" });
+        return;
+      }
+      if (Number(session.is_admin) !== 1 || session.view_as === "client") {
+        res.status(403).json({ error: "err.forbidden" });
+        return;
+      }
+      await ensureSchema();
+      const out = await sendUserLink(Number(req.body?.id), req.body?.kind === "invite" ? "invite" : "reset", String(req.body?.locale ?? "en"));
+      return res.status("error" in out ? 400 : 200).json(out);
     }
     if (action === "smtp_test") {
       if (!hasRemoteDb()) return res.status(200).json({ local: true });
