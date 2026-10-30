@@ -34,7 +34,7 @@ const MIME = {
   ".wasm": "application/wasm",
 };
 
-const COMPRESSIBLE = new Set([".html", ".js", ".css", ".json", ".webmanifest", ".svg", ".txt", ".wasm", ".map"]);
+const COMPRESSIBLE = new Set([".html", ".js", ".mjs", ".css", ".json", ".webmanifest", ".svg", ".txt", ".wasm", ".map"]);
 /** Compressed copies of static files, keyed by path + encoding. Files are immutable per build. */
 const compressedCache = new Map();
 

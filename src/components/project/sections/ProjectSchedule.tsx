@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { asc, eq } from "drizzle-orm";
-import { CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Circle, GanttChartSquare, ListChecks, Lock, MessageSquare, Paperclip, Plus, Rows3, Search, TrendingUp } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Circle, FileUp, GanttChartSquare, ListChecks, Lock, MessageSquare, Paperclip, Plus, Rows3, Search, TrendingUp } from "lucide-react";
 import { db, schema } from "../../../db";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -14,6 +14,7 @@ import { logActivity } from "@/lib/activity";
 import { PortfolioCalendar, marksFromPortfolio } from "@/components/PortfolioCalendar";
 import { TaskDrawer, type Task } from "@/components/project/TaskDrawer";
 import { ScheduleBreakdown } from "@/components/project/ScheduleBreakdown";
+import { ScheduleImportDialog } from "@/components/project/ScheduleImportDialog";
 import { ScheduleForecast } from "@/components/project/ScheduleForecast";
 import type { Dep } from "@/lib/schedule-forecast";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -77,6 +78,7 @@ export function ProjectSchedule({ project, people }: SectionProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [addPreset, setAddPreset] = useState<{ kind: "task" | "phase" | "break"; parentId: number | null }>({ kind: "task", parentId: null });
   const [eventOpen, setEventOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   /** Tasks whose dependency links are open in the list. */
   const [relOpen, setRelOpen] = useState<Set<number>>(new Set());
   const [flashId, setFlashId] = useState<number | null>(null);
@@ -212,6 +214,10 @@ export function ProjectSchedule({ project, people }: SectionProps) {
               {t("sch.addEvent")}
             </Button>
           ) : null}
+          <Button variant="outline" onClick={() => setImportOpen(true)}>
+            <FileUp className="size-4" />
+            {t("simp.button")}
+          </Button>
           <Button
             onClick={() => {
               setAddPreset({ kind: "task", parentId: null });
@@ -454,6 +460,7 @@ export function ProjectSchedule({ project, people }: SectionProps) {
 
       {viewer ? null : <TaskDrawer project={project} task={openTask} people={people} phases={phases} allTasks={tasks} deps={deps} open={openTask !== null} onClose={() => setOpenId(null)} onChanged={() => void load()} />}
 
+      {viewer ? null : <ScheduleImportDialog open={importOpen} project={project} existing={tasks.length} userId={user?.id} onClose={() => setImportOpen(false)} onDone={() => void load()} />}
       <AddTaskDialog
         open={addOpen}
         people={people}
