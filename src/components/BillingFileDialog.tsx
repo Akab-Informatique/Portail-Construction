@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { ExternalLink, FileUp, MessageSquarePlus, PenLine, Stamp, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ExternalLink, FileUp, MessageSquarePlus, PenLine, Printer, Stamp, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { QuoteSignDialog } from "@/components/QuoteSignDialog";
@@ -106,6 +106,7 @@ export function BillingFileDialog({
   // Opening a specific document shows that one; otherwise the version in force.
   const shown = everything.find((f) => f.id === viewingId) ?? (file && everything.find((f) => f.id === file.id)) ?? current;
 
+  const frame = useRef<HTMLIFrameElement>(null);
   useEffect(() => {
     setViewingId(null);
     setFlash(null);
@@ -139,6 +140,19 @@ export function BillingFileDialog({
   const pendingShown = canDecide && isPendingDecision(shown, allFiles);
   const acceptedAddons = addons.filter((a) => a.published === 1 && a.status === "accepted");
   const total = quoteEffectiveTotal(root, allFiles);
+
+  /** Prints the document being shown: the PDF in the viewer, or a picture in its own window. */
+  function printShown() {
+    const view = frame.current?.contentWindow;
+    if (view) {
+      view.focus();
+      view.print();
+      return;
+    }
+    if (!url) return;
+    const win = window.open(url, "_blank");
+    if (win) win.addEventListener("load", () => win.print());
+  }
 
   async function decide(target: BillingFile, decision: "accepted" | "rejected", input: { signerName?: string; signature?: string } = {}) {
     setBusy(true);
@@ -277,6 +291,12 @@ export function BillingFileDialog({
                   </>
                 ) : null}
                 {url ? (
+                  <Button type="button" variant="outline" size="sm" onClick={printShown}>
+                    <Printer className="size-3.5" />
+                    {t("billing.file.print")}
+                  </Button>
+                ) : null}
+                {url ? (
                   <Button asChild type="button" variant="outline" size="sm">
                     <a href={url} target="_blank" rel="noreferrer">
                       <ExternalLink className="size-3.5" />
@@ -295,7 +315,7 @@ export function BillingFileDialog({
               ) : isImage ? (
                 <img src={url} alt={shown.file_name ?? ""} className="mx-auto max-h-[70vh] w-auto" />
               ) : (
-                <iframe title={shown.file_name ?? "document"} src={url} className="h-[68vh] w-full bg-white" />
+                <iframe ref={frame} title={shown.file_name ?? "document"} src={url} className="h-[68vh] w-full bg-white" />
               )}
             </div>
 

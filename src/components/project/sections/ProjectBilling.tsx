@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronDown, ChevronRight, FilePlus2, MessageSquareWarning, ReceiptText } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, FilePlus2, MessageSquareWarning, ReceiptText } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { canUseMenuModule } from "@/lib/app-modules";
@@ -55,7 +55,8 @@ export function ProjectBilling({ project, client }: SectionProps) {
     return () => window.removeEventListener(BILLING_FILES_EVENT, on);
   }, [load]);
 
-  const mine = useMemo(() => files.filter((f) => f.project_id === project.id && f.kind !== "supplier"), [files, project.id]);
+  // A client account only ever sees what was sent to it.
+  const mine = useMemo(() => files.filter((f) => f.project_id === project.id && f.kind !== "supplier" && (!viewer || f.published === 1)), [files, project.id, viewer]);
   const quotes = mine.filter((f) => f.kind === "quote" && !f.parent_id);
   const invoices = mine.filter((f) => f.kind === "invoice").sort((a, b) => (b.issued_on ?? "").localeCompare(a.issued_on ?? ""));
   const moneyOf = buildProjectMoney(mine).get(project.id);
@@ -67,18 +68,24 @@ export function ProjectBilling({ project, client }: SectionProps) {
   const pillMode = viewer ? "client" : "staff";
   const openRequests = requests.filter((r) => r.status === "open" && mine.some((f) => f.id === r.file_id));
 
+  // Invoices past their payment due date: the client is shown these, oldest first.
+  const today = new Date().toISOString().slice(0, 10);
+  const late = invoices.filter((inv) => displayStatus(inv) === "overdue").sort((a, b) => (a.due_on ?? "").localeCompare(b.due_on ?? ""));
+  const daysLate = (due: string) => Math.max(1, Math.round((Date.parse(today) - Date.parse(due)) / 86_400_000));
+
   const cards = [
     { label: t("pb.contract"), value: moneyOf?.contract ?? 0 },
     { label: t("pb.pending"), value: moneyOf?.pending ?? 0 },
     { label: t("pb.invoiced"), value: moneyOf?.invoiced ?? 0 },
     { label: t("pb.paid"), value: moneyOf?.paid ?? 0 },
-    { label: t("pb.toCollect"), value: moneyOf?.unpaid ?? 0 },
+    // What is left to collect is for FRX only.
+    ...(viewer ? [] : [{ label: t("pb.toCollect"), value: moneyOf?.unpaid ?? 0 }]),
   ];
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="grid flex-1 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+        <div className={cn("grid flex-1 gap-3 sm:grid-cols-3", viewer ? "xl:grid-cols-4" : "xl:grid-cols-5")}>
           {cards.map((c) => (
             <Card key={c.label} className="gap-1 px-4 py-3.5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{c.label}</p>
@@ -93,6 +100,30 @@ export function ProjectBilling({ project, client }: SectionProps) {
           </Button>
         ) : null}
       </div>
+
+      {viewer && late.length > 0 ? (
+        <Card className="gap-2 border-rose-500/40 bg-rose-500/5 p-4">
+          <p className="flex items-center gap-2 text-sm font-semibold text-rose-800 dark:text-rose-300">
+            <AlertTriangle className="size-4" />
+            {t("pb.overdue", { n: late.length })}
+          </p>
+          <ul className="space-y-1">
+            {late.map((inv) => (
+              <li key={inv.id}>
+                <button type="button" className="flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-rose-500/10" onClick={() => open(inv.id)}>
+                  <span className="font-semibold tabular-nums">{inv.number}</span>
+                  <span className="min-w-0 flex-1 truncate text-muted-foreground">{inv.title}</span>
+                  <span className="hidden text-xs text-rose-800 sm:inline dark:text-rose-300">
+                    {t("pb.dueOn", { date: formatDate(inv.due_on ?? "", locale) })} · {t("pb.daysLate", { n: daysLate(inv.due_on ?? today) })}
+                  </span>
+                  <span className="w-28 text-right font-semibold tabular-nums">{moneyExact(inv.amount, locale)}</span>
+                  <ChevronRight className="size-4 text-muted-foreground" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
 
       {openRequests.length > 0 ? (
         <Card className="gap-2 border-amber-500/40 p-4">

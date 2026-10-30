@@ -150,6 +150,12 @@ export function useNavModel(): NavSection[] {
           tour: "operations",
           items: clientOwnItems,
         },
+        {
+          id: "accounting",
+          label: t("nav.section.accounting"),
+          tour: "accounting",
+          items: [{ id: "clientBilling", to: "/billing", label: t("nav.clientBilling"), icon: ReceiptText, end: true }],
+        },
       ];
     }
 
