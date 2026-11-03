@@ -1,16 +1,14 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { BookOpen, Building2, HardHat, KeyRound } from "lucide-react";
+import { BookOpen, Building2, HardHat } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { PageHeader } from "@/components/PageHeader";
 import { AccessGuide } from "@/components/admin/AccessGuide";
 import { Button } from "@/components/ui/button";
-import { ConfigClientsPage } from "@/pages/config/ConfigClientsPage";
 import { AdminAccessPage } from "@/pages/admin/AdminAccessPage";
 import { cn } from "@/lib/utils";
 
 type Tab = "staff" | "clients";
-type Sub = "companies" | "rights";
 
 /**
  * Administration › Access. Two tabs in a steel-and-hazard-stripe bar: Staff first, then Clients. Staff holds the people, their
@@ -25,13 +23,9 @@ export function AdminHubPage() {
   const legacy = params.get("section");
   const rawTab = params.get("tab") ?? (legacy === "staff" || legacy === "staffRights" ? "staff" : legacy === "clients" || legacy === "clientRights" ? "clients" : null);
   const tab: Tab = rawTab === "clients" ? "clients" : "staff";
-  const sub: Sub = params.get("sub") === "rights" || legacy === "clientRights" ? "rights" : "companies";
 
-  function go(next: Tab, nextSub?: Sub) {
-    const out = new URLSearchParams();
-    out.set("tab", next);
-    if (next === "clients" && nextSub === "rights") out.set("sub", "rights");
-    setParams(out, { replace: true });
+  function go(next: Tab) {
+    setParams({ tab: next }, { replace: true });
   }
 
   const tabs = [
@@ -73,24 +67,7 @@ export function AdminHubPage() {
 
       {tab === "staff" ? <AdminAccessPage key="staff" audience="internal" embedded /> : null}
 
-      {tab === "clients" ? (
-        <div className="grid gap-5">
-          <div className="inline-flex w-fit rounded-lg border bg-muted/40 p-0.5">
-            {(
-              [
-                ["companies", t("adm.sub.companies"), Building2],
-                ["rights", t("adm.sub.rights"), KeyRound],
-              ] as const
-            ).map(([id, label, Icon]) => (
-              <button key={id} type="button" onClick={() => go("clients", id)} aria-pressed={sub === id} className={cn("flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-semibold transition-colors", sub === id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
-                <Icon className="size-4" />
-                {label}
-              </button>
-            ))}
-          </div>
-          {sub === "companies" ? <ConfigClientsPage embedded /> : <AdminAccessPage key="clients" audience="external" embedded />}
-        </div>
-      ) : null}
+      {tab === "clients" ? <AdminAccessPage key="clients" audience="external" embedded /> : null}
       <AccessGuide open={guide} onOpenChange={setGuide} />
     </div>
   );

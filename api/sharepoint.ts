@@ -101,7 +101,7 @@ async function loadGrants(user: ApiUser) {
        external
          ? `WHERE s.client_id IN (SELECT client_id FROM client_users WHERE user_id = $1
                                   UNION SELECT client_id FROM user_clients WHERE user_id = $1)
-              AND (s.user_id IS NULL OR s.user_id = $1)`
+              AND s.user_id = $1`
          : "WHERE s.client_id = 0 AND s.user_id = $1"
      }`,
     [user.id],
@@ -182,15 +182,9 @@ function granted(subjects: Subjects, chain: string[], need: Need) {
   for (const clientId of clientIds) {
     const company = hitOf(subjects.get(`${clientId}:`));
     const own = hitOf([...subjects.entries()].find(([k]) => k.startsWith(`${clientId}:`) && k !== `${clientId}:`)?.[1]);
-    if (clientId === "0") {
-      if (rank(own) >= needRank) return true;
-      continue;
-    }
-    if (!own) {
-      if (rank(company) >= needRank) return true;
-      continue;
-    }
-    if (Math.min(rank(own), rank(company)) >= needRank) return true;
+    // A company has no rights of its own: staff and client users alike have only what was given to them (or their groups).
+    void company;
+    if (rank(own) >= needRank) return true;
   }
   return false;
 }

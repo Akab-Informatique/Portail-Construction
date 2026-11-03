@@ -18,7 +18,6 @@ const ProjectDetailPage = lazyPage(() => import("@/pages/ProjectDetailPage"), "P
 const TeamPage = lazyPage(() => import("@/pages/TeamPage"), "TeamPage");
 const UserAccessPage = lazyPage(() => import("@/pages/UserAccessPage"), "UserAccessPage");
 const ProfilePage = lazyPage(() => import("@/pages/ProfilePage"), "ProfilePage");
-const ConfigUserPage = lazyPage(() => import("@/pages/config/ConfigUserPage"), "ConfigUserPage");
 const AccountingBillingPage = lazyPage(() => import("@/pages/AccountingBillingPage"), "AccountingBillingPage");
 const AdminHubPage = lazyPage(() => import("@/pages/admin/AdminHubPage"), "AdminHubPage");
 const ConfigSettingsPage = lazyPage(() => import("@/pages/config/ConfigSettingsPage"), "ConfigSettingsPage");
@@ -91,7 +90,7 @@ export default function App() {
           <Route path="config/clients" element={<Navigate to="/admin?section=clients" replace />} />
           <Route path="config/internal" element={<Navigate to="/admin?section=staff" replace />} />
           <Route path="config/groups" element={<Navigate to="/admin?section=staffRights" replace />} />
-          <Route path="config/users/:userId" element={<RequireAdmin><ConfigUserPage /></RequireAdmin>} />
+          <Route path="config/users/:userId" element={<Navigate to="/admin?tab=staff" replace />} />
           <Route path="config/settings" element={<Navigate to="/settings" replace />} />
           <Route path="settings" element={<RequireAdmin><ConfigSettingsPage /></RequireAdmin>} />
           <Route path="tools/punch" element={<TimeOnSitePage module="app_punch"><PunchPage /></TimeOnSitePage>} />

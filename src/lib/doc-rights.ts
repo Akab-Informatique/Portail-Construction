@@ -104,16 +104,10 @@ export function levelAt(shares: SharePointShare[], subjects: Subject[], chain: s
     const hit = hitOf(subject);
     if (hit) add(hit);
   }
-  // A client user's right is set inside their company's: it can lower it, never go above it.
-  for (const clientId of new Set(subjects.filter((x) => x.clientId > 0).map((x) => x.clientId))) {
-    const company = hitOf({ clientId, userId: null }) ?? none;
-    const mine = subjects.find((x) => x.clientId === clientId && x.userId !== null);
-    const own = mine ? hitOf(mine) : null;
-    if (!own) {
-      add(company);
-      continue;
-    }
-    add(levelFlags(DOC_LEVELS[Math.min(DOC_LEVELS.indexOf(levelOf(own)), DOC_LEVELS.indexOf(levelOf(company)))]));
+  // A company has no rights of its own: a client user has what was given to them (or their groups), like an employee.
+  for (const subject of subjects.filter((x) => x.clientId > 0 && x.userId !== null)) {
+    const hit = hitOf(subject);
+    if (hit) add(hit);
   }
   return levelOf(flags);
 }

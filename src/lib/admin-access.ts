@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db, dbReady, schema } from "../db";
 import { clearShareFlags, setShareFlags } from "./sharepoint";
 import { levelFlags, type DocLevel } from "./doc-rights";
@@ -148,4 +148,22 @@ export async function projectsOfClients(clientIds: number[]) {
   if (clientIds.length === 0) return [] as number[];
   const rows = await db.select({ id: schema.projects.id }).from(schema.projects).where(inArray(schema.projects.client_id, clientIds));
   return rows.map((r) => r.id);
+}
+
+/**
+ * A client user belongs to one company at a time. Moving them (or taking them out of any company, `companyId` null) clears what
+ * was tied to the old company: its projects and the folder levels set for them there. Their groups stay.
+ */
+export async function moveUserToCompany(userId: number, companyId: number | null) {
+  await dbReady;
+  const links = await db.select().from(schema.client_users).where(eq(schema.client_users.user_id, userId));
+  if (links.length === 1 && links[0].client_id === companyId) return;
+  const oldIds = links.map((l) => l.client_id);
+  if (oldIds.length) {
+    const oldProjects = await projectsOfClients(oldIds);
+    if (oldProjects.length) await db.delete(schema.project_members).where(and(eq(schema.project_members.user_id, userId), inArray(schema.project_members.project_id, oldProjects)));
+    await db.delete(schema.sharepoint_shares).where(and(eq(schema.sharepoint_shares.user_id, userId), inArray(schema.sharepoint_shares.client_id, oldIds)));
+    await db.delete(schema.client_users).where(eq(schema.client_users.user_id, userId));
+  }
+  if (companyId) await db.insert(schema.client_users).values({ client_id: companyId, user_id: userId, is_primary: 0 });
 }

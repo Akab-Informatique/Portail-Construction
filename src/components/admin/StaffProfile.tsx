@@ -6,8 +6,9 @@ import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { initials } from "@/lib/format";
 import { hashPassword } from "@/lib/password";
-import { adminPrefs, removeStaffUser, sendUserLink, updateUser, type PersonPrefs } from "@/lib/users-api";
-import type { User } from "@/lib/types";
+import { adminPrefs, removeClientUser, removeStaffUser, sendUserLink, updateUser, type PersonPrefs } from "@/lib/users-api";
+import { moveUserToCompany } from "@/lib/admin-access";
+import type { Client, User } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -68,7 +69,23 @@ export function LanguageSelect({ value, onChange }: { value: "fr" | "en"; onChan
  * The profile of an employee as the administrator sees it: who they are, their account, and their own settings (language,
  * the menu tutorial, the Outlook calendar and the morning email). Access is set in the other tabs.
  */
-export function StaffProfile({ person, onChanged, onDeleted }: { person: User; onChanged: () => Promise<void>; onDeleted: () => void }) {
+export function StaffProfile({
+  person,
+  onChanged,
+  onDeleted,
+  kind = "staff",
+  clients = [],
+  companyId = null,
+}: {
+  person: User;
+  onChanged: () => Promise<void>;
+  onDeleted: () => void;
+  /** A client user has no administrator switch, no Outlook or morning email, and belongs to one company. */
+  kind?: "staff" | "client";
+  clients?: Client[];
+  companyId?: number | null;
+}) {
+  const client = kind === "client";
   const { t, tr } = useI18n();
   const { realUser } = useAuth();
   const [form, setForm] = useState({ name: person.name, email: person.email, title: person.title ?? "", phone: person.phone ?? "", password: "" });
@@ -85,8 +102,8 @@ export function StaffProfile({ person, onChanged, onDeleted }: { person: User; o
   const isSelf = realUser?.id === person.id;
 
   useEffect(() => {
-    void adminPrefs(person.id).then(setPrefs).catch(() => undefined);
-  }, [person.id]);
+    if (!client) void adminPrefs(person.id).then(setPrefs).catch(() => undefined);
+  }, [person.id, client]);
 
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -99,7 +116,7 @@ export function StaffProfile({ person, onChanged, onDeleted }: { person: User; o
         email: form.email.trim().toLowerCase(),
         title: form.title.trim() || null,
         phone: form.phone.trim() || null,
-        is_admin: admin,
+        is_admin: client ? false : admin,
         is_active: active,
         avatar_initials: initials(form.name.trim()),
         must_change_password: mustChange,
@@ -147,7 +164,8 @@ export function StaffProfile({ person, onChanged, onDeleted }: { person: User; o
 
   async function remove() {
     try {
-      await removeStaffUser(person.id, realUser?.id);
+      if (client) await removeClientUser(person.id, companyId ?? 0);
+      else await removeStaffUser(person.id, realUser?.id);
       setConfirmDelete(false);
       onDeleted();
     } catch (err) {
@@ -178,12 +196,30 @@ export function StaffProfile({ person, onChanged, onDeleted }: { person: User; o
               <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
             </div>
           </div>
+          {client ? (
+            <div className="space-y-1.5">
+              <Label>{t("adm.prof.company")}</Label>
+              <select
+                className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+                value={companyId ?? ""}
+                onChange={(e) => void moveUserToCompany(person.id, e.target.value ? Number(e.target.value) : null).then(onChanged)}
+              >
+                <option value="">{t("adm.prof.noCompany")}</option>
+                {[...clients].sort((a, b) => a.company_name.localeCompare(b.company_name)).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.company_name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">{t("adm.prof.companyHint")}</p>
+            </div>
+          ) : null}
         </Block>
 
         <Block n={2} title={t("adm.prof.account")} hint={t("adm.prof.accountHint")} icon={KeyRound}>
           <div className="grid gap-3 sm:grid-cols-2">
             <Toggle label={t("people.activeAccount")} hint={t("people.activeHint")} checked={active} onChange={setActive} disabled={isSelf} />
-            <Toggle label={t("people.adminLabel")} hint={t("people.adminHint")} checked={admin} onChange={setAdmin} disabled={isSelf} />
+            {client ? null : <Toggle label={t("people.adminLabel")} hint={t("people.adminHint")} checked={admin} onChange={setAdmin} disabled={isSelf} />}
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
@@ -228,8 +264,8 @@ export function StaffProfile({ person, onChanged, onDeleted }: { person: User; o
           <LanguageSelect value={lang} onChange={(v) => void setLanguage(v)} />
         </div>
         <Toggle label={t("adm.prof.tutorial")} hint={t("adm.prof.tutorialHint")} checked={tutorial} onChange={(v) => void setTutorialFlag(v)} />
-        <Toggle label={t("profile.o365Toggle")} hint={t("adm.prof.o365Hint")} checked={prefs.o365_calendar === 1} onChange={(v) => void setPref({ o365_calendar: v ? 1 : 0 })} />
-        <Toggle label={t("adm.prof.morning")} hint={t("adm.prof.morningHint")} checked={prefs.morning_email === 1} onChange={(v) => void setPref({ morning_email: v ? 1 : 0 })} />
+        {client ? null : <Toggle label={t("profile.o365Toggle")} hint={t("adm.prof.o365Hint")} checked={prefs.o365_calendar === 1} onChange={(v) => void setPref({ o365_calendar: v ? 1 : 0 })} />}
+        {client ? null : <Toggle label={t("adm.prof.morning")} hint={t("adm.prof.morningHint")} checked={prefs.morning_email === 1} onChange={(v) => void setPref({ morning_email: v ? 1 : 0 })} />}
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Newspaper className="size-3.5" />
           <GraduationCap className="size-3.5" />

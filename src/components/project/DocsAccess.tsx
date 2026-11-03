@@ -161,8 +161,6 @@ export function DocsAccess({
 
   const here = chain[0];
   const rank = (l: DocLevel) => DOC_LEVELS.indexOf(l);
-  /** What a company has here: its users can never have more than this. */
-  const companyLevel = (clientId: number) => levelOf(resolve({ key: "c", clientId, userId: null, label: "" }).flags);
   /** `max`: the most this grantee can be given (a client user: what their company has). */
   const rowFor = (g: Grantee, max?: DocLevel) => {
     const r = resolve(g);
@@ -170,6 +168,33 @@ export function DocsAccess({
     const shown: DocLevel = max && rank(stored) > rank(max) ? max : stored;
     const clipped = shown !== stored;
     const mine = g.userId === null && g.clientId > 0 ? users.filter((u) => u.clientId === g.clientId) : [];
+    // A company has no rights of its own: only the people inside it do.
+    if (g.userId === null && g.clientId > 0 && !g.groupId) {
+      return (
+        <tr key={g.key}>
+          <td className="py-3 pr-3">
+            <div className="flex items-center gap-3">
+              <span className="flex size-9 items-center justify-center rounded-full bg-primary/15 text-primary">
+                <Building2 className="size-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="truncate font-medium">{g.label}</p>
+                <p className="truncate text-xs text-muted-foreground">{g.sub}</p>
+              </div>
+            </div>
+          </td>
+          <td className="py-3 text-center text-xs text-muted-foreground">{t("adm.company.noRights")}</td>
+          <td className="py-3 text-right">
+            {mine.length ? (
+              <Button size="xs" variant="outline" onClick={() => setUserDialog(g.clientId)}>
+                <Users className="size-3.5" />
+                {t("pda.manageUsers", { n: mine.length })}
+              </Button>
+            ) : null}
+          </td>
+        </tr>
+      );
+    }
     return (
       <tr key={g.key}>
         <td className="py-3 pr-3">
@@ -311,7 +336,6 @@ export function DocsAccess({
           {(() => {
             const client = clients.find((c) => c.id === userDialog);
             if (!client) return null;
-            const max = companyLevel(client.id);
             const mine = users.filter((u) => u.clientId === client.id).sort((a, b) => a.name.localeCompare(b.name));
             return (
               <>
@@ -320,16 +344,11 @@ export function DocsAccess({
                     <Users className="size-5" style={{ color }} />
                     {t("pda.usersOf", { name: client.company_name })}
                   </DialogTitle>
-                  <DialogDescription>{t("pda.usersHelp", { folder: here.id === root.id ? rootLabel : here.name, level: t(LEVEL_LABEL[max]) })}</DialogDescription>
+                  <DialogDescription>{t("pda.usersHelp2", { folder: here.id === root.id ? rootLabel : here.name })}</DialogDescription>
                 </DialogHeader>
-                <div className="flex items-center gap-3 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
-                  <Building2 className="size-4 text-primary" />
-                  <span className="font-medium">{client.company_name}</span>
-                  <span className="ml-auto rounded-md bg-card px-2 py-0.5 text-xs font-semibold shadow-sm">{t(LEVEL_LABEL[max])}</span>
-                </div>
                 <div className="max-h-[55vh] overflow-auto">
                   <table className="w-full min-w-[640px] text-sm">
-                    <tbody className="divide-y">{mine.map((u) => rowFor({ key: `u${client.id}-${u.id}`, clientId: client.id, userId: u.id, label: u.name, sub: u.email }, max))}</tbody>
+                    <tbody className="divide-y">{mine.map((u) => rowFor({ key: `u${client.id}-${u.id}`, clientId: client.id, userId: u.id, label: u.name, sub: u.email }))}</tbody>
                   </table>
                 </div>
               </>

@@ -17,8 +17,8 @@ const GUIDE: Record<"en" | "fr", Block[]> = {
       bullets: [
         "Administrator: sees and does everything. Nothing to set.",
         "Staff (employee): has the full portal menu, but only the pages, projects and folders you give.",
-        "Client company: a customer of FRX. It owns its projects and its documentation level.",
-        "Client user: a person of a client company. Never sees more than their company, and never sees staff pages.",
+        "Client company: a customer of FRX. It holds no rights: the people inside it do.",
+        "Client user: a person who belongs to one company. Only sees the projects and folders given to them, and never sees staff pages.",
       ],
     },
     {
@@ -39,7 +39,7 @@ const GUIDE: Record<"en" | "fr", Block[]> = {
         "Full: view, download, print, change, delete.",
         "A folder with nothing set takes the level of the folder above it. Set a level on a subfolder to open or close it on its own.",
       ],
-      note: "A client user can never have more than their company on a folder.",
+      note: "A company holds no folder levels: each client user has their own (or through a group).",
     },
     {
       title: "5. Groups: give once, apply to many",
@@ -73,8 +73,8 @@ const GUIDE: Record<"en" | "fr", Block[]> = {
       bullets: [
         "Administrateur : voit et fait tout. Rien à régler.",
         "Employé : a le menu complet du portail, mais seulement les pages, projets et dossiers que vous lui donnez.",
-        "Entreprise cliente : un client de FRX. Elle possède ses projets et son niveau de documentation.",
-        "Utilisateur client : une personne d’une entreprise cliente. Ne voit jamais plus que son entreprise et jamais les pages des employés.",
+        "Entreprise cliente : un client de FRX. Elle n’a aucun droit : ce sont les personnes qu’elle contient qui en ont.",
+        "Utilisateur client : une personne qui appartient à une seule entreprise. Ne voit que les projets et dossiers qui lui sont donnés, et jamais les pages des employés.",
       ],
     },
     {
@@ -95,7 +95,7 @@ const GUIDE: Record<"en" | "fr", Block[]> = {
         "Complet : voir, télécharger, imprimer, modifier, supprimer.",
         "Un dossier sans réglage prend le niveau du dossier au-dessus. Réglez un sous-dossier pour l’ouvrir ou le fermer seul.",
       ],
-      note: "Un utilisateur client n’a jamais plus que son entreprise sur un dossier.",
+      note: "Une entreprise n’a aucun niveau de dossier : chaque utilisateur client a le sien (ou par un groupe).",
     },
     {
       title: "5. Les groupes : donner une fois, appliquer à plusieurs",

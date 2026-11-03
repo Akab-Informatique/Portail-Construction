@@ -5,9 +5,10 @@ import { useI18n } from "@/lib/i18n";
 import { logActivity } from "@/lib/activity";
 import { initials } from "@/lib/format";
 import { hashPassword, randomPassword } from "@/lib/password";
-import { setUserGroups, isDefaultStaffGroup } from "@/lib/access";
+import { setUserGroups, isDefaultClientGroup, isDefaultStaffGroup } from "@/lib/access";
 import { adminPrefs, createUser, sendUserLink } from "@/lib/users-api";
-import type { AccessGroup } from "@/lib/types";
+import { moveUserToCompany } from "@/lib/admin-access";
+import type { AccessGroup, Client } from "@/lib/types";
 import { Block, LanguageSelect } from "@/components/admin/StaffProfile";
 import { GroupPicker } from "@/pages/config/GroupPicker";
 import { Button } from "@/components/ui/button";
@@ -30,13 +31,32 @@ type Form = {
   o365: boolean;
   morning: boolean;
   invite: boolean;
+  companyId: number | null;
 };
 
 /**
  * Add an employee: who they are, how they sign in, their language and own settings, and the groups they start in. When the
  * account is created, the person's access sheet opens (menu, projects, folders, reports) so everything is set in one go.
  */
-export function StaffCreateDialog({ open, groups, onClose, onCreated }: { open: boolean; groups: AccessGroup[]; onClose: () => void; onCreated: (userId: number, notice: { ok: boolean; text: string }) => void }) {
+export function StaffCreateDialog({
+  open,
+  groups,
+  onClose,
+  onCreated,
+  kind = "staff",
+  clients = [],
+  defaultCompanyId = null,
+}: {
+  open: boolean;
+  groups: AccessGroup[];
+  onClose: () => void;
+  onCreated: (userId: number, notice: { ok: boolean; text: string }) => void;
+  /** A client user: no administrator switch, no Outlook or morning email, and a company to belong to. */
+  kind?: "staff" | "client";
+  clients?: Client[];
+  defaultCompanyId?: number | null;
+}) {
+  const client = kind === "client";
   const { t, tr } = useI18n();
   const { realUser } = useAuth();
   const [f, setF] = useState<Form | null>(null);
@@ -46,7 +66,7 @@ export function StaffCreateDialog({ open, groups, onClose, onCreated }: { open: 
   useEffect(() => {
     if (!open) return;
     setError(null);
-    setF({ name: "", email: "", title: "", phone: "", password: randomPassword(), mustChange: true, admin: false, lang: "fr", groupIds: groups.filter(isDefaultStaffGroup).map((g) => g.id), o365: false, morning: false, invite: true });
+    setF({ name: "", email: "", title: "", phone: "", password: randomPassword(), mustChange: true, admin: false, lang: "fr", groupIds: groups.filter(client ? isDefaultClientGroup : isDefaultStaffGroup).map((g) => g.id), o365: false, morning: false, invite: true, companyId: defaultCompanyId });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   if (!f) return null;
@@ -64,17 +84,18 @@ export function StaffCreateDialog({ open, groups, onClose, onCreated }: { open: 
         name,
         email,
         password: await hashPassword(f.password.trim() || randomPassword()),
-        user_type: "internal",
+        user_type: client ? "external" : "internal",
         title: f.title.trim() || null,
         phone: f.phone.trim() || null,
-        is_admin: f.admin,
+        is_admin: client ? false : f.admin,
         avatar_initials: initials(name),
         must_change_password: f.mustChange,
         locale: f.lang,
       });
+      if (client && f.companyId) await moveUserToCompany(created.id, f.companyId);
       if (f.groupIds.length) await setUserGroups(created.id, f.groupIds);
-      if (f.o365 || f.morning) await adminPrefs(created.id, { o365_calendar: f.o365 ? 1 : 0, morning_email: f.morning ? 1 : 0 });
-      await logActivity({ action: "created user", details: `${name} (internal)`, userId: realUser.id });
+      if (!client && (f.o365 || f.morning)) await adminPrefs(created.id, { o365_calendar: f.o365 ? 1 : 0, morning_email: f.morning ? 1 : 0 });
+      await logActivity({ action: "created user", details: `${name} (${client ? "external" : "internal"})`, userId: realUser.id });
       let notice = { ok: true, text: t("adm.accountCreated") };
       if (f.invite) {
         try {
@@ -96,8 +117,8 @@ export function StaffCreateDialog({ open, groups, onClose, onCreated }: { open: 
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[94vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle className="font-display text-2xl uppercase tracking-wide">{t("adm.new.title")}</DialogTitle>
-          <DialogDescription>{t("adm.new.desc")}</DialogDescription>
+          <DialogTitle className="font-display text-2xl uppercase tracking-wide">{t(client ? "adm.newc.title" : "adm.new.title")}</DialogTitle>
+          <DialogDescription>{t(client ? "adm.newc.desc" : "adm.new.desc")}</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="grid gap-4">
           <Block n={1} title={t("adm.prof.identity")} icon={UserRound}>
@@ -119,6 +140,20 @@ export function StaffCreateDialog({ open, groups, onClose, onCreated }: { open: 
                 <Input value={f.phone} onChange={(e) => set({ phone: e.target.value })} />
               </div>
             </div>
+            {client ? (
+              <div className="space-y-1.5">
+                <Label>{t("adm.prof.company")}</Label>
+                <select className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm" value={f.companyId ?? ""} onChange={(e) => set({ companyId: e.target.value ? Number(e.target.value) : null })}>
+                  <option value="">{t("adm.prof.noCompany")}</option>
+                  {[...clients].sort((a, b) => a.company_name.localeCompare(b.company_name)).map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.company_name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">{t("adm.prof.companyHint")}</p>
+              </div>
+            ) : null}
           </Block>
 
           <Block n={2} title={t("adm.prof.account")} icon={KeyRound}>
@@ -135,7 +170,7 @@ export function StaffCreateDialog({ open, groups, onClose, onCreated }: { open: 
                 </span>
               </label>
             </div>
-            <label className="flex items-center justify-between gap-4 rounded-lg border px-3 py-2.5">
+            <label className={client ? "hidden" : "flex items-center justify-between gap-4 rounded-lg border px-3 py-2.5"}>
               <span>
                 <span className="block text-sm font-medium">{t("people.adminLabel")}</span>
                 <span className="block text-xs text-muted-foreground">{t("people.adminHint")}</span>
@@ -149,14 +184,14 @@ export function StaffCreateDialog({ open, groups, onClose, onCreated }: { open: 
               <span className="text-sm font-medium">{t("adm.prof.language")}</span>
               <LanguageSelect value={f.lang} onChange={(lang) => set({ lang })} />
             </div>
-            <label className="flex items-center justify-between gap-4 rounded-lg border px-3 py-2.5">
+            <label className={client ? "hidden" : "flex items-center justify-between gap-4 rounded-lg border px-3 py-2.5"}>
               <span>
                 <span className="block text-sm font-medium">{t("profile.o365Toggle")}</span>
                 <span className="block text-xs text-muted-foreground">{t("adm.prof.o365Hint")}</span>
               </span>
               <Switch checked={f.o365} onCheckedChange={(v) => set({ o365: v })} />
             </label>
-            <label className="flex items-center justify-between gap-4 rounded-lg border px-3 py-2.5">
+            <label className={client ? "hidden" : "flex items-center justify-between gap-4 rounded-lg border px-3 py-2.5"}>
               <span>
                 <span className="block text-sm font-medium">{t("adm.prof.morning")}</span>
                 <span className="block text-xs text-muted-foreground">{t("adm.prof.morningHint")}</span>
@@ -166,7 +201,7 @@ export function StaffCreateDialog({ open, groups, onClose, onCreated }: { open: 
             <p className="text-xs text-muted-foreground">{t("adm.new.firstLogin")}</p>
           </Block>
 
-          {!f.admin ? (
+          {!f.admin || client ? (
             <Block n={4} title={t("adm.new.groups")} hint={t("adm.new.groupsHint")} icon={Users}>
               <GroupPicker groups={groups} selected={f.groupIds} onChange={(groupIds) => set({ groupIds })} />
             </Block>
