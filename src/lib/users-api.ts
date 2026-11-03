@@ -85,6 +85,13 @@ export async function listUsers(): Promise<User[]> {
   return selectUsersFallback();
 }
 
+/** One email, one account: a client user and an employee can never share an address (letter case ignored). */
+export async function assertEmailFree(email: string, exceptId?: number) {
+  const wanted = email.trim().toLowerCase();
+  const taken = (await listUsers()).some((u) => u.email.trim().toLowerCase() === wanted && u.id !== exceptId);
+  if (taken) throw new Error("users.error.emailTaken");
+}
+
 export async function createUser(input: {
   name: string;
   email: string;
@@ -97,6 +104,7 @@ export async function createUser(input: {
   groupIds?: number[];
   must_change_password?: boolean;
 }): Promise<User> {
+  await assertEmailFree(input.email);
   const { ok, data } = await postDb({ action: "create_user", ...input });
   if (data.local) {
     await db.insert(schema.users).values({
@@ -158,6 +166,7 @@ export async function updateUser(input: {
   password?: string;
   must_change_password?: boolean;
 }): Promise<User> {
+  await assertEmailFree(input.email, input.id);
   const { ok, data } = await postDb({ action: "update_user", ...input });
   if (data.local) {
     await db
@@ -207,4 +216,23 @@ export async function removeClientUser(userId: number, clientId: number): Promis
   await db.delete(schema.sharepoint_shares).where(eq(schema.sharepoint_shares.user_id, userId));
   await db.delete(schema.users).where(eq(schema.users.id, userId));
   return "deleted";
+}
+
+/**
+ * Deletes an employee's account with everything that was given to them (rights, groups, projects, folder levels, report access,
+ * notebook). What they recorded (time, expenses, notes in projects) stays. You cannot delete yourself or the last administrator.
+ */
+export async function removeStaffUser(userId: number, currentUserId?: number): Promise<void> {
+  if (userId === currentUserId) throw new Error("users.error.deleteSelf");
+  const people = await listUsers();
+  const target = people.find((u) => u.id === userId);
+  if (!target) throw new Error("users.error.notFound");
+  if (target.is_admin === 1 && people.filter((u) => u.is_admin === 1 && u.is_active === 1 && u.id !== userId).length === 0) throw new Error("users.error.lastAdmin");
+  await db.delete(schema.user_permissions).where(eq(schema.user_permissions.user_id, userId));
+  await db.delete(schema.user_access_groups).where(eq(schema.user_access_groups.user_id, userId));
+  await db.delete(schema.user_clients).where(eq(schema.user_clients.user_id, userId));
+  await db.delete(schema.project_members).where(eq(schema.project_members.user_id, userId));
+  await db.delete(schema.sharepoint_shares).where(eq(schema.sharepoint_shares.user_id, userId));
+  await db.delete(schema.report_access).where(and(eq(schema.report_access.subject_type, "user"), eq(schema.report_access.subject_id, userId)));
+  await db.delete(schema.users).where(eq(schema.users.id, userId));
 }

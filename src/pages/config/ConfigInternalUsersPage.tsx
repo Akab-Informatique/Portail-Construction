@@ -1,12 +1,12 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { KeyRound, Loader2, Mail, Plus, Search, Users } from "lucide-react";
+import { KeyRound, Loader2, Mail, Plus, Search, Trash2, Users } from "lucide-react";
 import { db, dbReady, schema } from "../../db";
 import { useAuth } from "@/lib/auth";
 import { initials } from "@/lib/format";
 import { logActivity } from "@/lib/activity";
 import { groupFitsUser, isDefaultStaffGroup } from "@/lib/access";
-import { createUser, listUsers, sendUserLink } from "@/lib/users-api";
+import { createUser, listUsers, removeStaffUser, sendUserLink } from "@/lib/users-api";
 import { AccessPicker } from "@/components/admin/AccessPicker";
 import { applyAccess, EMPTY_ACCESS, type AccessDraft } from "@/lib/admin-access";
 import { cn } from "@/lib/utils";
@@ -56,6 +56,7 @@ export function ConfigInternalUsersPage({ embedded = false }: { embedded?: boole
   const [access, setAccess] = useState<AccessDraft>(EMPTY_ACCESS);
   const [notice, setNotice] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
   const [linkBusy, setLinkBusy] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<User | null>(null);
 
   async function load() {
     try {
@@ -146,6 +147,23 @@ export function ConfigInternalUsersPage({ embedded = false }: { embedded?: boole
     });
     setAccess({ ...EMPTY_ACCESS, groupIds: internalGroups.filter(isDefaultStaffGroup).map((g) => g.id) });
     setOpen(true);
+  }
+
+  async function onRemove() {
+    if (!removing || !realUser) return;
+    setSaving(true);
+    try {
+      await removeStaffUser(removing.id, realUser.id);
+      await logActivity({ action: "deleted user", details: `${removing.name} (internal)`, userId: realUser.id });
+      setRemoving(null);
+      setNotice({ tone: "ok", text: t("adm.staffDeleted", { name: removing.name }) });
+      await load();
+    } catch (err) {
+      setRemoving(null);
+      setNotice({ tone: "bad", text: tr(err, "users.error.updateFailed") });
+    } finally {
+      setSaving(false);
+    }
   }
 
   /** An invitation (a new account) or a password reset: the person gets a link by email to choose their password. */
@@ -245,6 +263,9 @@ export function ConfigInternalUsersPage({ embedded = false }: { embedded?: boole
                         <Button variant="ghost" size="sm" asChild>
                           <Link to={`/admin?section=staffRights&user=${p.id}`}>{t("clients.access")}</Link>
                         </Button>
+                        <Button variant="ghost" size="icon-sm" className="text-destructive hover:text-destructive" title={t("adm.staffDelete")} aria-label={t("adm.staffDelete")} disabled={p.id === realUser?.id} onClick={() => setRemoving(p)}>
+                          <Trash2 className="size-4" />
+                        </Button>
                       </div>
                     </li>
                   );
@@ -253,6 +274,24 @@ export function ConfigInternalUsersPage({ embedded = false }: { embedded?: boole
             </div>
           )}
       </div>
+
+      <Dialog open={Boolean(removing)} onOpenChange={(o) => !o && setRemoving(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("adm.staffDeleteTitle", { name: removing?.name ?? "" })}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">{t("adm.staffDeleteBody")}</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRemoving(null)}>
+              {t("people.cancel")}
+            </Button>
+            <Button variant="destructive" disabled={saving} onClick={() => void onRemove()}>
+              <Trash2 className="size-4" />
+              {t("adm.staffDelete")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">

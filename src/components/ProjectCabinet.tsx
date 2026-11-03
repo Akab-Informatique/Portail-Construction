@@ -8,7 +8,6 @@ import type { MessageKey } from "@/lib/i18n/en";
 import { projectColor } from "@/lib/project-colors";
 import { projectAchievement, type TaskLite } from "@/lib/project-progress";
 import { projectSectionPath } from "@/lib/project-nav";
-import { useAuth } from "@/lib/auth";
 import { StatusBadge } from "@/components/StatusBadge";
 import { cn } from "@/lib/utils";
 import type { Client, Project } from "@/lib/types";
@@ -53,9 +52,7 @@ export function PhaseBar({ project, color }: { project: Project; color: string }
 
 function ProjectFolder({ project, tasks, index, open }: { project: Project; tasks: TaskLite[]; index: number; open: boolean }) {
   const { t, locale } = useI18n();
-  const { user } = useAuth();
   // Staff land on the documentation; a client lands on the overview.
-  const isClient = user?.user_type === "external" || user?.view_as === "client";
   const c = projectColor(project);
   const a = projectAchievement(project, tasks);
   const today = todayISO();
@@ -65,7 +62,7 @@ function ProjectFolder({ project, tasks, index, open }: { project: Project; task
   const late = project.status !== "completed" && left !== null && left < 0;
   return (
     <Link
-      to={projectSectionPath(project.id, isClient ? "dashboard" : "documents")}
+      to={projectSectionPath(project.id, "dashboard")}
       tabIndex={open ? 0 : -1}
       className="frx-folder group relative block"
       data-open={open}

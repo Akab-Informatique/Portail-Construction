@@ -1334,6 +1334,12 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
         res.status(400).json({ error: "users.error.required" });
         return;
       }
+      // One email, one account: staff and client users share the same list of addresses.
+      const clash = await getPool().query("SELECT id FROM users WHERE lower(email) = $1 AND id <> $2 LIMIT 1", [email, id]);
+      if (clash.rows[0]) {
+        res.status(409).json({ error: "users.error.emailTaken" });
+        return;
+      }
       const title = String(req.body?.title ?? "").trim() || null;
       const phone = String(req.body?.phone ?? "").trim() || null;
       const isAdmin = Boolean(req.body?.is_admin) ? 1 : 0;

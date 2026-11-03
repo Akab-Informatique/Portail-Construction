@@ -145,7 +145,7 @@ export function DocumentsProjectsPage() {
       setOpen(false);
       setForm(emptyProjectForm);
       await refresh();
-      navigate(projectSectionPath(row.id, "documents"));
+      navigate(projectSectionPath(row.id, "dashboard"));
     } finally {
       setBusy(false);
     }

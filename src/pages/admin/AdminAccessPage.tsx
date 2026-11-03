@@ -507,17 +507,17 @@ function PersonEditor({
           {active === "summary" ? (
             <AccessSummary
               staff={staff}
-              personId={person.id}
+              person={person}
               clientIds={companyIds}
-              groupIds={myGroupIds}
-              ownFlags={ownFlags}
-              inherited={inherited}
-              projectCount={
-                staff && person.all_clients !== 0
-                  ? "all"
-                  : new Set([...own, ...viaGroup, ...data.projects.filter((p) => myCompanies.includes(p.client_id)).map((p) => p.id)].filter((id) => scope.some((p) => p.id === id))).size
-              }
-              projectTotal={scope.length}
+              groups={groups}
+              myGroupIds={myGroupIds}
+              groupPerms={data.groupPerms}
+              userPerms={data.userPerms}
+              groupProjects={data.groupProjects}
+              members={data.members}
+              userClients={data.userClients}
+              projects={data.projects}
+              clients={data.clients}
               goto={(next) => setTab(next)}
             />
           ) : null}

@@ -43,7 +43,7 @@ import { setShareFlags } from "@/lib/sharepoint";
 import { levelFlags } from "@/lib/doc-rights";
 import type { AccessGroup, Client, Project, User } from "@/lib/types";
 import { hashPassword, randomPassword } from "@/lib/password";
-import { removeClientUser, sendUserLink, updateUser } from "@/lib/users-api";
+import { assertEmailFree, removeClientUser, sendUserLink, updateUser } from "@/lib/users-api";
 
 const emptyClient = {
   name: "",
@@ -214,6 +214,7 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
     access: AccessDraft,
   ) {
     const email = f.email.trim().toLowerCase();
+    await assertEmailFree(email);
     await db.insert(schema.users).values({
       name: f.name.trim(),
       email,
