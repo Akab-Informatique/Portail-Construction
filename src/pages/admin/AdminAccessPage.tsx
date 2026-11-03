@@ -369,8 +369,8 @@ export function AdminAccessPage({ audience, embedded = false, view = "users" }: 
                 const n = data.memberships.filter((m) => m.group_id === g.id).length;
                 const on = sel?.kind === "group" && sel.id === g.id;
                 return (
-                  <li key={g.id}>
-                    <button type="button" onClick={() => select({ kind: "group", id: g.id })} className={cn("flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors", on ? "bg-primary/15 shadow-[inset_2px_0_0_var(--primary)]" : "hover:bg-muted")}>
+                  <li key={g.id} className={cn("group flex items-center rounded-lg transition-colors", on ? "bg-primary/15 shadow-[inset_2px_0_0_var(--primary)]" : "hover:bg-muted")}>
+                    <button type="button" onClick={() => select({ kind: "group", id: g.id })} className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2 text-left">
                       <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
                         <Users className="size-4" />
                       </span>
@@ -378,6 +378,9 @@ export function AdminAccessPage({ audience, embedded = false, view = "users" }: 
                         <span className="block truncate text-sm font-medium">{g.name}</span>
                         <span className="block text-[11px] text-muted-foreground">{t("config.groups.members", { n })}</span>
                       </span>
+                    </button>
+                    <button type="button" title={t("config.groups.delete")} aria-label={t("config.groups.delete")} className="mr-2 rounded p-1.5 text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus:opacity-100 group-hover:opacity-100" onClick={() => setConfirmDelete(g)}>
+                      <Trash2 className="size-4" />
                     </button>
                   </li>
                 );

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { eq, inArray } from "drizzle-orm";
-import { Building2, ChevronDown, ChevronRight, Folder, FolderOpen, HardHat, Lock, RotateCcw, Search, Users } from "lucide-react";
+import { Building2, ChevronDown, ChevronRight, Folder, FolderOpen, HardHat, Lock, RotateCcw, Search, Trash2, Users } from "lucide-react";
 import { db, schema } from "../../db";
 import { callSharePoint, clearShareFlags, setShareFlags } from "@/lib/sharepoint";
+import { deleteGroup } from "@/lib/admin-access";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
 import { DOC_LEVELS, levelFlags, levelOf, shareFlags, type DocFlags, type DocLevel } from "@/lib/doc-rights";
@@ -12,7 +13,6 @@ import { UserAvatar } from "@/components/UserAvatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 type Flags = DocFlags;
@@ -46,8 +46,9 @@ export function DocsAccess({
   const [shares, setShares] = useState<SharePointShare[]>([]);
   const [users, setUsers] = useState<(User & { clientId: number })[]>([]);
   const [staff, setStaff] = useState<User[]>([]);
-  const [userDialog, setUserDialog] = useState<number | null>(null);
-  const [who, setWho] = useState<"staff" | "clients" | "groups">("staff");
+  /** Rights go to people and groups, never to a company: staff, staff groups, client users, client groups. */
+  const [who, setWho] = useState<"staff" | "staffGroups" | "clientUsers" | "clientGroups">("staff");
+  const [closedCos, setClosedCos] = useState<Set<number>>(new Set());
   const [groups, setGroups] = useState<AccessGroup[]>([]);
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -83,21 +84,29 @@ export function DocsAccess({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientIds, root.id]);
 
-  const visibleClients = useMemo(() => {
+  /** Client users grouped by company, and client groups grouped by company (older shared groups last). */
+  const clientUsersByCo = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return clients
-      .filter((c) => !q || c.company_name.toLowerCase().includes(q) || c.name.toLowerCase().includes(q))
-      .sort((a, b) => a.company_name.localeCompare(b.company_name));
-  }, [clients, query]);
+    return [...clients]
+      .sort((a, b) => a.company_name.localeCompare(b.company_name))
+      .map((c) => ({ company: c, items: users.filter((u) => u.clientId === c.id && (!q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || c.company_name.toLowerCase().includes(q))).sort((a, b) => a.name.localeCompare(b.name)) }))
+      .filter((g) => g.items.length > 0);
+  }, [clients, users, query]);
+  const clientGroupsByCo = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const external = groups.filter((g) => g.audience === "external" && (!g.client_id || clientIds.split(",").includes(String(g.client_id))) && (!q || g.name.toLowerCase().includes(q)));
+    const cos = [...clients].sort((a, b) => a.company_name.localeCompare(b.company_name)).map((c) => ({ company: c as Client | null, items: external.filter((g) => g.client_id === c.id) }));
+    return [...cos, { company: null as Client | null, items: external.filter((g) => !g.client_id) }].filter((g) => g.items.length > 0);
+  }, [clients, groups, clientIds, query]);
 
   const visibleStaff = useMemo(() => {
     const q = query.trim().toLowerCase();
     return staff.filter((u) => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name));
   }, [staff, query]);
 
-  const visibleGroups = useMemo(() => {
+  const staffGroups = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return groups.filter((g) => !q || g.name.toLowerCase().includes(q));
+    return groups.filter((g) => g.audience === "internal" && (!q || g.name.toLowerCase().includes(q))).sort((a, b) => a.name.localeCompare(b.name));
   }, [groups, query]);
 
   /** The folder and its ancestors, nearest first, up to the whole library. */
@@ -160,6 +169,30 @@ export function DocsAccess({
   }
 
   const here = chain[0];
+  /** A collapsible company heading: it is only a label, the company itself has no level. */
+  const companyHeader = (id: number, name: string, n: number) => (
+    <tr key={`co${id}`} className="bg-muted/40">
+      <td colSpan={3} className="py-1.5">
+        <button
+          type="button"
+          className="flex w-full items-center gap-2 px-2 text-left text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground"
+          onClick={() =>
+            setClosedCos((prev) => {
+              const next = new Set(prev);
+              if (next.has(id)) next.delete(id);
+              else next.add(id);
+              return next;
+            })
+          }
+        >
+          {closedCos.has(id) ? <ChevronRight className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+          <Building2 className="size-3.5" />
+          <span className="flex-1 truncate">{name}</span>
+          <span className="tabular-nums">{n}</span>
+        </button>
+      </td>
+    </tr>
+  );
   const rank = (l: DocLevel) => DOC_LEVELS.indexOf(l);
   /** `max`: the most this grantee can be given (a client user: what their company has). */
   const rowFor = (g: Grantee, max?: DocLevel) => {
@@ -167,34 +200,6 @@ export function DocsAccess({
     const stored = levelOf(r.flags);
     const shown: DocLevel = max && rank(stored) > rank(max) ? max : stored;
     const clipped = shown !== stored;
-    const mine = g.userId === null && g.clientId > 0 ? users.filter((u) => u.clientId === g.clientId) : [];
-    // A company has no rights of its own: only the people inside it do.
-    if (g.userId === null && g.clientId > 0 && !g.groupId) {
-      return (
-        <tr key={g.key}>
-          <td className="py-3 pr-3">
-            <div className="flex items-center gap-3">
-              <span className="flex size-9 items-center justify-center rounded-full bg-primary/15 text-primary">
-                <Building2 className="size-4" />
-              </span>
-              <div className="min-w-0">
-                <p className="truncate font-medium">{g.label}</p>
-                <p className="truncate text-xs text-muted-foreground">{g.sub}</p>
-              </div>
-            </div>
-          </td>
-          <td className="py-3 text-center text-xs text-muted-foreground">{t("adm.company.noRights")}</td>
-          <td className="py-3 text-right">
-            {mine.length ? (
-              <Button size="xs" variant="outline" onClick={() => setUserDialog(g.clientId)}>
-                <Users className="size-3.5" />
-                {t("pda.manageUsers", { n: mine.length })}
-              </Button>
-            ) : null}
-          </td>
-        </tr>
-      );
-    }
     return (
       <tr key={g.key}>
         <td className="py-3 pr-3">
@@ -217,12 +222,6 @@ export function DocsAccess({
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <p className="truncate font-medium">{g.label}</p>
-                {mine.length ? (
-                  <Button size="xs" variant="outline" onClick={() => setUserDialog(g.clientId)}>
-                    <Users className="size-3.5" />
-                    {t("pda.manageUsers", { n: mine.length })}
-                  </Button>
-                ) : null}
               </div>
               <p className="truncate text-xs text-muted-foreground">{g.sub}</p>
               <p className={cn("text-[11px]", r.from === "here" ? "font-semibold" : "text-muted-foreground")} style={r.from === "here" ? { color } : undefined}>
@@ -260,6 +259,23 @@ export function DocsAccess({
               <RotateCcw className="size-4" />
             </Button>
           ) : null}
+          {g.groupId ? (
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              className="text-destructive hover:text-destructive"
+              title={t("config.groups.delete")}
+              aria-label={t("config.groups.delete")}
+              onClick={async () => {
+                if (!window.confirm(t("adm.group.deleteBody", { name: g.label }))) return;
+                await deleteGroup(g.groupId as number);
+                setGroups((prev) => prev.filter((x) => x.id !== g.groupId));
+                await loadShares();
+              }}
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          ) : null}
         </td>
       </tr>
     );
@@ -286,8 +302,9 @@ export function DocsAccess({
             {(
               [
                 ["staff", t("pda.staff"), HardHat, staff.length],
-                ["clients", t("pda.clientsHead"), Building2, clients.length],
-                ["groups", t("adm.list.groups"), Users, groups.length],
+                ["staffGroups", t("adm.docs.tab.staffGroups"), Users, groups.filter((g) => g.audience === "internal").length],
+                ["clientUsers", t("adm.docs.tab.clientUsers"), Building2, users.length],
+                ["clientGroups", t("adm.docs.tab.clientGroups"), Users, groups.filter((g) => g.audience === "external").length],
               ] as const
             ).map(([id, label, Icon, n]) => (
               <button
@@ -308,10 +325,10 @@ export function DocsAccess({
           </div>
           <div className="relative w-full max-w-xs">
             <Search className="pointer-events-none absolute top-2.5 left-3 size-4 text-muted-foreground" />
-            <Input className="pl-9" value={query} placeholder={who === "staff" ? t("pda.searchStaff") : who === "groups" ? t("adm.searchGroup") : t("pda.searchClient")} onChange={(e) => setQuery(e.target.value)} />
+            <Input className="pl-9" value={query} placeholder={who === "staff" ? t("pda.searchStaff") : who === "staffGroups" || who === "clientGroups" ? t("adm.searchGroup") : t("pda.searchClient")} onChange={(e) => setQuery(e.target.value)} />
           </div>
         </div>
-        <p className="text-xs text-muted-foreground">{who === "staff" ? t("pda.staffHelp", { folder: here.id === root.id ? rootLabel : here.name }) : who === "groups" ? t("adm.docs.groupsHelp") : t("pda.clientsHelp")}</p>
+        <p className="text-xs text-muted-foreground">{who === "staff" ? t("pda.staffHelp", { folder: here.id === root.id ? rootLabel : here.name }) : who === "staffGroups" ? t("adm.docs.staffGroupsHelp") : who === "clientUsers" ? t("adm.docs.clientUsersHelp") : t("adm.docs.clientGroupsHelp")}</p>
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] text-sm">
@@ -319,43 +336,29 @@ export function DocsAccess({
               <tr>
                 <th className="pb-2 font-medium" />
                 <th className="pb-2 text-center font-medium">{t("pda.level")}</th>
-                <th className="w-10 pb-2" />
+                <th className="w-20 pb-2" />
               </tr>
             </thead>
             <tbody className="divide-y">
               {who === "staff" ? visibleStaff.map((u) => rowFor({ key: `s${u.id}`, clientId: 0, userId: u.id, label: u.name, sub: u.title || u.email })) : null}
-              {who === "clients" ? visibleClients.map((c) => rowFor({ key: `c${c.id}`, clientId: c.id, userId: null, label: c.company_name, sub: c.name })) : null}
-              {who === "groups" ? visibleGroups.map((gr) => rowFor({ key: `g${gr.id}`, clientId: -1, userId: null, groupId: gr.id, label: gr.name, sub: gr.audience === "external" ? t("adm.groupClients") : t("adm.groupStaff") })) : null}
+              {who === "staffGroups" ? staffGroups.map((gr) => rowFor({ key: `g${gr.id}`, clientId: -1, userId: null, groupId: gr.id, label: gr.name, sub: gr.description ?? t("adm.groupStaff") })) : null}
+              {who === "clientUsers"
+                ? clientUsersByCo.flatMap(({ company, items }) => [
+                    companyHeader(company.id, company.company_name, items.length),
+                    ...(closedCos.has(company.id) ? [] : items.map((u) => rowFor({ key: `u${company.id}-${u.id}`, clientId: company.id, userId: u.id, label: u.name, sub: u.email }))),
+                  ])
+                : null}
+              {who === "clientGroups"
+                ? clientGroupsByCo.flatMap(({ company, items }) => [
+                    companyHeader(company ? company.id : 0, company ? company.company_name : t("adm.groups.legacy"), items.length),
+                    ...(closedCos.has(company ? company.id : 0) ? [] : items.map((gr) => rowFor({ key: `g${gr.id}`, clientId: -1, userId: null, groupId: gr.id, label: gr.name, sub: company?.company_name ?? t("adm.groups.legacy") }))),
+                  ])
+                : null}
             </tbody>
           </table>
         </div>
       </Card>
 
-      <Dialog open={userDialog !== null} onOpenChange={(o) => !o && setUserDialog(null)}>
-        <DialogContent className="sm:max-w-3xl">
-          {(() => {
-            const client = clients.find((c) => c.id === userDialog);
-            if (!client) return null;
-            const mine = users.filter((u) => u.clientId === client.id).sort((a, b) => a.name.localeCompare(b.name));
-            return (
-              <>
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <Users className="size-5" style={{ color }} />
-                    {t("pda.usersOf", { name: client.company_name })}
-                  </DialogTitle>
-                  <DialogDescription>{t("pda.usersHelp2", { folder: here.id === root.id ? rootLabel : here.name })}</DialogDescription>
-                </DialogHeader>
-                <div className="max-h-[55vh] overflow-auto">
-                  <table className="w-full min-w-[640px] text-sm">
-                    <tbody className="divide-y">{mine.map((u) => rowFor({ key: `u${client.id}-${u.id}`, clientId: client.id, userId: u.id, label: u.name, sub: u.email }))}</tbody>
-                  </table>
-                </div>
-              </>
-            );
-          })()}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
