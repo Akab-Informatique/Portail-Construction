@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth";
+import { useAppearanceChosen } from "@/components/FirstLoginAppearance";
 import { useI18n } from "@/lib/i18n";
 import { TUTORIAL_KEY } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ function doneKey(userId: number) {
 export function MenuTour() {
   const { realUser, completeTutorial } = useAuth();
   const { t } = useI18n();
+  const appearanceChosen = useAppearanceChosen();
   const [step, setStep] = useState(0);
   const [hidden, setHidden] = useState(false);
   const [box, setBox] = useState<DOMRect | null>(null);
@@ -50,6 +52,7 @@ export function MenuTour() {
     Boolean(realUser) &&
     !realUser?.must_change_password &&
     !realUser?.tutorial_done &&
+    appearanceChosen &&
     !locallyDone &&
     !hidden &&
     !(typeof window !== "undefined" && realUser && sessionStorage.getItem(laterKey(realUser.id)));

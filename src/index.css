@@ -547,3 +547,46 @@
 .overflow-y-auto, .overflow-auto, .overflow-x-auto {
   -webkit-overflow-scrolling: touch;
 }
+
+/* Access tabs: a steel bar with plates and a hazard stripe, the look of a job-site sign. */
+.frx-steel {
+  background: linear-gradient(180deg, #2b2b2b 0%, #1a1a1a 100%);
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 6px 18px -10px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.frx-hazard {
+  background: repeating-linear-gradient(-45deg, #fbaa19 0 14px, #141414 14px 28px);
+}
+.frx-plate {
+  position: relative;
+  clip-path: polygon(14px 0, calc(100% - 14px) 0, 100% 100%, 0 100%);
+  transition: filter 0.15s, background 0.15s;
+}
+.frx-plate-on {
+  background: #fbaa19;
+  color: #141414;
+}
+.frx-plate-on::after,
+.frx-plate-off::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  right: 22px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  box-shadow: -190px 0 0 rgba(0, 0, 0, 0);
+}
+.frx-plate-off {
+  background: #3a3a3a;
+  color: rgba(255, 255, 255, 0.7);
+}
+.frx-plate-off::after {
+  background: rgba(255, 255, 255, 0.18);
+}
+.frx-plate-off:hover {
+  background: #474747;
+  color: #fff;
+}

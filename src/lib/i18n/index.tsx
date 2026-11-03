@@ -32,12 +32,11 @@ type I18nContextValue = {
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 function detectLocale(): Locale {
-  if (typeof window === "undefined") return "en";
+  // French for everyone, until the person chooses English themselves.
+  if (typeof window === "undefined") return "fr";
   const stored = localStorage.getItem(LOCALE_KEY);
   if (stored === "fr" || stored === "en") return stored;
-  const nav = navigator.language.toLowerCase();
-  if (nav.startsWith("fr")) return "fr";
-  return "en";
+  return "fr";
 }
 
 function interpolate(template: string, vars?: Vars) {

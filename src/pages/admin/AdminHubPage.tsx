@@ -1,38 +1,43 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { BookOpen, Building2, HardHat, KeyRound, ShieldCheck } from "lucide-react";
+import { BookOpen, Building2, HardHat, KeyRound } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
-import type { MessageKey } from "@/lib/i18n/en";
 import { PageHeader } from "@/components/PageHeader";
 import { AccessGuide } from "@/components/admin/AccessGuide";
 import { Button } from "@/components/ui/button";
 import { ConfigClientsPage } from "@/pages/config/ConfigClientsPage";
-import { ConfigInternalUsersPage } from "@/pages/config/ConfigInternalUsersPage";
 import { AdminAccessPage } from "@/pages/admin/AdminAccessPage";
 import { cn } from "@/lib/utils";
 
-const SECTIONS = [
-  { id: "clients", label: "adm.hub.clients", icon: Building2 },
-  { id: "staff", label: "adm.hub.staff", icon: HardHat },
-  { id: "clientRights", label: "adm.hub.clientRights", icon: KeyRound },
-  { id: "staffRights", label: "adm.hub.staffRights", icon: ShieldCheck },
-] as const;
-type Section = (typeof SECTIONS)[number]["id"];
+type Tab = "staff" | "clients";
+type Sub = "companies" | "rights";
 
 /**
- * Administration › Access: one page with a banner of four sections. Clients and Staff are the people (create them and give
- * their first access); Client rights and Staff rights are where everything each person, company or group can reach is set.
+ * Administration › Access. Two tabs in a steel-and-hazard-stripe bar: Staff first, then Clients. Staff holds the people, their
+ * profile and everything they can reach, and the groups; Clients holds the companies and their users, and their rights.
  */
 export function AdminHubPage() {
   const { t } = useI18n();
   const [params, setParams] = useSearchParams();
   const [guide, setGuide] = useState(false);
-  const requested = params.get("section");
-  const section: Section = SECTIONS.some((s) => s.id === requested) ? (requested as Section) : "clients";
 
-  function go(next: Section) {
-    setParams({ section: next }, { replace: true });
+  // Older links used ?section=staff|staffRights|clients|clientRights.
+  const legacy = params.get("section");
+  const rawTab = params.get("tab") ?? (legacy === "staff" || legacy === "staffRights" ? "staff" : legacy === "clients" || legacy === "clientRights" ? "clients" : null);
+  const tab: Tab = rawTab === "clients" ? "clients" : "staff";
+  const sub: Sub = params.get("sub") === "rights" || legacy === "clientRights" ? "rights" : "companies";
+
+  function go(next: Tab, nextSub?: Sub) {
+    const out = new URLSearchParams();
+    out.set("tab", next);
+    if (next === "clients" && nextSub === "rights") out.set("sub", "rights");
+    setParams(out, { replace: true });
   }
+
+  const tabs = [
+    { id: "staff" as const, label: t("adm.hub.staff"), icon: HardHat },
+    { id: "clients" as const, label: t("adm.hub.clients"), icon: Building2 },
+  ];
 
   return (
     <div>
@@ -47,28 +52,45 @@ export function AdminHubPage() {
           </Button>
         }
       />
-      <nav className="mb-6 flex w-full gap-1 overflow-x-auto rounded-xl border bg-muted/40 p-1 sm:w-fit" aria-label={t("adm.hub.title")}>
-        {SECTIONS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => go(id)}
-            aria-current={section === id ? "page" : undefined}
-            className={cn(
-              "flex h-10 shrink-0 items-center gap-2 rounded-lg px-4 text-sm font-medium transition-all",
-              section === id ? "bg-card text-foreground shadow-sm shadow-[inset_0_-2px_0_var(--primary)]" : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <Icon className={cn("size-4", section === id && "text-primary")} />
-            {t(label as MessageKey)}
-          </button>
-        ))}
+
+      <nav className="frx-steel mb-6" aria-label={t("adm.hub.title")}>
+        <div className="flex gap-1 overflow-x-auto px-3 pt-3">
+          {tabs.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => go(id)}
+              aria-current={tab === id ? "page" : undefined}
+              className={cn("frx-plate flex shrink-0 items-center gap-2.5 px-7 py-3 font-display text-xl uppercase tracking-[0.12em]", tab === id ? "frx-plate-on" : "frx-plate-off")}
+            >
+              <Icon className="size-5" />
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="frx-hazard h-2.5" aria-hidden />
       </nav>
 
-      {section === "clients" ? <ConfigClientsPage embedded /> : null}
-      {section === "staff" ? <ConfigInternalUsersPage embedded /> : null}
-      {section === "clientRights" ? <AdminAccessPage key="c" audience="external" embedded /> : null}
-      {section === "staffRights" ? <AdminAccessPage key="s" audience="internal" embedded /> : null}
+      {tab === "staff" ? <AdminAccessPage key="staff" audience="internal" embedded /> : null}
+
+      {tab === "clients" ? (
+        <div className="grid gap-5">
+          <div className="inline-flex w-fit rounded-lg border bg-muted/40 p-0.5">
+            {(
+              [
+                ["companies", t("adm.sub.companies"), Building2],
+                ["rights", t("adm.sub.rights"), KeyRound],
+              ] as const
+            ).map(([id, label, Icon]) => (
+              <button key={id} type="button" onClick={() => go("clients", id)} aria-pressed={sub === id} className={cn("flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-semibold transition-colors", sub === id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+                <Icon className="size-4" />
+                {label}
+              </button>
+            ))}
+          </div>
+          {sub === "companies" ? <ConfigClientsPage embedded /> : <AdminAccessPage key="clients" audience="external" embedded />}
+        </div>
+      ) : null}
       <AccessGuide open={guide} onOpenChange={setGuide} />
     </div>
   );

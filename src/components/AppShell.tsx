@@ -52,6 +52,7 @@ import { useTheme } from "@/lib/theme";
 import { useI18n } from "@/lib/i18n";
 import { useWorkspace } from "@/lib/workspace";
 import { ForcePasswordDialog } from "@/components/ForcePasswordDialog";
+import { FirstLoginAppearance } from "@/components/FirstLoginAppearance";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PageSkeleton } from "@/components/Skeleton";
 import { MenuTour } from "@/components/MenuTour";
@@ -616,6 +617,7 @@ export function AppShell() {
   return (
     <div className="flex min-h-dvh bg-background">
       <ForcePasswordDialog />
+      <FirstLoginAppearance />
       <MenuTour />
       <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
 

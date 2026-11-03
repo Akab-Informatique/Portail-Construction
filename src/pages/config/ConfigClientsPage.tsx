@@ -225,7 +225,7 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
       is_active: 1,
       is_admin: 0,
       avatar_initials: initials(f.name.trim()),
-      locale: "en",
+      locale: "fr",
       theme: "light",
       all_clients: 0,
     });

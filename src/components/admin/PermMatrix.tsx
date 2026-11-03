@@ -1,16 +1,35 @@
-import { Fragment } from "react";
-import { MENU_MODULES, OTHER_MODULES } from "@/lib/constants";
+import { useState } from "react";
+import { ChevronDown, ChevronRight, Lock } from "lucide-react";
+import { MENU_MODULES, OTHER_MODULES, type ModuleDef } from "@/lib/constants";
 import type { Flags } from "@/lib/admin-access";
 import { NO_FLAGS } from "@/lib/admin-access";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 
-const KEYS = ["can_view", "can_create", "can_edit", "can_delete"] as const;
+const FULL: Flags = { can_view: true, can_create: true, can_edit: true, can_delete: true };
+const VIEW: Flags = { can_view: true, can_create: false, can_edit: false, can_delete: false };
+
+type Level = "none" | "view" | "interact" | "custom";
+const levelOf = (f: Flags): Level => {
+  if (!f.can_view) return "none";
+  if (f.can_create && f.can_edit && f.can_delete) return "interact";
+  if (!f.can_create && !f.can_edit && !f.can_delete) return "view";
+  return "custom";
+};
+const merge = (a: Flags, b: Flags): Flags => ({
+  can_view: a.can_view || b.can_view,
+  can_create: a.can_create || b.can_create,
+  can_edit: a.can_edit || b.can_edit,
+  can_delete: a.can_delete || b.can_delete,
+});
 
 /**
- * Every sidebar page and every module inside a project, with its four rights (see, add, change, delete). `inherited` is what
- * the person already gets from their groups: shown ticked and locked, so what is theirs alone is clear.
+ * The sidebar and the project modules as switches. Each sidebar section (01, 02, 03…) has one switch that opens or closes
+ * it; each page inside has three steps: Hidden, View, or Interact (add, change, delete), with a detail row for anything in
+ * between. `inherited` is what the groups already give: shown and locked, so what is personal is clear.
  */
 export function PermMatrix({
   flags,
@@ -22,71 +41,143 @@ export function PermMatrix({
   onChange: (module: string, next: Flags) => void;
 }) {
   const { t } = useI18n();
-  const rows = [
-    ...MENU_MODULES.map((m) => ({ m, heading: m.id === "app_overview" ? "people.group.menu" : null })),
-    ...OTHER_MODULES.map((m) => ({ m, heading: m.id === OTHER_MODULES[0].id ? "people.group.project" : null })),
-  ];
-  return (
-    <div className="overflow-x-auto rounded-xl border bg-card">
-      <table className="w-full min-w-[560px] text-sm">
-        <thead className="border-b bg-muted/40 text-left text-[11px] uppercase tracking-wider text-muted-foreground">
-          <tr>
-            <th className="px-4 py-3 font-medium">{t("people.col.module")}</th>
-            <th className="px-3 py-3 font-medium">{t("people.col.view")}</th>
-            <th className="px-3 py-3 font-medium">{t("people.col.create")}</th>
-            <th className="px-3 py-3 font-medium">{t("people.col.edit")}</th>
-            <th className="px-3 py-3 font-medium">{t("people.col.delete")}</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {rows.map(({ m, heading }) => {
-            const own = flags[m.id] ?? NO_FLAGS;
-            const via = inherited?.[m.id] ?? NO_FLAGS;
-            const isSection = m.group === "menu" && !m.parent;
-            const set = (key: keyof Flags, value: boolean) => {
-              const next = { ...own, [key]: value };
-              if (key !== "can_view" && value) next.can_view = true;
-              if (key === "can_view" && !value) {
-                next.can_create = false;
-                next.can_edit = false;
-                next.can_delete = false;
-              }
-              onChange(m.id, next);
-            };
+  const [detail, setDetail] = useState<string | null>(null);
+  const label = (m: ModuleDef) => (m.labelKey ? t(m.labelKey as MessageKey) : t(`module.${m.id}` as MessageKey));
+  const own = (id: string) => flags[id] ?? NO_FLAGS;
+  const via = (id: string) => inherited?.[id] ?? NO_FLAGS;
+  const eff = (id: string) => merge(own(id), via(id));
+
+  const sections = MENU_MODULES.filter((m) => !m.parent);
+  const projectMods = OTHER_MODULES.filter((m) => m.scope === "project");
+  const otherMods = OTHER_MODULES.filter((m) => m.scope !== "project");
+
+  const stepper = (m: ModuleDef, disabled = false) => {
+    const f = eff(m.id);
+    const cur = levelOf(f);
+    const lockedView = via(m.id).can_view;
+    const steps: { id: Level; text: string; apply: Flags }[] = [
+      { id: "none", text: t("adm.perm.none"), apply: NO_FLAGS },
+      { id: "view", text: t("adm.perm.view"), apply: VIEW },
+      { id: "interact", text: t("adm.perm.interact"), apply: FULL },
+    ];
+    return (
+      <div className="flex items-center gap-1.5">
+        <div className={cn("inline-flex rounded-lg border bg-muted/40 p-0.5", disabled && "pointer-events-none opacity-40")}>
+          {steps.map((s) => {
+            const on = cur === s.id;
+            const blocked = s.id === "none" && lockedView;
             return (
-              <Fragment key={m.id}>
-                {heading ? (
-                  <tr className="bg-muted/30">
-                    <td colSpan={5} className="px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      {t(heading as MessageKey)}
-                    </td>
-                  </tr>
-                ) : null}
-                <tr className={isSection ? "bg-muted/15 hover:bg-muted/30" : "hover:bg-muted/30"}>
-                  <td className={m.parent ? "py-3 pr-4 pl-10" : "px-4 py-3"}>
-                    <p className={isSection ? "font-semibold" : "font-medium"}>{m.labelKey ? t(m.labelKey as MessageKey) : t(`module.${m.id}` as MessageKey)}</p>
-                    {m.group !== "menu" ? <p className="text-xs text-muted-foreground">{t(`module.${m.id}.desc` as MessageKey)}</p> : null}
-                  </td>
-                  {KEYS.map((k) => {
-                    const locked = !own[k] && via[k];
-                    return (
-                      <td key={k} className="px-3 py-3">
-                        <Checkbox
-                          checked={own[k] || via[k]}
-                          disabled={locked}
-                          title={locked ? t("adm.viaGroup") : undefined}
-                          onCheckedChange={(v) => set(k, v === true)}
-                          aria-label={`${m.label} ${k.replace("can_", "")}`}
-                        />
-                      </td>
-                    );
-                  })}
-                </tr>
-              </Fragment>
+              <button
+                key={s.id}
+                type="button"
+                aria-pressed={on}
+                disabled={blocked}
+                title={blocked ? t("adm.viaGroup") : undefined}
+                onClick={() => onChange(m.id, s.apply)}
+                className={cn(
+                  "rounded-md px-2.5 py-1 text-xs font-semibold transition-colors",
+                  on ? (s.id === "none" ? "bg-card text-foreground shadow-sm" : s.id === "view" ? "bg-sky-500/20 text-sky-800 shadow-sm dark:text-sky-200" : "bg-primary text-primary-foreground shadow-sm") : "text-muted-foreground hover:text-foreground",
+                  blocked && "cursor-not-allowed opacity-40",
+                )}
+              >
+                {s.text}
+              </button>
             );
           })}
-        </tbody>
-      </table>
+          {cur === "custom" ? <span className="rounded-md bg-amber-500/20 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:text-amber-200">{t("adm.perm.custom")}</span> : null}
+        </div>
+        <button type="button" aria-label={t("adm.perm.detail")} title={t("adm.perm.detail")} onClick={() => setDetail(detail === m.id ? null : m.id)} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
+          {detail === m.id ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+        </button>
+        {lockedView ? <Lock className="size-3 text-muted-foreground" aria-label={t("adm.viaGroup")} /> : null}
+      </div>
+    );
+  };
+
+  const detailRow = (m: ModuleDef) =>
+    detail === m.id ? (
+      <div className="flex flex-wrap gap-x-5 gap-y-1 border-t bg-muted/30 px-4 py-2 text-xs">
+        {(
+          [
+            ["can_view", "people.col.view"],
+            ["can_create", "people.col.create"],
+            ["can_edit", "people.col.edit"],
+            ["can_delete", "people.col.delete"],
+          ] as const
+        ).map(([k, l]) => {
+          const locked = !own(m.id)[k] && via(m.id)[k];
+          return (
+            <label key={k} className="flex items-center gap-1.5">
+              <Checkbox
+                checked={own(m.id)[k] || via(m.id)[k]}
+                disabled={locked}
+                onCheckedChange={(v) => {
+                  const next = { ...own(m.id), [k]: v === true };
+                  if (k !== "can_view" && v === true) next.can_view = true;
+                  if (k === "can_view" && v !== true) Object.assign(next, NO_FLAGS);
+                  onChange(m.id, next);
+                }}
+              />
+              {t(l as MessageKey)}
+            </label>
+          );
+        })}
+      </div>
+    ) : null;
+
+  const row = (m: ModuleDef, disabled = false) => (
+    <li key={m.id} className="border-t first:border-t-0">
+      <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
+        <div className="min-w-40 flex-1">
+          <p className="text-sm font-medium">{label(m)}</p>
+          {m.group !== "menu" && t(`module.${m.id}.desc` as MessageKey) ? <p className="text-xs text-muted-foreground">{t(`module.${m.id}.desc` as MessageKey)}</p> : null}
+        </div>
+        {stepper(m, disabled)}
+      </div>
+      {detailRow(m)}
+    </li>
+  );
+
+  return (
+    <div className="grid gap-4">
+      {sections.map((sec, i) => {
+        const open = eff(sec.id).can_view;
+        const items = MENU_MODULES.filter((m) => m.parent === sec.id);
+        const lockedOpen = via(sec.id).can_view;
+        return (
+          <section key={sec.id} className={cn("overflow-hidden rounded-xl border bg-card", !open && "opacity-90")}>
+            <header className="flex items-center gap-3 border-b bg-[#141414] px-4 py-2.5 text-white">
+              <span className="font-display text-xl leading-none text-primary">{String(i + 1).padStart(2, "0")}</span>
+              <span className="flex-1 font-display text-lg uppercase tracking-wide">{label(sec)}</span>
+              <span className="text-[11px] uppercase tracking-wider text-white/60">{open ? t("adm.perm.sectionOn") : t("adm.perm.sectionOff")}</span>
+              <Switch
+                checked={open}
+                disabled={lockedOpen}
+                title={lockedOpen ? t("adm.viaGroup") : undefined}
+                onCheckedChange={(v) => onChange(sec.id, v ? merge(own(sec.id), VIEW) : { ...own(sec.id), can_view: false })}
+                aria-label={label(sec)}
+              />
+            </header>
+            <ul className={cn(!open && "pointer-events-none opacity-45")}>{items.map((m) => row(m, !open))}</ul>
+          </section>
+        );
+      })}
+
+      <section className="overflow-hidden rounded-xl border bg-card">
+        <header className="flex items-center gap-3 border-b bg-[#141414] px-4 py-2.5 text-white">
+          <span className="font-display text-lg uppercase tracking-wide">{t("people.group.project")}</span>
+        </header>
+        <ul>{projectMods.map((m) => row(m))}</ul>
+      </section>
+
+      {otherMods.length ? (
+        <section className="overflow-hidden rounded-xl border bg-card">
+          <header className="flex items-center gap-3 border-b bg-[#141414] px-4 py-2.5 text-white">
+            <span className="font-display text-lg uppercase tracking-wide">{t("adm.perm.other")}</span>
+          </header>
+          <ul>{otherMods.map((m) => row(m))}</ul>
+        </section>
+      ) : null}
     </div>
   );
 }

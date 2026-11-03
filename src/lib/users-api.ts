@@ -103,6 +103,8 @@ export async function createUser(input: {
   avatar_initials?: string | null;
   groupIds?: number[];
   must_change_password?: boolean;
+  /** The person's language; French unless chosen otherwise. */
+  locale?: "fr" | "en";
 }): Promise<User> {
   await assertEmailFree(input.email);
   const { ok, data } = await postDb({ action: "create_user", ...input });
@@ -117,7 +119,7 @@ export async function createUser(input: {
       is_active: 1,
       is_admin: input.is_admin ? 1 : 0,
       avatar_initials: input.avatar_initials ?? null,
-      locale: "en",
+      locale: input.locale ?? "fr",
       theme: "light",
       all_clients: input.user_type === "internal" && input.is_admin ? 1 : 0,
       must_change_password: input.must_change_password === false ? 0 : 1,
@@ -142,7 +144,7 @@ export async function createUser(input: {
     is_active: 1,
     is_admin: input.is_admin ? 1 : 0,
     avatar_initials: input.avatar_initials ?? null,
-    locale: "en",
+    locale: input.locale ?? "fr",
     theme: "light",
     all_clients: input.user_type === "internal" && input.is_admin ? 1 : 0,
     must_change_password: input.must_change_password === false ? 0 : 1,
@@ -235,4 +237,16 @@ export async function removeStaffUser(userId: number, currentUserId?: number): P
   await db.delete(schema.sharepoint_shares).where(eq(schema.sharepoint_shares.user_id, userId));
   await db.delete(schema.report_access).where(and(eq(schema.report_access.subject_type, "user"), eq(schema.report_access.subject_id, userId)));
   await db.delete(schema.users).where(eq(schema.users.id, userId));
+}
+
+export type PersonPrefs = { o365_calendar: number; morning_email: number };
+
+/** Another person's own settings (Outlook calendar, morning email), read or set by an administrator. */
+export async function adminPrefs(userId: number, patch?: Partial<PersonPrefs>): Promise<PersonPrefs> {
+  const { ok, data } = await postDb({ action: patch ? "set_user_prefs" : "get_user_prefs", user_id: userId, ...(patch ?? {}) } as never);
+  const server = (data as { prefs?: PersonPrefs }).prefs;
+  if (ok && server) return server;
+  // No server (local development): the settings live in the browser's database.
+  const { loadPrefs, savePrefs } = await import("./user-prefs");
+  return patch ? savePrefs(userId, patch) : loadPrefs(userId);
 }

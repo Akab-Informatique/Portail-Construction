@@ -1286,7 +1286,7 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       const mustChange = req.body?.must_change_password === false ? 0 : 1;
       const inserted = await getPool().query(
         `INSERT INTO users (name, email, password, user_type, title, phone, is_active, is_admin, avatar_initials, locale, theme, all_clients, must_change_password, tutorial_done)
-         VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8, 'en', 'light', $9, $10, 0)
+         VALUES ($1, $2, $3, $4, $5, $6, 1, $7, $8, $11, 'light', $9, $10, 0)
          RETURNING id, name, email, user_type, title, phone, is_active, is_admin, avatar_initials, locale, theme, all_clients, must_change_password, tutorial_done, created_at`,
         [
           name,
@@ -1299,6 +1299,8 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
           String(req.body?.avatar_initials ?? name).slice(0, 2).toUpperCase(),
           userType === "external" ? 0 : 1,
           mustChange,
+          // French unless the administrator chose English.
+          req.body?.locale === "en" ? "en" : "fr",
         ],
       );
       const created = publicUser(inserted.rows[0] as Record<string, unknown>);
@@ -1390,6 +1392,37 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       const result = await finishPasswordReset(String(req.body?.token ?? ""), String(req.body?.password ?? ""));
       if ("error" in result && clientIp) recordLoginFailure(`reset:${clientIp}`);
       return res.status("error" in result ? 400 : 200).json(result);
+    }
+    // An administrator reads or sets another person's own settings (Outlook calendar, morning email). Those rows are private to
+    // their owner for the browser, so this goes through the server.
+    if (action === "get_user_prefs" || action === "set_user_prefs") {
+      if (!hasRemoteDb()) return res.status(200).json({ local: true });
+      const session = await loadSessionUser(req);
+      if (!session) {
+        res.status(401).json({ error: "err.unauthorized" });
+        return;
+      }
+      if (Number(session.is_admin) !== 1 || session.view_as === "client") {
+        res.status(403).json({ error: "err.forbidden" });
+        return;
+      }
+      await ensureSchema();
+      const target = Number(req.body?.user_id);
+      if (!Number.isInteger(target) || target <= 0) {
+        res.status(400).json({ error: "err.badRequest" });
+        return;
+      }
+      if (action === "set_user_prefs") {
+        const o365 = req.body?.o365_calendar === undefined ? null : Number(req.body.o365_calendar) === 1 ? 1 : 0;
+        const morning = req.body?.morning_email === undefined ? null : Number(req.body.morning_email) === 1 ? 1 : 0;
+        await getPool().query(
+          `INSERT INTO user_prefs (user_id, o365_calendar, morning_email) VALUES ($1, COALESCE($2, 0), COALESCE($3, 0))
+           ON CONFLICT (user_id) DO UPDATE SET o365_calendar = COALESCE($2, user_prefs.o365_calendar), morning_email = COALESCE($3, user_prefs.morning_email)`,
+          [target, o365, morning],
+        );
+      }
+      const row = (await getPool().query("SELECT o365_calendar, morning_email FROM user_prefs WHERE user_id = $1", [target])).rows[0] as { o365_calendar?: number; morning_email?: number } | undefined;
+      return res.status(200).json({ prefs: { o365_calendar: Number(row?.o365_calendar ?? 0), morning_email: Number(row?.morning_email ?? 0) } });
     }
     if (action === "send_user_link") {
       if (!hasRemoteDb()) return res.status(200).json({ local: true });

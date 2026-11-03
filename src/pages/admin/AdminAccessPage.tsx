@@ -35,6 +35,8 @@ import { EmptyState } from "@/components/EmptyState";
 import { PageSkeleton } from "@/components/Skeleton";
 import { UserAvatar } from "@/components/UserAvatar";
 import { AccessSummary } from "@/components/admin/AccessSummary";
+import { StaffCreateDialog } from "@/components/admin/StaffCreateDialog";
+import { StaffProfile } from "@/components/admin/StaffProfile";
 import { PermMatrix } from "@/components/admin/PermMatrix";
 import { ProjectPicker } from "@/components/admin/parts";
 import { ReportPicker } from "@/components/admin/ReportPicker";
@@ -52,7 +54,7 @@ import { cn } from "@/lib/utils";
 
 type Audience = "internal" | "external";
 type Sel = { kind: "user" | "group" | "company"; id: number } | null;
-type Tab = "summary" | "groups" | "menu" | "projects" | "docs" | "reports" | "users";
+type Tab = "profile" | "summary" | "groups" | "menu" | "projects" | "docs" | "reports" | "users";
 
 type Data = {
   users: User[];
@@ -90,6 +92,8 @@ export function AdminAccessPage({ audience, embedded = false }: { audience: Audi
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<Tab | null>(null);
   const [newGroup, setNewGroup] = useState(false);
+  const [newStaff, setNewStaff] = useState(false);
+  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
   const [groupForm, setGroupForm] = useState({ name: "", description: "" });
   const [confirmDelete, setConfirmDelete] = useState<AccessGroup | null>(null);
   const staff = audience === "internal";
@@ -203,12 +207,21 @@ export function AdminAccessPage({ audience, embedded = false }: { audience: Audi
       {embedded ? (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <p className="max-w-3xl text-sm text-muted-foreground">{t(staff ? "adm.access.staffDesc" : "adm.access.clientsDesc")}</p>
-          <Button onClick={() => setNewGroup(true)}>
-            <Plus className="size-4" />
-            {t("config.groups.new")}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant={staff ? "outline" : "default"} onClick={() => setNewGroup(true)}>
+              <Plus className="size-4" />
+              {t("config.groups.new")}
+            </Button>
+            {staff ? (
+              <Button onClick={() => setNewStaff(true)}>
+                <UserRound className="size-4" />
+                {t("adm.new.button")}
+              </Button>
+            ) : null}
+          </div>
         </div>
       ) : null}
+      {notice ? <p className={cn("mb-4 rounded-lg border px-3 py-2 text-sm", notice.ok ? "border-emerald-500/40 bg-emerald-500/10" : "border-destructive/40 bg-destructive/10 text-destructive")}>{notice.text}</p> : null}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(260px,320px)_minmax(0,1fr)]">
         <Card className="gap-3 p-3 lg:max-h-[76vh] lg:overflow-y-auto">
@@ -338,6 +351,21 @@ export function AdminAccessPage({ audience, embedded = false }: { audience: Audi
         </div>
       </div>
 
+      {staff ? (
+        <StaffCreateDialog
+          open={newStaff}
+          groups={groups}
+          onClose={() => setNewStaff(false)}
+          onCreated={(id, n) => {
+            setNewStaff(false);
+            setNotice({ ok: n.ok, text: `${n.text} ${t("adm.new.nextStep")}` });
+            void load().then(() => {
+              setList("people");
+              select({ kind: "user", id }, "menu");
+            });
+          }}
+        />
+      ) : null}
       <Dialog open={newGroup} onOpenChange={setNewGroup}>
         <DialogContent className="sm:max-w-md">
           <form onSubmit={onCreateGroup}>
@@ -439,6 +467,7 @@ function PersonEditor({
   const { user: me, refreshPermissions } = useAuth();
   const admin = person.is_admin === 1;
   const tabs: { id: Tab; label: string }[] = [
+    ...(staff ? [{ id: "profile" as Tab, label: t("adm.tab.profile") }] : []),
     { id: "summary", label: t("adm.tab.summary") },
     { id: "groups", label: t("adm.tab.groups") },
     ...(staff ? [{ id: "menu" as Tab, label: t("adm.tab.menu") }] : []),
@@ -504,6 +533,7 @@ function PersonEditor({
       ) : (
         <>
           <Tabs tabs={tabs} value={active} onChange={setTab} />
+          {active === "profile" ? <StaffProfile key={person.id} person={person} onChanged={done} onDeleted={() => { setTab("summary"); void reload(); }} /> : null}
           {active === "summary" ? (
             <AccessSummary
               staff={staff}
