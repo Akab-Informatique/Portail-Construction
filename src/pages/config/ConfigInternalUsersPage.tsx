@@ -39,7 +39,7 @@ const empty = {
   must_change_password: true,
 };
 
-export function ConfigInternalUsersPage() {
+export function ConfigInternalUsersPage({ embedded = false }: { embedded?: boolean }) {
   const { realUser } = useAuth();
   const { t, tr, locale } = useI18n();
   const [loading, setLoading] = useState(true);
@@ -164,17 +164,27 @@ export function ConfigInternalUsersPage() {
 
   return (
     <div>
-      <PageHeader
-        eyebrow={t("nav.section.admin")}
-        title={t("config.internal.title")}
-        description={t("adm.staff.desc")}
-        actions={
+      {embedded ? (
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <p className="max-w-2xl text-sm text-muted-foreground">{t("adm.staff.desc")}</p>
           <Button onClick={openCreate}>
             <Plus className="size-4" />
             {t("config.internal.new")}
           </Button>
-        }
-      />
+        </div>
+      ) : (
+        <PageHeader
+          eyebrow={t("nav.section.admin")}
+          title={t("config.internal.title")}
+          description={t("adm.staff.desc")}
+          actions={
+            <Button onClick={openCreate}>
+              <Plus className="size-4" />
+              {t("config.internal.new")}
+            </Button>
+          }
+        />
+      )}
 
       <div>
         {notice ? <p className={cn("mb-4 rounded-lg border px-3 py-2 text-sm", notice.tone === "ok" ? "border-emerald-500/40 bg-emerald-500/10" : "border-destructive/40 bg-destructive/10 text-destructive")}>{notice.text}</p> : null}
@@ -233,7 +243,7 @@ export function ConfigInternalUsersPage() {
                           {linkBusy === `reset-${p.id}` ? <Loader2 className="size-4 animate-spin" /> : <KeyRound className="size-4" />}
                         </Button>
                         <Button variant="ghost" size="sm" asChild>
-                          <Link to={`/admin/access/staff?user=${p.id}`}>{t("clients.access")}</Link>
+                          <Link to={`/admin?section=staffRights&user=${p.id}`}>{t("clients.access")}</Link>
                         </Button>
                       </div>
                     </li>

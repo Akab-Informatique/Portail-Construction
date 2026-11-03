@@ -5,7 +5,6 @@ import { Logo } from "@/components/Logo";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
-  Building2,
   CalendarDays,
   Check,
   ChevronDown,
@@ -14,7 +13,6 @@ import {
   Eye,
   FileText,
   FolderKanban,
-  HardHat,
   KeyRound,
   LayoutDashboard,
   LayoutGrid,
@@ -210,12 +208,7 @@ export function useNavModel(): NavSection[] {
         id: "admin",
         label: t("nav.section.admin"),
         tour: "administration",
-        items: [
-          { id: "adminClients", to: "/admin/clients", label: t("nav.admin.clients"), icon: Building2, end: true },
-          { id: "adminStaff", to: "/admin/staff", label: t("nav.admin.staff"), icon: HardHat, end: true },
-          { id: "accessClients", to: "/admin/access/clients", label: t("nav.admin.accessClients"), icon: KeyRound, end: true },
-          { id: "accessStaff", to: "/admin/access/staff", label: t("nav.admin.accessStaff"), icon: KeyRound, end: true },
-        ],
+        items: [{ id: "access", to: "/admin", label: t("nav.admin.access"), icon: KeyRound, activePrefix: "/admin" }],
       });
     }
     // Work in progress: the invoice/quote builder lives here until it is ready.

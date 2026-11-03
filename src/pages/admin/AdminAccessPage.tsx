@@ -31,10 +31,10 @@ import type {
   UserAccessGroup,
   UserClient,
 } from "@/lib/types";
-import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { PageSkeleton } from "@/components/Skeleton";
 import { UserAvatar } from "@/components/UserAvatar";
+import { AccessSummary } from "@/components/admin/AccessSummary";
 import { PermMatrix } from "@/components/admin/PermMatrix";
 import { ProjectPicker } from "@/components/admin/parts";
 import { ReportPicker } from "@/components/admin/ReportPicker";
@@ -52,7 +52,7 @@ import { cn } from "@/lib/utils";
 
 type Audience = "internal" | "external";
 type Sel = { kind: "user" | "group" | "company"; id: number } | null;
-type Tab = "groups" | "menu" | "projects" | "docs" | "reports" | "users";
+type Tab = "summary" | "groups" | "menu" | "projects" | "docs" | "reports" | "users";
 
 type Data = {
   users: User[];
@@ -80,7 +80,7 @@ const flagsOf = (rows: { can_view: number; can_create: number; can_edit: number;
  * the right: the sidebar pages and what they may do in them, the projects, the documentation folders, the reports. A group
  * carries the same four things, and everyone in it gets them on top of what they were given alone.
  */
-function AdminAccessPage({ audience }: { audience: Audience }) {
+export function AdminAccessPage({ audience, embedded = false }: { audience: Audience; embedded?: boolean }) {
   const { user, realUser } = useAuth();
   const { t } = useI18n();
   const [params, setParams] = useSearchParams();
@@ -142,7 +142,15 @@ function AdminAccessPage({ audience }: { audience: Audience }) {
 
   function select(next: Sel, nextTab: Tab | null = null) {
     setTab(nextTab);
-    setParams(next ? { [next.kind]: String(next.id) } : {}, { replace: true });
+    setParams(
+      (prev) => {
+        const out = new URLSearchParams(prev);
+        for (const k of ["user", "group", "company"]) out.delete(k);
+        if (next) out.set(next.kind, String(next.id));
+        return out;
+      },
+      { replace: true },
+    );
   }
 
   const groups = useMemo(() => data.groups.filter((g) => groupFitsUser(g, audience)).sort((a, b) => a.name.localeCompare(b.name)), [data.groups, audience]);
@@ -192,17 +200,15 @@ function AdminAccessPage({ audience }: { audience: Audience }) {
 
   return (
     <div>
-      <PageHeader
-        eyebrow={t("nav.section.admin")}
-        title={t(staff ? "adm.access.staffTitle" : "adm.access.clientsTitle")}
-        description={t(staff ? "adm.access.staffDesc" : "adm.access.clientsDesc")}
-        actions={
+      {embedded ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="max-w-3xl text-sm text-muted-foreground">{t(staff ? "adm.access.staffDesc" : "adm.access.clientsDesc")}</p>
           <Button onClick={() => setNewGroup(true)}>
             <Plus className="size-4" />
             {t("config.groups.new")}
           </Button>
-        }
-      />
+        </div>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(260px,320px)_minmax(0,1fr)]">
         <Card className="gap-3 p-3 lg:max-h-[76vh] lg:overflow-y-auto">
@@ -433,13 +439,14 @@ function PersonEditor({
   const { user: me, refreshPermissions } = useAuth();
   const admin = person.is_admin === 1;
   const tabs: { id: Tab; label: string }[] = [
+    { id: "summary", label: t("adm.tab.summary") },
     { id: "groups", label: t("adm.tab.groups") },
     ...(staff ? [{ id: "menu" as Tab, label: t("adm.tab.menu") }] : []),
     { id: "projects", label: t("adm.tab.projects") },
     { id: "docs", label: t("adm.tab.docs") },
     ...(staff ? [{ id: "reports" as Tab, label: t("adm.tab.reports") }] : []),
   ];
-  const active: Tab = tab && tabs.some((x) => x.id === tab) ? tab : "groups";
+  const active: Tab = tab && tabs.some((x) => x.id === tab) ? tab : "summary";
   const myGroupIds = data.memberships.filter((m) => m.user_id === person.id).map((m) => m.group_id);
   const companyIds = data.clientUsers.filter((l) => l.user_id === person.id).map((l) => l.client_id);
 
@@ -497,6 +504,23 @@ function PersonEditor({
       ) : (
         <>
           <Tabs tabs={tabs} value={active} onChange={setTab} />
+          {active === "summary" ? (
+            <AccessSummary
+              staff={staff}
+              personId={person.id}
+              clientIds={companyIds}
+              groupIds={myGroupIds}
+              ownFlags={ownFlags}
+              inherited={inherited}
+              projectCount={
+                staff && person.all_clients !== 0
+                  ? "all"
+                  : new Set([...own, ...viaGroup, ...data.projects.filter((p) => myCompanies.includes(p.client_id)).map((p) => p.id)].filter((id) => scope.some((p) => p.id === id))).size
+              }
+              projectTotal={scope.length}
+              goto={(next) => setTab(next)}
+            />
+          ) : null}
           {active === "groups" ? (
             <Card className="gap-4 p-5">
               <p className="text-sm text-muted-foreground">{t("adm.person.groupsHelp")}</p>
@@ -745,5 +769,3 @@ function CompanyEditor({ client, users, tab, setTab, onPick }: { client: Client;
   );
 }
 
-export const AdminAccessStaffPage = () => <AdminAccessPage audience="internal" />;
-export const AdminAccessClientsPage = () => <AdminAccessPage audience="external" />;

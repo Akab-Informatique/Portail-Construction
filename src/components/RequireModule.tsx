@@ -22,3 +22,11 @@ export function RequireAdmin({ children, allowExternal = false }: { children: Re
   if (user?.is_admin && user.view_as !== "client") return <>{children}</>;
   return <EmptyState icon={<Lock className="size-5" />} title={t("module.noAccess")} description={t("module.noAccess.desc")} />;
 }
+
+/** Pages made for a client account (or an administrator looking through one's eyes): staff have their own pages for this. */
+export function RequireClientView({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  const { t } = useI18n();
+  if (user?.user_type === "external" || user?.view_as === "client" || user?.is_admin) return <>{children}</>;
+  return <EmptyState icon={<Lock className="size-5" />} title={t("module.noAccess")} description={t("module.noAccess.desc")} />;
+}

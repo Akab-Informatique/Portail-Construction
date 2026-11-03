@@ -227,14 +227,14 @@ export function ConfigUserPage() {
         description={t("people.notFoundDesc")}
         action={
           <Button asChild variant="outline">
-            <Link to="/config/internal">{t("people.backToPeople")}</Link>
+            <Link to="/admin?section=staff">{t("people.backToPeople")}</Link>
           </Button>
         }
       />
     );
   }
 
-  const backTo = target.user_type === "external" ? "/config/clients" : "/config/internal";
+  const backTo = target.user_type === "external" ? "/admin?section=clients" : "/admin?section=staff";
   const linkedCompanies = clients.filter((c) => linkedClientIds.includes(c.id));
 
   return (

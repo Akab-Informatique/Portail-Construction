@@ -68,7 +68,7 @@ const emptyUser = {
   groupIds: [] as number[],
 };
 
-export function ConfigClientsPage() {
+export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) {
   const { user } = useAuth();
   const { refresh } = useWorkspace();
   const { t, tr, locale } = useI18n();
@@ -351,17 +351,27 @@ export function ConfigClientsPage() {
 
   return (
     <div>
-      <PageHeader
-        eyebrow={t("nav.section.admin")}
-        title={t("config.clients.title")}
-        description={t("adm.clients.desc")}
-        actions={
+      {embedded ? (
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <p className="max-w-2xl text-sm text-muted-foreground">{t("adm.clients.desc")}</p>
           <Button onClick={openCreate}>
             <Plus className="size-4" />
             {t("clients.new")}
           </Button>
-        }
-      />
+        </div>
+      ) : (
+        <PageHeader
+          eyebrow={t("nav.section.admin")}
+          title={t("config.clients.title")}
+          description={t("adm.clients.desc")}
+          actions={
+            <Button onClick={openCreate}>
+              <Plus className="size-4" />
+              {t("clients.new")}
+            </Button>
+          }
+        />
+      )}
 
       <div>
       <div className="relative mb-5 max-w-sm">
@@ -475,7 +485,7 @@ export function ConfigClientsPage() {
                               {linkBusy === `reset-${m.user_id}` ? <Loader2 className="size-4 animate-spin" /> : <KeyRound className="size-4" />}
                             </Button>
                             <Button variant="ghost" size="sm" asChild>
-                              <Link to={`/admin/access/clients?user=${m.user_id}`}>{t("clients.access")}</Link>
+                              <Link to={`/admin?section=clientRights&user=${m.user_id}`}>{t("clients.access")}</Link>
                             </Button>
                             <Button variant="ghost" size="icon-sm" className="text-destructive hover:text-destructive" title={t("cu.delete")} aria-label={t("cu.delete")} onClick={() => setRemoveUser({ person: m.person!, clientId: c.id, others: links.filter((l) => l.user_id === m.user_id && l.client_id !== c.id).length })}>
                               <Trash2 className="size-4" />
