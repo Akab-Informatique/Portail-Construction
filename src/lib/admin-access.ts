@@ -3,7 +3,7 @@ import { db, dbReady, schema } from "../db";
 import { clearShareFlags, setShareFlags } from "./sharepoint";
 import { levelFlags, type DocLevel } from "./doc-rights";
 import { clearReportAccessFor } from "./report-access";
-import { setUserGroups } from "./access";
+import { setUserGroups, writeGroupFlags } from "./access";
 import { sendUserLink } from "./users-api";
 import type { AccessGroupAudience } from "./types";
 
@@ -99,6 +99,8 @@ export async function createGroup(input: { name: string; description: string | n
     .insert(schema.access_groups)
     .values({ name: input.name, description: input.description, audience: input.audience, all_clients: input.audience === "external" ? 0 : 1, client_id: input.clientId ?? null })
     .returning();
+  // A client group's pages and actions are its own from the start: nothing is given until it is set.
+  if (input.audience === "external") await writeGroupFlags(row.id, "client_rights", { can_view: true, can_create: false, can_edit: false, can_delete: false });
   return row;
 }
 

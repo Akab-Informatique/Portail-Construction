@@ -6,7 +6,7 @@ export type ModuleDef = {
   scope: "project" | "global";
   description: string;
   /** Sidebar modules: "menu" sections and items, set apart from the in-project modules. */
-  group?: "menu";
+  group?: "menu" | "client";
   /** An item inside a menu section. The section's view right opens the door, the item's own rights do the rest. */
   parent?: ModuleId;
   labelKey?: string;
@@ -39,12 +39,15 @@ export const MODULES: ModuleDef[] = [
   { id: "app_expenses", label: "Expenses", scope: "global", description: "", group: "menu", parent: "app_client", labelKey: "nav.expenses" },
   { id: "app_finance", label: "Finance", scope: "global", description: "", group: "menu", labelKey: "nav.section.finance" },
   { id: "app_billing_mgmt", label: "Billing management", scope: "global", description: "", group: "menu", parent: "app_finance", labelKey: "nav.billingMgmt" },
+  // Client sidebar: Accounting is only for clients (the other client pages reuse the modules above).
+  { id: "app_client_acct", label: "Accounting", scope: "global", description: "", group: "client", labelKey: "nav.section.accounting" },
+  { id: "app_client_billing", label: "Invoices and quotes", scope: "global", description: "", group: "client", parent: "app_client_acct", labelKey: "nav.clientBilling" },
 ];
 
 export const MENU_MODULES = MODULES.filter((m) => m.group === "menu");
-export const OTHER_MODULES = MODULES.filter((m) => m.group !== "menu");
+export const OTHER_MODULES = MODULES.filter((m) => m.group !== "menu" && m.group !== "client");
 
-export const PROJECT_MODULES = MODULES.filter((m) => m.scope === "project" && m.group !== "menu");
+export const PROJECT_MODULES = MODULES.filter((m) => m.scope === "project" && m.group !== "menu" && m.group !== "client");
 
 export const PROJECT_STATUSES = [
   { value: "planning", label: "Planning" },

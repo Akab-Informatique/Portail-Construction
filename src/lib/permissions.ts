@@ -1,4 +1,5 @@
 import type { Action, ModuleId, Permission, SessionUser } from "./types";
+import { clientCan } from "./client-rights";
 
 const ACTION_COL: Record<Action, keyof Permission> = {
   view: "can_view",
@@ -45,7 +46,7 @@ export function visibleProjectModules(
   projectId: number,
 ) {
   const ids: ModuleId[] = ["dashboard", "documents", "tasks", "notes", "forms", "safety", "qrt", "project_billing"];
-  // A client sees the overview, its documentation, the schedule, the notes shared with it, QRT and quotes/invoices (no forms, no SST).
-  if (user?.user_type === "external" || user?.view_as === "client") return ids.filter((id) => id !== "forms" && id !== "safety");
+  // A client sees what it was given among the overview, documentation, schedule, shared notes, QRT and quotes/invoices (never forms or SST).
+  if (user?.user_type === "external" || user?.view_as === "client") return ids.filter((id) => id !== "forms" && id !== "safety" && clientCan((m, a) => can(user, permissions, m, a, { projectId }), id, "view"));
   return ids.filter((id) => can(user, permissions, id, "view", { projectId }));
 }

@@ -141,11 +141,11 @@ export function useNavModel(): NavSection[] {
     ];
 
     if (isClient) {
-      return [
+      const clientSections: NavSection[] = [
         {
           id: "overview",
           label: t("nav.section.overview"),
-          items: [{ id: "dashboard", to: "/", label: t("nav.dashboard"), icon: LayoutDashboard, end: true, tour: "dashboard" }],
+          items: [{ id: "dashboard", to: "/", label: t("nav.dashboard"), icon: LayoutDashboard, end: true, tour: "dashboard", module: "app_dashboard" }],
         },
         {
           id: "client",
@@ -157,9 +157,12 @@ export function useNavModel(): NavSection[] {
           id: "accounting",
           label: t("nav.section.accounting"),
           tour: "accounting",
-          items: [{ id: "clientBilling", to: "/billing", label: t("nav.clientBilling"), icon: ReceiptText, end: true }],
+          items: [{ id: "clientBilling", to: "/billing", label: t("nav.clientBilling"), icon: ReceiptText, end: true, module: "app_client_billing" }],
         },
       ];
+      return clientSections
+        .map((section) => ({ ...section, items: section.items.filter((item) => !item.module || allowed(item.module)) }))
+        .filter((section) => section.items.length > 0);
     }
 
     const sections: NavSection[] = [

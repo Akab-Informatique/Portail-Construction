@@ -73,7 +73,7 @@ export default function App() {
           <Route path="documents/projects" element={<RequireModule module="app_all_projects"><DocumentsProjectsPage /></RequireModule>} />
           <Route path="clients" element={<RequireAdmin><ClientsPage /></RequireAdmin>} />
           <Route path="accounting/billing" element={<RequireAdmin><AccountingBillingPage /></RequireAdmin>} />
-          <Route path="billing" element={<RequireClientView><ClientBillingPage /></RequireClientView>} />
+          <Route path="billing" element={<RequireClientView><RequireModule module="app_client_billing"><ClientBillingPage /></RequireModule></RequireClientView>} />
           <Route path="updates" element={<RequireAdmin><FeatureUpdatesPage /></RequireAdmin>} />
           <Route path="finance/billing" element={<RequireModule module="app_billing_mgmt"><FinanceBillingPage /></RequireModule>} />
           <Route path="projects" element={<RequireModule module="app_client_projects"><ProjectsPage /></RequireModule>} />

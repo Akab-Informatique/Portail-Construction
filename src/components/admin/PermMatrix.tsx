@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Lock } from "lucide-react";
-import { MENU_MODULES, OTHER_MODULES, type ModuleDef } from "@/lib/constants";
+import { MENU_MODULES, MODULES, OTHER_MODULES, type ModuleDef } from "@/lib/constants";
+import { CLIENT_PROJECT_MODULES, CLIENT_SECTIONS } from "@/lib/client-rights";
 import type { Flags } from "@/lib/admin-access";
 import { NO_FLAGS } from "@/lib/admin-access";
 import { useI18n } from "@/lib/i18n";
@@ -35,10 +36,13 @@ export function PermMatrix({
   flags,
   inherited,
   onChange,
+  variant = "staff",
 }: {
   flags: Record<string, Flags>;
   inherited?: Record<string, Flags>;
   onChange: (module: string, next: Flags) => void;
+  /** "client": the client sidebar (01 Overview, 02 Your company, 03 Accounting) and the modules a client can be given in a project. */
+  variant?: "staff" | "client";
 }) {
   const { t } = useI18n();
   const [detail, setDetail] = useState<string | null>(null);
@@ -47,9 +51,13 @@ export function PermMatrix({
   const via = (id: string) => inherited?.[id] ?? NO_FLAGS;
   const eff = (id: string) => merge(own(id), via(id));
 
-  const sections = MENU_MODULES.filter((m) => !m.parent);
-  const projectMods = OTHER_MODULES.filter((m) => m.scope === "project");
-  const otherMods = OTHER_MODULES.filter((m) => m.scope !== "project");
+  const defOf = (id: string) => MODULES.find((m) => m.id === id) as ModuleDef;
+  const client = variant === "client";
+  const sectionList: { sec: ModuleDef; title: string; items: ModuleDef[] }[] = client
+    ? CLIENT_SECTIONS.map((c) => ({ sec: defOf(c.id), title: t(c.labelKey as MessageKey), items: c.items.map(defOf) }))
+    : MENU_MODULES.filter((m) => !m.parent).map((sec) => ({ sec, title: label(sec), items: MENU_MODULES.filter((m) => m.parent === sec.id) }));
+  const projectMods = client ? CLIENT_PROJECT_MODULES.map(defOf) : OTHER_MODULES.filter((m) => m.scope === "project");
+  const otherMods = client ? [] : OTHER_MODULES.filter((m) => m.scope !== "project");
 
   const stepper = (m: ModuleDef, disabled = false) => {
     const f = eff(m.id);
@@ -130,7 +138,7 @@ export function PermMatrix({
       <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
         <div className="min-w-40 flex-1">
           <p className="text-sm font-medium">{label(m)}</p>
-          {m.group !== "menu" && t(`module.${m.id}.desc` as MessageKey) ? <p className="text-xs text-muted-foreground">{t(`module.${m.id}.desc` as MessageKey)}</p> : null}
+          {m.scope === "project" && t(`module.${m.id}.desc` as MessageKey) ? <p className="text-xs text-muted-foreground">{t(`module.${m.id}.desc` as MessageKey)}</p> : null}
         </div>
         {stepper(m, disabled)}
       </div>
@@ -140,22 +148,21 @@ export function PermMatrix({
 
   return (
     <div className="grid gap-4">
-      {sections.map((sec, i) => {
+      {sectionList.map(({ sec, title, items }, i) => {
         const open = eff(sec.id).can_view;
-        const items = MENU_MODULES.filter((m) => m.parent === sec.id);
         const lockedOpen = via(sec.id).can_view;
         return (
           <section key={sec.id} className={cn("overflow-hidden rounded-xl border bg-card", !open && "opacity-90")}>
             <header className="flex items-center gap-3 border-b bg-[#141414] px-4 py-2.5 text-white">
               <span className="font-display text-xl leading-none text-primary">{String(i + 1).padStart(2, "0")}</span>
-              <span className="flex-1 font-display text-lg uppercase tracking-wide">{label(sec)}</span>
+              <span className="flex-1 font-display text-lg uppercase tracking-wide">{title}</span>
               <span className="text-[11px] uppercase tracking-wider text-white/60">{open ? t("adm.perm.sectionOn") : t("adm.perm.sectionOff")}</span>
               <Switch
                 checked={open}
                 disabled={lockedOpen}
                 title={lockedOpen ? t("adm.viaGroup") : undefined}
-                onCheckedChange={(v) => onChange(sec.id, v ? merge(own(sec.id), VIEW) : { ...own(sec.id), can_view: false })}
-                aria-label={label(sec)}
+                onCheckedChange={(v) => onChange(sec.id, v ? merge(own(sec.id), VIEW) : NO_FLAGS)}
+                aria-label={title}
               />
             </header>
             <ul className={cn(!open && "pointer-events-none opacity-45")}>{items.map((m) => row(m, !open))}</ul>

@@ -41,6 +41,7 @@ import { CompanyDialog } from "@/components/admin/CompanyDialog";
 import { StaffCreateDialog } from "@/components/admin/StaffCreateDialog";
 import { StaffProfile } from "@/components/admin/StaffProfile";
 import { PermMatrix } from "@/components/admin/PermMatrix";
+import { CLIENT_MARKER, CLIENT_PROJECT_MODULES, CLIENT_SECTIONS } from "@/lib/client-rights";
 import { ProjectPicker } from "@/components/admin/parts";
 import { ReportPicker } from "@/components/admin/ReportPicker";
 import { SubjectDocs } from "@/components/admin/SubjectDocs";
@@ -101,6 +102,7 @@ export function AdminAccessPage({ audience, embedded = false, view = "users" }: 
   /** After creating someone or a group, the access sheet opens in a pop-up so the granular rights are set right away. */
   const [wizard, setWizard] = useState<{ kind: "user" | "group"; id: number } | null>(null);
   const [wTab, setWTab] = useState<Tab | null>(null);
+  const [openCos, setOpenCos] = useState<Set<number>>(new Set());
   const [groupCompany, setGroupCompany] = useState(0);
   const [companyDlg, setCompanyDlg] = useState<{ open: boolean; company: Client | null }>({ open: false, company: null });
   const [delCompany, setDelCompany] = useState<Client | null>(null);
@@ -298,6 +300,7 @@ export function AdminAccessPage({ audience, embedded = false, view = "users" }: 
                 const open = gco === c.id;
                 return (
                   <li key={c.id}>
+                    <div className="flex items-center gap-1">
                     <button
                       type="button"
                       onClick={() => {
@@ -309,7 +312,7 @@ export function AdminAccessPage({ audience, embedded = false, view = "users" }: 
                           return out;
                         }, { replace: true });
                       }}
-                      className={cn("flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors", open ? "bg-primary/15 shadow-[inset_2px_0_0_var(--primary)]" : "hover:bg-muted")}
+                      className={cn("flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors", open ? "bg-primary/15 shadow-[inset_2px_0_0_var(--primary)]" : "hover:bg-muted")}
                     >
                       <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
                         <Building2 className="size-4" />
@@ -320,17 +323,35 @@ export function AdminAccessPage({ audience, embedded = false, view = "users" }: 
                       </span>
                       {open ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
                     </button>
+                    {c.id > 0 ? (
+                      <button
+                        type="button"
+                        title={t("config.groups.new")}
+                        aria-label={t("config.groups.new")}
+                        className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-primary/15 hover:text-foreground"
+                        onClick={() => {
+                          setGroupCompany(c.id);
+                          setNewGroup(true);
+                        }}
+                      >
+                        <Plus className="size-4" />
+                      </button>
+                    ) : null}
+                    </div>
                     {open ? (
                       <ul className="mt-0.5 mb-1 ml-6 space-y-0.5 border-l pl-2">
                         {mine.filter((g) => matches(g.name, g.description)).map((g) => {
                           const n = data.memberships.filter((m) => m.group_id === g.id).length;
                           const on = sel?.kind === "group" && sel.id === g.id;
                           return (
-                            <li key={g.id}>
-                              <button type="button" onClick={() => select({ kind: "group", id: g.id })} className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors", on ? "bg-primary/15 font-medium" : "hover:bg-muted")}>
+                            <li key={g.id} className={cn("group flex items-center rounded-md transition-colors", on ? "bg-primary/15" : "hover:bg-muted")}>
+                              <button type="button" onClick={() => select({ kind: "group", id: g.id })} className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left text-sm">
                                 <Users className="size-3.5 shrink-0 text-muted-foreground" />
-                                <span className="min-w-0 flex-1 truncate">{g.name}</span>
+                                <span className={cn("min-w-0 flex-1 truncate", on && "font-medium")}>{g.name}</span>
                                 <span className="text-[10px] text-muted-foreground">{n}</span>
+                              </button>
+                              <button type="button" title={t("config.groups.delete")} aria-label={t("config.groups.delete")} className="mr-1 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus:opacity-100 group-hover:opacity-100" onClick={() => setConfirmDelete(g)}>
+                                <Trash2 className="size-3.5" />
                               </button>
                             </li>
                           );
@@ -405,21 +426,60 @@ export function AdminAccessPage({ audience, embedded = false, view = "users" }: 
             </ul>
           ) : (
             <ul className="space-y-1">
-              {people
-                .filter((p) => matches(p.name, p.email))
-                .map((p) => {
-                  const on = sel?.kind === "user" && sel.id === p.id;
-                  const co = data.clients.find((c) => data.clientUsers.some((l) => l.user_id === p.id && l.client_id === c.id));
+              {[...companies.map((c) => ({ c, users: usersOf(c.id) })), { c: null as Client | null, users: people.filter((p) => !data.clientUsers.some((l) => l.user_id === p.id)) }]
+                .filter(({ c, users }) => (c ? users.length > 0 || false : users.length > 0) && users.some((u) => matches(u.name, u.email) || (c && matches(c.company_name))))
+                .map(({ c, users }) => {
+                  const key = c ? c.id : 0;
+                  const open = Boolean(q) || openCos.has(key) || users.some((u) => sel?.kind === "user" && sel.id === u.id);
                   return (
-                    <li key={p.id}>
-                      <button type="button" onClick={() => select({ kind: "user", id: p.id })} className={cn("flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors", on ? "bg-primary/15 shadow-[inset_2px_0_0_var(--primary)]" : "hover:bg-muted")}>
-                        <UserAvatar name={p.name} hint={p.avatar_initials} size="sm" />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium">{p.name}</span>
-                          <span className="block truncate text-[11px] text-muted-foreground">{co?.company_name ?? t("adm.noCompanyShort")}</span>
+                    <li key={key}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenCos((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(key)) next.delete(key);
+                            else next.add(key);
+                            return next;
+                          })
+                        }
+                        className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-muted"
+                      >
+                        {open ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
+                        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                          <Building2 className="size-3.5" />
                         </span>
-                        {!p.is_active ? <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">{t("cu.inactive")}</span> : null}
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium">{c ? c.company_name : t("adm.unassigned")}</span>
+                        <span className="text-[11px] tabular-nums text-muted-foreground">{users.length}</span>
                       </button>
+                      {open ? (
+                        <ul className="mt-0.5 mb-1 ml-5 space-y-0.5 border-l pl-2">
+                          {users.filter((u) => !q || matches(u.name, u.email) || (c && matches(c.company_name))).map((u) => {
+                            const onUser = sel?.kind === "user" && sel.id === u.id;
+                            return (
+                              <li key={u.id} className={cn("group flex items-center rounded-md transition-colors", onUser ? "bg-primary/15" : "hover:bg-muted")}>
+                                <button type="button" onClick={() => select({ kind: "user", id: u.id })} className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left text-sm">
+                                  <UserAvatar name={u.name} hint={u.avatar_initials} size="sm" />
+                                  <span className="min-w-0 flex-1">
+                                    <span className={cn("block truncate", onUser && "font-medium")}>{u.name}</span>
+                                    <span className="block truncate text-[10px] text-muted-foreground">{u.email}</span>
+                                  </span>
+                                  {!u.is_active ? <span className="rounded-full bg-muted px-1.5 text-[9px] font-semibold text-muted-foreground">{t("cu.inactive")}</span> : null}
+                                </button>
+                                <button
+                                  type="button"
+                                  title={t("cu.delete")}
+                                  aria-label={t("cu.delete")}
+                                  className="mr-1 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus:opacity-100 group-hover:opacity-100"
+                                  onClick={() => setDelUser({ person: u, companyId: c?.id ?? 0 })}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      ) : null}
                     </li>
                   );
                 })}
@@ -478,7 +538,7 @@ export function AdminAccessPage({ audience, embedded = false, view = "users" }: 
             onCreated={(id, n) => {
               setClientUserDlg({ open: false, companyId: null });
               setNotice({ ok: n.ok, text: n.text });
-              setWTab("projects");
+              setWTab("menu");
               void load().then(() => setWizard({ kind: "user", id }));
             }}
           />
@@ -710,7 +770,7 @@ function PersonEditor({
     ...(wizard ? [] : [{ id: "profile" as Tab, label: t("adm.tab.profile") }]),
     ...(wizard ? [] : [{ id: "summary" as Tab, label: t("adm.tab.summary") }]),
     ...(wizard ? [] : [{ id: "groups" as Tab, label: t("adm.tab.groups") }]),
-    ...(staff ? [{ id: "menu" as Tab, label: t("adm.tab.menu") }] : []),
+    { id: "menu" as Tab, label: t(staff ? "adm.tab.menu" : "adm.tab.pages") },
     { id: "projects", label: t("adm.tab.projects") },
     { id: "docs", label: t("adm.tab.docs") },
     ...(staff ? [{ id: "reports" as Tab, label: t("adm.tab.reports") }] : []),
@@ -797,10 +857,40 @@ function PersonEditor({
               />
             </Card>
           ) : null}
-          {active === "menu" ? (
+          {active === "menu" && staff ? (
             <div className="grid gap-3">
               <p className="text-sm text-muted-foreground">{t("adm.menu.personHelp")}</p>
               <PermMatrix flags={ownFlags} inherited={inherited} onChange={(module, next) => void writeUserFlags(person.id, module, next).then(done)} />
+            </div>
+          ) : null}
+          {active === "menu" && !staff ? (
+            <div className="grid gap-3">
+              <p className="text-sm text-muted-foreground">{t("adm.menu.clientHelp")}</p>
+              {(() => {
+                const configured = Boolean(ownFlags[CLIENT_MARKER]?.can_view || inherited[CLIENT_MARKER]?.can_view);
+                const FULL: Flags = { can_view: true, can_create: true, can_edit: true, can_delete: true };
+                const ids = [...CLIENT_SECTIONS.flatMap((c) => [c.id, ...c.items]), ...CLIENT_PROJECT_MODULES] as string[];
+                const shown: Record<string, Flags> = configured ? ownFlags : Object.fromEntries(ids.map((id) => [id, FULL]));
+                return (
+                  <>
+                    {!configured ? <p className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">{t("adm.client.standard")}</p> : null}
+                    <PermMatrix
+                      variant="client"
+                      flags={shown}
+                      inherited={inherited}
+                      onChange={async (module, next) => {
+                        if (!configured) {
+                          // First change: keep today's standard access as the starting point, so only this change differs.
+                          await writeUserFlags(person.id, CLIENT_MARKER, { can_view: true, can_create: false, can_edit: false, can_delete: false });
+                          for (const id of ids) await writeUserFlags(person.id, id, FULL);
+                        }
+                        await writeUserFlags(person.id, module, next);
+                        await done();
+                      }}
+                    />
+                  </>
+                );
+              })()}
             </div>
           ) : null}
           {active === "projects" ? (
@@ -873,7 +963,7 @@ function GroupEditor({
   const memberIds = data.memberships.filter((m) => m.group_id === group.id).map((m) => m.user_id);
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "groups", label: t("adm.tab.members"), count: memberIds.length },
-    ...(staff ? [{ id: "menu" as Tab, label: t("adm.tab.menu") }] : []),
+    { id: "menu" as Tab, label: t(staff ? "adm.tab.menu" : "adm.tab.pages") },
     { id: "projects", label: t("adm.tab.projects"), count: data.groupProjects.filter((g) => g.group_id === group.id).length },
     { id: "docs", label: t("adm.tab.docs") },
     ...(staff ? [{ id: "reports" as Tab, label: t("adm.tab.reports") }] : []),
@@ -951,8 +1041,16 @@ function GroupEditor({
       ) : null}
       {active === "menu" ? (
         <div className="grid gap-3">
-          <p className="text-sm text-muted-foreground">{t("adm.menu.groupHelp")}</p>
-          <PermMatrix flags={flags} onChange={(module, next) => void writeGroupFlags(group.id, module, next).then(reload)} />
+          <p className="text-sm text-muted-foreground">{t(staff ? "adm.menu.groupHelp" : "adm.menu.clientGroupHelp")}</p>
+          <PermMatrix
+            variant={staff ? "staff" : "client"}
+            flags={flags}
+            onChange={async (module, next) => {
+              if (!staff && !flags[CLIENT_MARKER]?.can_view) await writeGroupFlags(group.id, CLIENT_MARKER, { can_view: true, can_create: false, can_edit: false, can_delete: false });
+              await writeGroupFlags(group.id, module, next);
+              await reload();
+            }}
+          />
         </div>
       ) : null}
       {active === "projects" ? (

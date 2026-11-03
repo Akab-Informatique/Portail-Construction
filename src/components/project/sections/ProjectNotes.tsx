@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { useCanAct } from "@/lib/client-rights";
 import type { SectionProps } from "./types";
 
 type Note = typeof schema.project_notes.$inferSelect;
@@ -47,6 +48,8 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
   const isAdminUser = Boolean(user?.is_admin) && user?.view_as !== "client";
   // A client account reads the notes shared with it and comments on them; it cannot write notes.
   const viewer = user?.user_type === "external" || user?.view_as === "client";
+  // A client comments only when its pages and actions let it (Interact on Notes).
+  const canComment = useCanAct("notes", "create");
   const [comments, setComments] = useState<Record<number, Comment[]>>({});
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [sendingComment, setSendingComment] = useState<number | null>(null);
@@ -291,7 +294,7 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
                           </div>
                         </div>
                       ))}
-                      <div className="flex items-end gap-2">
+                      <div className={cn("flex items-end gap-2", !canComment && "hidden")}>
                         <Textarea rows={1} className="min-h-10" value={drafts[n.id] ?? ""} placeholder={t("note.commentPh")} onChange={(e) => setDrafts((d) => ({ ...d, [n.id]: e.target.value }))} />
                         <Button type="button" size="sm" variant="outline" disabled={sendingComment === n.id || !(drafts[n.id] ?? "").trim()} onClick={() => void comment(n)}>
                           {sendingComment === n.id ? <Loader2 className="size-4 animate-spin" /> : <MessageSquare className="size-4" />}

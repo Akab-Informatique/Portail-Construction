@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { useCanAct } from "@/lib/client-rights";
 import type { SectionProps } from "./types";
 
 type Entry = typeof schema.project_qrt.$inferSelect;
@@ -46,6 +47,7 @@ export function ProjectQrt({ project, client, people, members }: SectionProps) {
   const [message, setMessage] = useState<string | null>(null);
   // A client account asks questions and reads the answers; it cannot answer, edit or delete.
   const viewer = user?.user_type === "external" || user?.view_as === "client";
+  const canAsk = useCanAct("qrt", "create");
 
   const staff = people.filter((p) => p.user_type === "internal");
   const inCharge = members.map((m) => m.user_id);
@@ -168,6 +170,7 @@ export function ProjectQrt({ project, client, people, members }: SectionProps) {
           </div>
         </div>
         <Button
+          className={canAsk ? undefined : "hidden"}
           onClick={() => {
             setQuestion("");
             setFromClient(false);

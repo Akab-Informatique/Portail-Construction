@@ -25,6 +25,7 @@ import { BillingFileDialog, StatusPill } from "@/components/BillingFileDialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { useCanAct } from "@/lib/client-rights";
 import type { SectionProps } from "./types";
 
 /**
@@ -43,6 +44,7 @@ export function ProjectBilling({ project, client }: SectionProps) {
   const [tab, setTab] = useState<"quotes" | "invoices">("quotes");
   // A client account never leaves this page: it opens, accepts, declines and asks for changes right here.
   const viewer = user?.user_type === "external" || user?.view_as === "client";
+  const canDecide = useCanAct("project_billing", "edit");
   const [viewingId, setViewingId] = useState<number | null>(null);
   const canManage = !viewer && canUseMenuModule(user, can, "app_billing_mgmt");
 
@@ -275,7 +277,7 @@ export function ProjectBilling({ project, client }: SectionProps) {
           allFiles={files}
           requests={requests}
           mode="client"
-          canDecide
+          canDecide={canDecide}
           canManage={false}
           userId={user?.id ?? 0}
           userName={user?.name ?? ""}

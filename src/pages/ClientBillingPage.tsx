@@ -25,6 +25,7 @@ import { PageSkeleton } from "@/components/Skeleton";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { useCanAct } from "@/lib/client-rights";
 
 const DAY = 86_400_000;
 
@@ -38,6 +39,7 @@ export function ClientBillingPage() {
   const { user } = useAuth();
   const { projects, clientProjects, selectedClient, clients } = useWorkspace();
   const isClient = user?.user_type === "external" || user?.view_as === "client";
+  const canDecide = useCanAct("app_client_billing", "edit");
   const jobs: Project[] = selectedClient ? clientProjects : projects;
   const [files, setFiles] = useState<BillingFile[] | null>(null);
   const [requests, setRequests] = useState<BillingRequest[]>([]);
@@ -218,7 +220,7 @@ export function ClientBillingPage() {
         allFiles={files}
         requests={requests}
         mode="client"
-        canDecide
+        canDecide={canDecide}
         canManage={false}
         userId={user?.id ?? 0}
         userName={user?.name ?? ""}

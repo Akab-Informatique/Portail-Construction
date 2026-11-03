@@ -11,6 +11,7 @@ import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
 import type { AccessGroup, AccessGroupPermission, Client, GroupProject, Permission, Project, SharePointShare, User } from "@/lib/types";
 import { LEVEL_LABEL } from "@/components/admin/parts";
+import { CLIENT_MARKER, CLIENT_PROJECT_MODULES, CLIENT_SECTIONS } from "@/lib/client-rights";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -145,12 +146,24 @@ export function AccessSummary(p: Props) {
     });
   }, [reportAccess, p.person.id, p.myGroupIds.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const clientSidebar: [string, typeof LayoutDashboard][] = [
-    [t("nav.dashboard"), LayoutDashboard],
-    [t("nav.documents"), FileText],
-    [t("nav.allProjects"), FolderKanban],
-    [t("nav.clientBilling"), ReceiptText],
-  ];
+  // A client's pages and actions come from the same rights (their own plus their groups'); before any are set they have the standard set.
+  const flagsFor = (id: string): Flags => {
+    const own = p.userPerms.find((x) => x.user_id === p.person.id && x.module === id && x.scope_type === "global");
+    return p.myGroupIds.reduce((acc, gid) => {
+      const r = p.groupPerms.find((x) => x.group_id === gid && x.module === id);
+      return r ? or(acc, fromRow(r)) : acc;
+    }, own ? fromRow(own) : NONE);
+  };
+  const configured = flagsFor(CLIENT_MARKER).can_view;
+  const clientItems = CLIENT_SECTIONS.flatMap((sec) =>
+    sec.items.map((id) => {
+      const icon = id === "app_dashboard" ? LayoutDashboard : id === "app_client_documents" ? FileText : id === "app_all_projects" ? FolderKanban : ReceiptText;
+      const text = id === "app_dashboard" ? t("nav.dashboard") : id === "app_client_documents" ? t("nav.documents") : id === "app_all_projects" ? t("nav.allProjects") : t("nav.clientBilling");
+      const open = !configured || (flagsFor(sec.id).can_view && flagsFor(id).can_view);
+      return { id, icon, text, open, act: !configured || flagsFor(id).can_edit };
+    }),
+  );
+  const clientProjectMods = CLIENT_PROJECT_MODULES.filter((m) => !configured || flagsFor(m).can_view);
 
   const Section = ({ title, hint, tab, children }: { title: string; hint: string; tab: "menu" | "projects" | "docs" | "reports" | "groups"; children: React.ReactNode }) => (
     <Card className="gap-3 p-5">
@@ -220,15 +233,20 @@ export function AccessSummary(p: Props) {
         <Card className="gap-3 p-5">
           <p className="text-sm font-semibold uppercase tracking-wide">{t("adm.sum.pagesTitle")}</p>
           <p className="text-xs text-muted-foreground">{t("adm.sum.sidebarClient")}</p>
+          {!configured ? <p className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">{t("adm.client.standard")}</p> : null}
           <ul className="divide-y rounded-lg border">
-            {clientSidebar.map(([text, Icon]) => (
-              <li key={text} className="flex items-center gap-2 px-3 py-2 text-sm">
-                <Check className="size-4 text-emerald-600" />
+            {clientItems.map(({ id, icon: Icon, text, open, act }) => (
+              <li key={id} className="flex items-center gap-2 px-3 py-2 text-sm">
+                {open ? <Check className="size-4 text-emerald-600" /> : <X className="size-4 text-muted-foreground" />}
                 <Icon className="size-4 text-muted-foreground" />
-                {text}
+                <span className={cn("flex-1", !open && "text-muted-foreground line-through")}>{text}</span>
+                {open ? <span className="text-[11px] text-muted-foreground">{act ? t("adm.perm.interact") : t("adm.perm.view")}</span> : null}
               </li>
             ))}
           </ul>
+          <p className="text-xs text-muted-foreground">
+            {t("adm.sum.inProject")}: {clientProjectMods.map((m) => t(`module.${m}` as MessageKey)).join(", ") || "—"}
+          </p>
           <p className="text-xs text-muted-foreground">{t("adm.sum.clientNever")}</p>
         </Card>
       )}

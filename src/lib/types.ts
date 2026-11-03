@@ -324,7 +324,11 @@ export type ModuleId =
   | "app_timesheets"
   | "app_expenses"
   | "app_finance"
-  | "app_billing_mgmt";
+  | "app_billing_mgmt"
+  | "app_client_acct"
+  | "app_client_billing"
+  /** Marks that a client user's pages and actions were set (by their own rights or a group's); without it a client has the standard set. */
+  | "client_rights";
 
 export type QuoteChangeStatus = "requested" | "proposed" | "approved" | "rejected" | "cancelled";
 
