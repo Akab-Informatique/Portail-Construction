@@ -714,7 +714,7 @@ export function AdminAccessPage({ audience, embedded = false, view = "users" }: 
 /** The tab strip every editor uses. */
 function Tabs({ tabs, value, onChange }: { tabs: { id: Tab; label: string; count?: number }[]; value: Tab; onChange: (t: Tab) => void }) {
   return (
-    <div className="flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-xl border bg-muted/40 p-1">
+    <div className="flex w-full flex-wrap items-center gap-1 rounded-xl border bg-muted/40 p-1">
       {tabs.map((tb) => (
         <button
           key={tb.id}
