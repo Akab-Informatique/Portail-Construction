@@ -188,7 +188,7 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
       if (firstUser && payload.email) {
         try {
           const created = await createClientAccount(row.id, { name: payload.name, email: payload.email, title: "", phone: payload.phone ?? "", is_primary: true }, userAccess);
-          setNotice({ tone: created.invite === "failed" ? "bad" : "ok", text: inviteText(created.invite, payload.email), clientId: row.id });
+          setNotice({ tone: created.invite === "failed" ? "bad" : "ok", text: inviteText(created.invite, payload.email, created.inviteError), clientId: row.id });
         } catch (err) {
           setNotice({ tone: "bad", text: tr(err, "users.error.createFailed"), clientId: row.id });
         }
@@ -200,10 +200,10 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
   }
 
   /** What the screen says after creating an account: the invitation went out, could not, or only works on the live portal. */
-  function inviteText(state: "sent" | "local" | "failed" | "off", email: string) {
+  function inviteText(state: "sent" | "local" | "failed" | "off", email: string, cause?: string) {
     if (state === "sent") return t("cu.inviteSent", { email });
     if (state === "local") return t("cu.linkLocal");
-    if (state === "failed") return t("adm.inviteFailed");
+    if (state === "failed") return `${t("adm.inviteFailed")} ${tr(cause, "users.link.failed")}`;
     return t("adm.accountCreated");
   }
 
@@ -242,7 +242,7 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
     setSaving(true);
     try {
       const result = await createClientAccount(inviteFor.id, userForm, { ...inviteAccess, groupIds: inviteAccess.groupIds });
-      setNotice({ tone: result.invite === "failed" ? "bad" : "ok", text: inviteText(result.invite, userForm.email.trim().toLowerCase()), clientId: inviteFor.id });
+      setNotice({ tone: result.invite === "failed" ? "bad" : "ok", text: inviteText(result.invite, userForm.email.trim().toLowerCase(), result.inviteError), clientId: inviteFor.id });
       setInviteFor(null);
       setUserForm(emptyUser);
       await load();

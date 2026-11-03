@@ -110,7 +110,7 @@ export function ConfigInternalUsersPage({ embedded = false }: { embedded?: boole
       const result = await applyAccess({ userId: created.id, clientId: 0, draft: access, locale });
       setNotice({
         tone: result.invite === "failed" ? "bad" : "ok",
-        text: result.invite === "sent" ? t("cu.inviteSent", { email }) : result.invite === "local" ? t("cu.linkLocal") : result.invite === "failed" ? t("adm.inviteFailed") : t("adm.accountCreated"),
+        text: result.invite === "sent" ? t("cu.inviteSent", { email }) : result.invite === "local" ? t("cu.linkLocal") : result.invite === "failed" ? `${t("adm.inviteFailed")} ${tr(result.inviteError, "users.link.failed")}` : t("adm.accountCreated"),
       });
       await logActivity({
         action: "created user",

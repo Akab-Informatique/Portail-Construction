@@ -739,7 +739,7 @@ export const en = {
   "adm.clientUserDocsHint": "Their level on the library. It can never be above what their company has.",
   "adm.sendInvite": "Email the invitation",
   "adm.sendInviteHint": "Sends a link to choose a password, valid 7 days. Needs the email and Portal URL set in Setup › Email.",
-  "adm.inviteFailed": "Account created, but the invitation email could not be sent. Check Setup › Email, then use the envelope to send it again.",
+  "adm.inviteFailed": "Account created, but the invitation email was not sent.",
   "adm.accountCreated": "Account created.",
   "adm.companyAccess": "Access of the company",
   "adm.companyAccessHint": "The company's level on the documentation library. Its users can never have more than this.",

@@ -741,7 +741,7 @@ export const fr: Record<MessageKey, string> = {
   "adm.clientUserDocsHint": "Son niveau sur la bibliothèque. Il ne peut jamais dépasser celui de son entreprise.",
   "adm.sendInvite": "Envoyer l’invitation par courriel",
   "adm.sendInviteHint": "Envoie un lien pour choisir un mot de passe, valide 7 jours. Demande le courriel et l’adresse du portail dans Configuration › Courriel.",
-  "adm.inviteFailed": "Compte créé, mais le courriel d’invitation n’a pas pu partir. Vérifiez Configuration › Courriel, puis renvoyez-le avec l’enveloppe.",
+  "adm.inviteFailed": "Compte créé, mais le courriel d’invitation n’a pas été envoyé.",
   "adm.accountCreated": "Compte créé.",
   "adm.companyAccess": "Accès de l’entreprise",
   "adm.companyAccessHint": "Le niveau de l’entreprise sur la bibliothèque de documentation. Ses utilisateurs ne peuvent jamais avoir plus.",

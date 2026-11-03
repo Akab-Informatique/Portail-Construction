@@ -919,13 +919,14 @@ const INVITE_DEFAULTS = {
  * An administrator sends someone a link to choose a new password: "invite" for a new or not yet activated account (valid
  * 7 days), "reset" for a forgotten password (valid 1 hour). Unlike the public reset, this says plainly why it failed.
  */
-async function sendUserLink(userId: number, kind: "invite" | "reset", locale: string) {
+async function sendUserLink(userId: number, kind: "invite" | "reset", locale: string, requestBase = "") {
   const found = await getPool().query("SELECT id, name, email, is_active FROM users WHERE id = $1 LIMIT 1", [userId]);
   const user = found.rows[0] as { id: number; name: string; email: string; is_active: number } | undefined;
   if (!user) return { error: "users.error.notFound" };
   if (Number(user.is_active) !== 1) return { error: "users.link.inactive" };
   const smtpStored = await storedJson<Smtp & { portal_url?: string }>("smtp");
-  const baseUrl = String(process.env.APP_URL || smtpStored?.portal_url || "").trim().replace(/\/+$/, "");
+  // The configured address first; without one, the address the administrator is using right now (they are signed in on it).
+  const baseUrl = String(process.env.APP_URL || smtpStored?.portal_url || requestBase || "").trim().replace(/\/+$/, "");
   if (!/^https?:\/\//i.test(baseUrl)) return { error: "users.link.noPortalUrl" };
 
   const token = randomBytes(32).toString("hex");
@@ -949,7 +950,8 @@ async function sendUserLink(userId: number, kind: "invite" | "reset", locale: st
     await sendSystemMail(user.email, fillTemplate(tpl.subject, vars), fillTemplate(tpl.body, vars));
   } catch (err) {
     console.error("user link mail failed", err);
-    return { error: "users.link.mailFailed" };
+    // The SMTP server's own reply, so the real cause shows (login refused, sender not allowed...).
+    return { error: `users.link.mailFailed|${err instanceof Error ? err.message : "?"}` };
   }
   return { ok: true, email: user.email };
 }
@@ -1395,7 +1397,16 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
         return;
       }
       await ensureSchema();
-      const out = await sendUserLink(Number(req.body?.id), req.body?.kind === "invite" ? "invite" : "reset", String(req.body?.locale ?? "en"));
+      const out = await sendUserLink(
+        Number(req.body?.id),
+        req.body?.kind === "invite" ? "invite" : "reset",
+        String(req.body?.locale ?? "en"),
+        (() => {
+          const host = String(req.headers?.["x-forwarded-host"] || req.headers?.host || "").split(",")[0].trim();
+          const proto = String(req.headers?.["x-forwarded-proto"] || "https").split(",")[0].trim();
+          return /^[a-z0-9.-]+(:\d+)?$/i.test(host) ? `${proto === "http" ? "http" : "https"}://${host}` : "";
+        })(),
+      );
       return res.status("error" in out ? 400 : 200).json(out);
     }
     if (action === "smtp_test") {
