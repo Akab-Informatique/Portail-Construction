@@ -192,7 +192,7 @@ export function PortfolioCalendar({
                         >
                           <div className={cn("text-[11px] tabular-nums", isToday ? "font-bold text-primary" : "text-muted-foreground")}>{Number(key.slice(8))}</div>
                           <div style={{ marginTop: lanes * LANE + 2 }}>
-                            {dayMarks.slice(0, 1).map((e) => (
+                            {dayMarks.slice(0, 2).map((e) => (
                               <div
                                 key={e.id}
                                 className="truncate rounded px-1 text-[10px] font-medium"
@@ -201,7 +201,7 @@ export function PortfolioCalendar({
                                 {e.title}
                               </div>
                             ))}
-                            {dayMarks.length > 1 ? <div className="mt-0.5 text-[10px] text-muted-foreground">+{dayMarks.length - 1}</div> : null}
+                            {dayMarks.length > 2 ? <div className="mt-0.5 rounded bg-foreground/10 px-1 text-[10px] font-semibold text-muted-foreground" title={dayMarks.slice(2).map((e) => e.title).join(", ")}>+{dayMarks.length - 2}</div> : null}
                           </div>
                         </button>
                       );
