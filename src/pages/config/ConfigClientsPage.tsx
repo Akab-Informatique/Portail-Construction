@@ -32,12 +32,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useI18n } from "@/lib/i18n";
-import { groupFitsUser, isDefaultClientGroup, setUserGroups } from "@/lib/access";
+import { groupFitsUser, isDefaultClientGroup } from "@/lib/access";
 import { cn } from "@/lib/utils";
-import { GroupPicker } from "./GroupPicker";
-import { GroupsEditor } from "./GroupsEditor";
+import { AccessPicker } from "@/components/admin/AccessPicker";
+import { LevelSelect } from "@/components/admin/parts";
+import { applyAccess, EMPTY_ACCESS, type AccessDraft } from "@/lib/admin-access";
+import { setShareFlags } from "@/lib/sharepoint";
+import { levelFlags } from "@/lib/doc-rights";
 import type { AccessGroup, Client, Project, User } from "@/lib/types";
 import { hashPassword, randomPassword } from "@/lib/password";
 import { removeClientUser, sendUserLink, updateUser } from "@/lib/users-api";
@@ -65,7 +68,7 @@ const emptyUser = {
   groupIds: [] as number[],
 };
 
-export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) {
+export function ConfigClientsPage() {
   const { user } = useAuth();
   const { refresh } = useWorkspace();
   const { t, tr, locale } = useI18n();
@@ -88,6 +91,11 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
   const [inviteFor, setInviteFor] = useState<Client | null>(null);
   const [deleting, setDeleting] = useState<Client | null>(null);
   const [userForm, setUserForm] = useState(emptyUser);
+  /** Access given while creating: for a new company its level on the library, and optionally its first user's own access. */
+  const [companyDocLevel, setCompanyDocLevel] = useState<"none" | "view" | "contribute" | "full">("none");
+  const [firstUser, setFirstUser] = useState(false);
+  const [userAccess, setUserAccess] = useState<AccessDraft>(EMPTY_ACCESS);
+  const [inviteAccess, setInviteAccess] = useState<AccessDraft>(EMPTY_ACCESS);
   const [saving, setSaving] = useState(false);
 
   async function load() {
@@ -121,6 +129,9 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
   function openCreate() {
     setEditing(null);
     setForm(emptyClient);
+    setCompanyDocLevel("none");
+    setFirstUser(false);
+    setUserAccess({ ...EMPTY_ACCESS, groupIds: externalGroups.filter(isDefaultClientGroup).map((g) => g.id) });
     setClientOpen(true);
   }
 
@@ -173,10 +184,56 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
         clientId: row.id,
         userId: user?.id,
       });
+      if (companyDocLevel !== "none") await setShareFlags({ folderId: 0, clientId: row.id, userId: null, itemId: "", flags: levelFlags(companyDocLevel) });
+      if (firstUser && payload.email) {
+        try {
+          const created = await createClientAccount(row.id, { name: payload.name, email: payload.email, title: "", phone: payload.phone ?? "", is_primary: true }, userAccess);
+          setNotice({ tone: created.invite === "failed" ? "bad" : "ok", text: inviteText(created.invite, payload.email), clientId: row.id });
+        } catch (err) {
+          setNotice({ tone: "bad", text: tr(err, "users.error.createFailed"), clientId: row.id });
+        }
+      }
     }
     setSaving(false);
     setClientOpen(false);
     await load();
+  }
+
+  /** What the screen says after creating an account: the invitation went out, could not, or only works on the live portal. */
+  function inviteText(state: "sent" | "local" | "failed" | "off", email: string) {
+    if (state === "sent") return t("cu.inviteSent", { email });
+    if (state === "local") return t("cu.linkLocal");
+    if (state === "failed") return t("adm.inviteFailed");
+    return t("adm.accountCreated");
+  }
+
+  /** Creates a client user, links them to the company and gives them the access chosen in the form. */
+  async function createClientAccount(
+    clientId: number,
+    f: { name: string; email: string; title: string; phone: string; is_primary: boolean; password?: string },
+    access: AccessDraft,
+  ) {
+    const email = f.email.trim().toLowerCase();
+    await db.insert(schema.users).values({
+      name: f.name.trim(),
+      email,
+      password: await hashPassword(f.password?.trim() || randomPassword()),
+      user_type: "external",
+      title: f.title.trim() || null,
+      phone: f.phone.trim() || null,
+      is_active: 1,
+      is_admin: 0,
+      avatar_initials: initials(f.name.trim()),
+      locale: "en",
+      theme: "light",
+      all_clients: 0,
+    });
+    const createdRows = (await db.select().from(schema.users).where(eq(schema.users.email, email))) as User[];
+    const created = createdRows[0];
+    if (!created) throw new Error("users.error.createFailed");
+    await db.insert(schema.client_users).values({ client_id: clientId, user_id: created.id, is_primary: f.is_primary ? 1 : 0 });
+    await logActivity({ action: "added client user", details: created.name, clientId, userId: user?.id });
+    return applyAccess({ userId: created.id, clientId, draft: access, locale });
   }
 
   async function onInvite(e: FormEvent) {
@@ -184,41 +241,15 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
     if (!inviteFor || !userForm.name.trim() || !userForm.email.trim()) return;
     setSaving(true);
     try {
-      const email = userForm.email.trim().toLowerCase();
-      await db.insert(schema.users).values({
-        name: userForm.name.trim(),
-        email,
-        password: await hashPassword(userForm.password.trim() || randomPassword()),
-        user_type: "external",
-        title: userForm.title.trim() || null,
-        phone: userForm.phone.trim() || null,
-        is_active: 1,
-        is_admin: 0,
-        avatar_initials: initials(userForm.name.trim()),
-        locale: "en",
-        theme: "light",
-        all_clients: 0,
-      });
-      const createdRows = (await db.select().from(schema.users).where(eq(schema.users.email, email))) as User[];
-      const created = createdRows[0];
-      if (!created) throw new Error("users.error.createFailed");
-      await db.insert(schema.client_users).values({
-        client_id: inviteFor.id,
-        user_id: created.id,
-        is_primary: userForm.is_primary ? 1 : 0,
-      });
-      if (userForm.groupIds.length) await setUserGroups(created.id, userForm.groupIds);
-      await logActivity({
-        action: "added client user",
-        details: created.name,
-        clientId: inviteFor.id,
-        userId: user?.id,
-      });
+      const result = await createClientAccount(inviteFor.id, userForm, { ...inviteAccess, groupIds: inviteAccess.groupIds });
+      setNotice({ tone: result.invite === "failed" ? "bad" : "ok", text: inviteText(result.invite, userForm.email.trim().toLowerCase()), clientId: inviteFor.id });
       setInviteFor(null);
       setUserForm(emptyUser);
       await load();
     } catch (err) {
       console.error("invite user failed", err);
+      setNotice({ tone: "bad", text: tr(err, "users.error.createFailed"), clientId: inviteFor.id });
+      setInviteFor(null);
     } finally {
       setSaving(false);
     }
@@ -320,36 +351,19 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
 
   return (
     <div>
-      {embedded ? (
-        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium">{t("config.clients.title")}</p>
-          </div>
+      <PageHeader
+        eyebrow={t("nav.section.admin")}
+        title={t("config.clients.title")}
+        description={t("adm.clients.desc")}
+        actions={
           <Button onClick={openCreate}>
             <Plus className="size-4" />
             {t("clients.new")}
           </Button>
-        </div>
-      ) : (
-        <PageHeader
-          eyebrow={t("config.eyebrow")}
-          title={t("config.clients.title")}
-          actions={
-            <Button onClick={openCreate}>
-              <Plus className="size-4" />
-              {t("clients.new")}
-            </Button>
-          }
-        />
-      )}
+        }
+      />
 
-      <Tabs defaultValue="companies" className="gap-5">
-        <TabsList>
-          <TabsTrigger value="companies">{t("config.clients.tab.companies")}</TabsTrigger>
-          <TabsTrigger value="groups">{t("config.clients.tab.groups")}</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="companies">
+      <div>
       <div className="relative mb-5 max-w-sm">
         <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
@@ -424,10 +438,8 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
                       size="sm"
                       onClick={() => {
                         setInviteFor(c);
-                        setUserForm({
-                          ...emptyUser,
-                          groupIds: externalGroups.filter(isDefaultClientGroup).map((g) => g.id),
-                        });
+                        setUserForm(emptyUser);
+                        setInviteAccess({ ...EMPTY_ACCESS, groupIds: externalGroups.filter(isDefaultClientGroup).map((g) => g.id) });
                       }}
                     >
                       <Plus className="size-3.5" />
@@ -463,7 +475,7 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
                               {linkBusy === `reset-${m.user_id}` ? <Loader2 className="size-4 animate-spin" /> : <KeyRound className="size-4" />}
                             </Button>
                             <Button variant="ghost" size="sm" asChild>
-                              <Link to={`/config/users/${m.user_id}`}>{t("clients.access")}</Link>
+                              <Link to={`/admin/access/clients?user=${m.user_id}`}>{t("clients.access")}</Link>
                             </Button>
                             <Button variant="ghost" size="icon-sm" className="text-destructive hover:text-destructive" title={t("cu.delete")} aria-label={t("cu.delete")} onClick={() => setRemoveUser({ person: m.person!, clientId: c.id, others: links.filter((l) => l.user_id === m.user_id && l.client_id !== c.id).length })}>
                               <Trash2 className="size-4" />
@@ -479,12 +491,7 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
           })}
         </div>
       )}
-        </TabsContent>
-
-        <TabsContent value="groups">
-          <GroupsEditor compact audience="external" />
-        </TabsContent>
-      </Tabs>
+      </div>
 
       <Dialog open={clientOpen} onOpenChange={setClientOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
@@ -510,7 +517,7 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label={t("clients.email")}>
-                <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                <Input type="email" required={firstUser} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
               </Field>
               <Field label={t("clients.phone")}>
                 <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
@@ -545,6 +552,32 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
             <Field label={t("clients.notes")}>
               <Textarea rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
             </Field>
+            {!editing ? (
+              <div className="grid gap-4 rounded-xl border bg-muted/20 p-4">
+                <div>
+                  <p className="text-sm font-semibold">{t("adm.companyAccess")}</p>
+                  <p className="text-xs text-muted-foreground">{t("adm.companyAccessHint")}</p>
+                </div>
+                <LevelSelect value={companyDocLevel} onChange={setCompanyDocLevel} />
+                <label className="flex items-start gap-2 text-sm">
+                  <Checkbox className="mt-0.5" checked={firstUser} onCheckedChange={(v) => setFirstUser(v === true)} />
+                  <span>
+                    <span className="font-medium">{t("adm.firstUser")}</span>
+                    <span className="block text-xs text-muted-foreground">{t("adm.firstUserHint")}</span>
+                  </span>
+                </label>
+                {firstUser ? (
+                  <AccessPicker
+                    groups={externalGroups}
+                    projects={[]}
+                    clients={[]}
+                    draft={userAccess}
+                    onChange={setUserAccess}
+                    docsHint={t("adm.clientUserDocsHint")}
+                  />
+                ) : null}
+              </div>
+            ) : null}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setClientOpen(false)}>
                 {t("clients.cancel")}
@@ -649,7 +682,7 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
           if (!o) setInviteFor(null);
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("clients.inviteTitle")}</DialogTitle>
           </DialogHeader>
@@ -691,10 +724,13 @@ export function ConfigClientsPage({ embedded = false }: { embedded?: boolean }) 
               />
               {t("clients.markPrimary")}
             </label>
-            <GroupPicker
+            <AccessPicker
               groups={externalGroups}
-              selected={userForm.groupIds}
-              onChange={(groupIds) => setUserForm({ ...userForm, groupIds })}
+              projects={projects.filter((p) => p.client_id === inviteFor?.id)}
+              clients={clients.filter((c) => c.id === inviteFor?.id)}
+              draft={inviteAccess}
+              onChange={setInviteAccess}
+              docsHint={t("adm.clientUserDocsHint")}
             />
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setInviteFor(null)}>

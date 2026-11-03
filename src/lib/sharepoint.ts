@@ -71,30 +71,32 @@ export async function setShareFlags(input: {
   userId: number | null;
   itemId: string;
   flags: { can_view: boolean; can_upload: boolean; can_edit: boolean };
+  /** An access group's right (clientId is then -1 and userId null). */
+  groupId?: number | null;
 }) {
   await dbReady;
   const existing = await db
     .select()
     .from(schema.sharepoint_shares)
     .where(and(eq(schema.sharepoint_shares.folder_id, input.folderId), eq(schema.sharepoint_shares.client_id, input.clientId)));
-  const row = existing.find((s) => (s.user_id ?? null) === input.userId && (s.item_id || "") === input.itemId);
+  const row = existing.find((s) => (s.user_id ?? null) === input.userId && (s.group_id ?? null) === (input.groupId ?? null) && (s.item_id || "") === input.itemId);
   const payload = {
     can_view: input.flags.can_view ? 1 : 0,
     can_upload: input.flags.can_upload ? 1 : 0,
     can_edit: input.flags.can_edit ? 1 : 0,
   };
   if (row) await db.update(schema.sharepoint_shares).set(payload).where(eq(schema.sharepoint_shares.id, row.id));
-  else await db.insert(schema.sharepoint_shares).values({ folder_id: input.folderId, client_id: input.clientId, user_id: input.userId, item_id: input.itemId, ...payload });
+  else await db.insert(schema.sharepoint_shares).values({ folder_id: input.folderId, client_id: input.clientId, user_id: input.userId, group_id: input.groupId ?? null, item_id: input.itemId, ...payload });
 }
 
 /** Back to inheriting: remove the explicit right on this folder. */
-export async function clearShareFlags(input: { folderId: number; clientId: number; userId: number | null; itemId: string }) {
+export async function clearShareFlags(input: { folderId: number; clientId: number; userId: number | null; itemId: string; groupId?: number | null }) {
   await dbReady;
   const existing = await db
     .select()
     .from(schema.sharepoint_shares)
     .where(and(eq(schema.sharepoint_shares.folder_id, input.folderId), eq(schema.sharepoint_shares.client_id, input.clientId)));
-  for (const row of existing.filter((s) => (s.user_id ?? null) === input.userId && (s.item_id || "") === input.itemId)) {
+  for (const row of existing.filter((s) => (s.user_id ?? null) === input.userId && (s.group_id ?? null) === (input.groupId ?? null) && (s.item_id || "") === input.itemId)) {
     await db.delete(schema.sharepoint_shares).where(eq(schema.sharepoint_shares.id, row.id));
   }
 }

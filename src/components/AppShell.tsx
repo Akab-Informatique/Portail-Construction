@@ -5,6 +5,7 @@ import { Logo } from "@/components/Logo";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
+  Building2,
   CalendarDays,
   Check,
   ChevronDown,
@@ -13,6 +14,8 @@ import {
   Eye,
   FileText,
   FolderKanban,
+  HardHat,
+  KeyRound,
   LayoutDashboard,
   LayoutGrid,
   ListChecks,
@@ -201,6 +204,20 @@ export function useNavModel(): NavSection[] {
         items: [{ id: "billingMgmt", to: "/finance/billing", label: t("nav.billingMgmt"), icon: ReceiptText, module: "app_billing_mgmt" }],
       },
     ];
+    // Administration: clients, staff and what each of them can reach. Administrators only.
+    if (isAdmin) {
+      sections.push({
+        id: "admin",
+        label: t("nav.section.admin"),
+        tour: "administration",
+        items: [
+          { id: "adminClients", to: "/admin/clients", label: t("nav.admin.clients"), icon: Building2, end: true },
+          { id: "adminStaff", to: "/admin/staff", label: t("nav.admin.staff"), icon: HardHat, end: true },
+          { id: "accessClients", to: "/admin/access/clients", label: t("nav.admin.accessClients"), icon: KeyRound, end: true },
+          { id: "accessStaff", to: "/admin/access/staff", label: t("nav.admin.accessStaff"), icon: KeyRound, end: true },
+        ],
+      });
+    }
     // Work in progress: the invoice/quote builder lives here until it is ready.
     if (isAdmin && showDev) {
       sections.push({
@@ -539,6 +556,7 @@ const CRUMB: Record<string, MessageKey> = {
   documents: "nav.documents",
   reports: "nav.reports",
   updates: "nav.updates",
+  admin: "nav.section.admin",
 };
 
 function readCollapsed() {

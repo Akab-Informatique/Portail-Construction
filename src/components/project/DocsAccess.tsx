@@ -6,7 +6,7 @@ import { callSharePoint, clearShareFlags, setShareFlags } from "@/lib/sharepoint
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
 import { DOC_LEVELS, levelFlags, levelOf, shareFlags, type DocFlags, type DocLevel } from "@/lib/doc-rights";
-import type { Client, SharePointShare, User } from "@/lib/types";
+import type { AccessGroup, Client, SharePointShare, User } from "@/lib/types";
 import { useSpTree, type Crumb, type SpRoot } from "@/components/project/useSpTree";
 import { UserAvatar } from "@/components/UserAvatar";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { cn } from "@/lib/utils";
 
 type Flags = DocFlags;
-type Grantee = { key: string; clientId: number; userId: number | null; label: string; sub?: string };
+type Grantee = { key: string; clientId: number; userId: number | null; label: string; sub?: string; /** An access group (clientId is then -1). */ groupId?: number };
 const NONE: Flags = { can_view: false, can_upload: false, can_edit: false };
 const asFlags = shareFlags;
 const LEVEL_LABEL: Record<DocLevel, MessageKey> = { none: "pda.lvl.none", view: "pda.lvl.view", contribute: "pda.lvl.contribute", full: "pda.lvl.full" };
@@ -47,7 +47,8 @@ export function DocsAccess({
   const [users, setUsers] = useState<(User & { clientId: number })[]>([]);
   const [staff, setStaff] = useState<User[]>([]);
   const [userDialog, setUserDialog] = useState<number | null>(null);
-  const [who, setWho] = useState<"staff" | "clients">("staff");
+  const [who, setWho] = useState<"staff" | "clients" | "groups">("staff");
+  const [groups, setGroups] = useState<AccessGroup[]>([]);
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -70,6 +71,7 @@ export function DocsAccess({
         setUsers(links.flatMap((l) => (rows.find((u) => u.id === l.user_id) ? [{ ...rows.find((u) => u.id === l.user_id)!, clientId: l.client_id }] : [])));
       }
       setStaff(((await db.select().from(schema.users)) as User[]).filter((u) => u.user_type === "internal" && u.is_active === 1 && u.is_admin !== 1));
+      setGroups(((await db.select().from(schema.access_groups)) as AccessGroup[]).sort((a, b) => a.name.localeCompare(b.name)));
       await loadShares();
     })();
     void tree.list(root.id).catch((err) => setError(tr(err, "sp.error.failed")));
@@ -93,6 +95,11 @@ export function DocsAccess({
     return staff.filter((u) => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name));
   }, [staff, query]);
 
+  const visibleGroups = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return groups.filter((g) => !q || g.name.toLowerCase().includes(q));
+  }, [groups, query]);
+
   /** The folder and its ancestors, nearest first, up to the whole library. */
   const chain: Crumb[] = [
     ...[{ id: root.id, name: root.name }, ...trail].reverse(),
@@ -101,7 +108,7 @@ export function DocsAccess({
   ];
 
   const explicitAt = (nodeId: string, g: Grantee) =>
-    shares.find((s) => s.client_id === g.clientId && (s.user_id ?? null) === g.userId && s.folder_id === 0 && (s.item_id || "") === nodeId) ?? null;
+    shares.find((s) => s.client_id === g.clientId && (s.user_id ?? null) === g.userId && (s.group_id ?? null) === (g.groupId ?? null) && s.folder_id === 0 && (s.item_id || "") === nodeId) ?? null;
 
   /** What this grantee has on the current folder, and where it comes from. */
   function resolve(g: Grantee): { flags: Flags; from: "here" | "above" | "none"; fromName?: string } {
@@ -115,7 +122,7 @@ export function DocsAccess({
   async function change(g: Grantee, level: DocLevel) {
     setError(null);
     try {
-      await setShareFlags({ folderId: 0, clientId: g.clientId, userId: g.userId, itemId: currentId, flags: levelFlags(level) });
+      await setShareFlags({ folderId: 0, clientId: g.clientId, userId: g.userId, groupId: g.groupId ?? null, itemId: currentId, flags: levelFlags(level) });
       await loadShares();
     } catch (err) {
       setError(tr(err, "sp.error.failed"));
@@ -123,7 +130,7 @@ export function DocsAccess({
   }
 
   async function reset(g: Grantee) {
-    await clearShareFlags({ folderId: 0, clientId: g.clientId, userId: g.userId, itemId: currentId });
+    await clearShareFlags({ folderId: 0, clientId: g.clientId, userId: g.userId, groupId: g.groupId ?? null, itemId: currentId });
     await loadShares();
   }
 
@@ -167,7 +174,11 @@ export function DocsAccess({
       <tr key={g.key}>
         <td className="py-3 pr-3">
           <div className="flex items-center gap-3">
-            {g.clientId === 0 ? (
+            {g.groupId ? (
+              <span className="flex size-9 items-center justify-center rounded-full bg-primary/15 text-primary">
+                <Users className="size-4" />
+              </span>
+            ) : g.clientId === 0 ? (
               <span className="flex size-9 items-center justify-center rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300">
                 <HardHat className="size-4" />
               </span>
@@ -251,6 +262,7 @@ export function DocsAccess({
               [
                 ["staff", t("pda.staff"), HardHat, staff.length],
                 ["clients", t("pda.clientsHead"), Building2, clients.length],
+                ["groups", t("adm.list.groups"), Users, groups.length],
               ] as const
             ).map(([id, label, Icon, n]) => (
               <button
@@ -271,10 +283,10 @@ export function DocsAccess({
           </div>
           <div className="relative w-full max-w-xs">
             <Search className="pointer-events-none absolute top-2.5 left-3 size-4 text-muted-foreground" />
-            <Input className="pl-9" value={query} placeholder={who === "staff" ? t("pda.searchStaff") : t("pda.searchClient")} onChange={(e) => setQuery(e.target.value)} />
+            <Input className="pl-9" value={query} placeholder={who === "staff" ? t("pda.searchStaff") : who === "groups" ? t("adm.searchGroup") : t("pda.searchClient")} onChange={(e) => setQuery(e.target.value)} />
           </div>
         </div>
-        <p className="text-xs text-muted-foreground">{who === "staff" ? t("pda.staffHelp", { folder: here.id === root.id ? rootLabel : here.name }) : t("pda.clientsHelp")}</p>
+        <p className="text-xs text-muted-foreground">{who === "staff" ? t("pda.staffHelp", { folder: here.id === root.id ? rootLabel : here.name }) : who === "groups" ? t("adm.docs.groupsHelp") : t("pda.clientsHelp")}</p>
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] text-sm">
@@ -288,6 +300,7 @@ export function DocsAccess({
             <tbody className="divide-y">
               {who === "staff" ? visibleStaff.map((u) => rowFor({ key: `s${u.id}`, clientId: 0, userId: u.id, label: u.name, sub: u.title || u.email })) : null}
               {who === "clients" ? visibleClients.map((c) => rowFor({ key: `c${c.id}`, clientId: c.id, userId: null, label: c.company_name, sub: c.name })) : null}
+              {who === "groups" ? visibleGroups.map((gr) => rowFor({ key: `g${gr.id}`, clientId: -1, userId: null, groupId: gr.id, label: gr.name, sub: gr.audience === "external" ? t("adm.groupClients") : t("adm.groupStaff") })) : null}
             </tbody>
           </table>
         </div>

@@ -154,6 +154,9 @@ CREATE TABLE IF NOT EXISTS note_comments (id SERIAL PRIMARY KEY, note_id INTEGER
 CREATE INDEX IF NOT EXISTS note_comments_note_idx ON note_comments (note_id);
 CREATE TABLE IF NOT EXISTS report_access (id SERIAL PRIMARY KEY, report_key TEXT NOT NULL, subject_type TEXT NOT NULL, subject_id INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS report_access_key_idx ON report_access (report_key);
+ALTER TABLE sharepoint_shares ADD COLUMN IF NOT EXISTS group_id INTEGER;
+CREATE TABLE IF NOT EXISTS group_projects (id SERIAL PRIMARY KEY, group_id INTEGER NOT NULL, project_id INTEGER NOT NULL, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
+CREATE INDEX IF NOT EXISTS group_projects_group_idx ON group_projects (group_id);
 CREATE INDEX IF NOT EXISTS form_entries_project_idx ON form_entries (project_id, entry_date DESC);
 CREATE INDEX IF NOT EXISTS project_attachments_owner_idx ON project_attachments (project_id, owner_type, owner_id);
 CREATE INDEX IF NOT EXISTS expenses_user_idx ON expenses (user_id, expense_date DESC);

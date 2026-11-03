@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { eq } from "drizzle-orm";
 import { db, dbReady, schema } from "../db";
 import { useAuth } from "./auth";
 import { useWorkspace } from "./workspace";
@@ -39,6 +40,36 @@ export function capsOf(level: DocLevel): DocCaps {
   if (level === "contribute") return { view: true, upload: true, download: false, modify: false };
   if (level === "view") return { view: true, upload: false, download: false, modify: false };
   return NO_CAPS;
+}
+
+/**
+ * The rights of the access groups a person belongs to, written as the person's own (an employee: client 0; a client user: each
+ * of their companies), the widest where several overlap. The server does the same when it decides; this only drives what the screen shows.
+ */
+async function groupRightsOf(user: SessionUser, all: SharePointShare[]): Promise<SharePointShare[]> {
+  const memberships = await db.select({ group_id: schema.user_access_groups.group_id }).from(schema.user_access_groups).where(eq(schema.user_access_groups.user_id, user.id));
+  const mine = new Set(memberships.map((m) => m.group_id));
+  const rows = all.filter((s) => s.group_id && mine.has(s.group_id));
+  if (rows.length === 0) return [];
+  const owners = user.user_type === "external" ? (await db.select({ client_id: schema.client_users.client_id }).from(schema.client_users).where(eq(schema.client_users.user_id, user.id))).map((l) => l.client_id) : [0];
+  const merged = new Map<string, SharePointShare>();
+  for (const row of rows) {
+    for (const owner of owners) {
+      const key = `${owner}|${row.item_id || ""}`;
+      const prev = merged.get(key);
+      merged.set(key, {
+        ...row,
+        id: -row.id,
+        client_id: owner,
+        user_id: user.id,
+        group_id: null,
+        can_view: Math.max(row.can_view, prev?.can_view ?? 0),
+        can_upload: Math.max(row.can_upload, prev?.can_upload ?? 0),
+        can_edit: Math.max(row.can_edit, prev?.can_edit ?? 0),
+      });
+    }
+  }
+  return [...merged.values()];
 }
 
 export const shareFlags = (s: SharePointShare): DocFlags => ({ can_view: s.can_view === 1, can_upload: s.can_upload === 1, can_edit: s.can_edit === 1 });
@@ -107,9 +138,18 @@ export function useDocShares() {
 
   const load = useCallback(async () => {
     await dbReady;
-    setShares((await db.select().from(schema.sharepoint_shares)) as SharePointShare[]);
+    const all = (await db.select().from(schema.sharepoint_shares)) as SharePointShare[];
+    const mine = user && user.view_as !== "client" && !user.is_admin ? await groupRightsOf(user, all) : [];
+    const base = all.filter((s) => !s.group_id);
+    for (const g of mine) {
+      const i = base.findIndex((s) => s.folder_id === 0 && s.client_id === g.client_id && s.user_id === g.user_id && (s.item_id || "") === (g.item_id || ""));
+      if (i < 0) base.push(g);
+      else base[i] = { ...base[i], can_view: Math.max(base[i].can_view, g.can_view), can_upload: Math.max(base[i].can_upload, g.can_upload), can_edit: Math.max(base[i].can_edit, g.can_edit) };
+    }
+    setShares(base);
     setLoading(false);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.view_as]);
   useEffect(() => {
     void load().catch(() => setLoading(false));
   }, [load, user?.id, user?.view_as]);

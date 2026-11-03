@@ -183,6 +183,8 @@ export const sharepoint_shares = pgTable("sharepoint_shares", {
   item_id: text("item_id").notNull().default(""),
   /** null = the whole company; a user id = a right for that client user only (added on top of the company's). */
   user_id: integer("user_id"),
+  /** A right given to a whole access group: client_id is -1 and the group's members get it on top of their own. */
+  group_id: integer("group_id"),
   can_view: integer("can_view").notNull(),
   can_upload: integer("can_upload").notNull(),
   can_edit: integer("can_edit").notNull(),
@@ -295,6 +297,14 @@ export const access_group_clients = pgTable("access_group_clients", {
   id: serial("id").primaryKey(),
   group_id: integer("group_id").notNull(),
   client_id: integer("client_id").notNull(),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
+});
+
+/** The projects a group opens to its members (staff: they see them; client users: only within their own company). */
+export const group_projects = pgTable("group_projects", {
+  id: serial("id").primaryKey(),
+  group_id: integer("group_id").notNull(),
+  project_id: integer("project_id").notNull(),
   created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 

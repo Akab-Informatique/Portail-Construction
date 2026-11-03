@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db, schema } from "../db";
 import { CLIENT_KEY } from "./constants";
 import type {
@@ -82,6 +82,15 @@ function readSelectedClientId(): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+/** The projects opened by the access groups a person belongs to. */
+async function groupProjectIds(userId: number): Promise<number[]> {
+  const memberships = await db.select({ group_id: schema.user_access_groups.group_id }).from(schema.user_access_groups).where(eq(schema.user_access_groups.user_id, userId));
+  const groupIds = memberships.map((m) => m.group_id);
+  if (groupIds.length === 0) return [];
+  const rows = await db.select({ project_id: schema.group_projects.project_id }).from(schema.group_projects).where(inArray(schema.group_projects.group_id, groupIds));
+  return rows.map((r) => r.project_id);
+}
+
 /** `null` = every client. Otherwise the ids the user may see. */
 export async function getAccessibleClientIds(
   user: SessionUser | null,
@@ -113,7 +122,7 @@ export async function getAccessibleClientIds(
       db.select().from(schema.user_clients).where(eq(schema.user_clients.user_id, user.id)),
       db.select({ project_id: schema.project_members.project_id }).from(schema.project_members).where(eq(schema.project_members.user_id, user.id)),
     ]);
-    const memberIds = mine.map((m) => m.project_id);
+    const memberIds = [...new Set([...mine.map((m) => m.project_id), ...(await groupProjectIds(user.id))])];
     const memberClients = memberIds.length
       ? await db.select({ client_id: schema.projects.client_id }).from(schema.projects).where(inArray(schema.projects.id, memberIds))
       : [];
@@ -133,7 +142,12 @@ export async function getAccessibleProjectIds(user: SessionUser | null): Promise
   if (user.user_type === "external" && user.view_as !== "client" && !user.is_admin) {
     try {
       const mine = await db.select({ project_id: schema.project_members.project_id }).from(schema.project_members).where(eq(schema.project_members.user_id, user.id));
-      return mine.map((m) => m.project_id);
+      // Projects opened by a group count too, but only inside the person's own company.
+      const viaGroups = await groupProjectIds(user.id);
+      if (viaGroups.length === 0) return mine.map((m) => m.project_id);
+      const links = await db.select({ client_id: schema.client_users.client_id }).from(schema.client_users).where(eq(schema.client_users.user_id, user.id));
+      const own = links.length ? await db.select({ id: schema.projects.id }).from(schema.projects).where(and(inArray(schema.projects.id, viaGroups), inArray(schema.projects.client_id, links.map((l) => l.client_id)))) : [];
+      return [...new Set([...mine.map((m) => m.project_id), ...own.map((p) => p.id)])];
     } catch {
       return null;
     }
@@ -147,7 +161,7 @@ export async function getAccessibleProjectIds(user: SessionUser | null): Promise
       db.select({ project_id: schema.project_members.project_id }).from(schema.project_members).where(eq(schema.project_members.user_id, user.id)),
       db.select({ client_id: schema.user_clients.client_id }).from(schema.user_clients).where(eq(schema.user_clients.user_id, user.id)),
     ]);
-    const ids = new Set(mine.map((m) => m.project_id));
+    const ids = new Set([...mine.map((m) => m.project_id), ...(await groupProjectIds(user.id))]);
     const clientIds = links.map((l) => l.client_id);
     if (clientIds.length) {
       const extra = await db.select({ id: schema.projects.id }).from(schema.projects).where(inArray(schema.projects.client_id, clientIds));

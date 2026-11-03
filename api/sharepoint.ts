@@ -107,6 +107,29 @@ async function loadGrants(user: ApiUser) {
     [user.id],
   );
   const subjects = new Map<string, Map<string, Grant>>();
+  // Rights given to an access group the person belongs to are added to their own, folder by folder (the widest wins). A client
+  // user still stays within what their company has, so a group can never open more than the company does.
+  const viaGroups = await runSql(
+    `SELECT s.folder_id, s.item_id, s.can_view, s.can_upload, s.can_edit, f.sp_item_id
+     FROM sharepoint_shares s
+     JOIN user_access_groups ug ON ug.group_id = s.group_id AND ug.user_id = $1
+     LEFT JOIN sharepoint_folders f ON f.id = s.folder_id`,
+    [user.id],
+  );
+  const owners = external
+    ? ((await runSql("SELECT client_id FROM client_users WHERE user_id = $1", [user.id])).rows as unknown[][]).map((r) => Number(r[0]))
+    : [0];
+  for (const [folderId, itemId, canView, canUpload, canEdit, spItemId] of viaGroups.rows as unknown[][]) {
+    const key = String(itemId || "") || (Number(folderId) === 0 ? "" : String(spItemId || ""));
+    if (!key && Number(folderId) !== 0) continue;
+    for (const owner of owners) {
+      const who = `${owner}:${user.id}`;
+      const nodes = subjects.get(who) ?? new Map<string, Grant>();
+      const prev = nodes.get(key) ?? { view: false, upload: false, edit: false };
+      nodes.set(key, { view: prev.view || Number(canView) === 1, upload: prev.upload || Number(canUpload) === 1, edit: prev.edit || Number(canEdit) === 1 });
+      subjects.set(who, nodes);
+    }
+  }
   for (const [clientId, userId, folderId, itemId, canView, canUpload, canEdit, spItemId] of rows as unknown[][]) {
     const key = String(itemId || "") || (Number(folderId) === 0 ? "" : String(spItemId || ""));
     if (!key && Number(folderId) !== 0) continue;

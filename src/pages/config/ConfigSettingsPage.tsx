@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Building2, Cloud, FileText, Mail, MessageSquare, Presentation, Send, Settings, Sparkles, Users, Wallet, X, type LucideIcon } from "lucide-react";
+import { Building2, Cloud, FileText, Mail, MessageSquare, Send, Settings, Sparkles, Wallet, X, type LucideIcon } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -41,12 +41,9 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import type { MessageKey } from "@/lib/i18n/en";
-import { ConfigClientsPage } from "./ConfigClientsPage";
-import { ReportAccessPanel } from "./ReportAccessPanel";
-import { ConfigInternalUsersPage } from "./ConfigInternalUsersPage";
 import type { AiSettings, SmsSettings, CompanyProfile, EmailTemplateKey, EmailTemplates, QuickBooksSettings, SharePointSettings, SmtpSettings } from "@/lib/types";
 
-const TABS = ["company", "email", "sms", "templates", "quickbooks", "sharepoint", "ai", "clients", "users", "reports"] as const;
+const TABS = ["company", "email", "sms", "templates", "quickbooks", "sharepoint", "ai"] as const;
 type SetupTab = (typeof TABS)[number];
 
 function isSetupTab(value: string | null): value is SetupTab {
@@ -69,14 +66,6 @@ const GROUPS: { label: MessageKey; items: { id: SetupTab; icon: LucideIcon; labe
       { id: "quickbooks", icon: Wallet, label: "settings.tab.quickbooks" },
       { id: "sharepoint", icon: Cloud, label: "settings.tab.sharepoint" },
       { id: "ai", icon: Sparkles, label: "settings.tab.ai" },
-    ],
-  },
-  {
-    label: "settings.group.people",
-    items: [
-      { id: "clients", icon: Building2, label: "settings.tab.clients" },
-      { id: "users", icon: Users, label: "settings.tab.users" },
-      { id: "reports", icon: Presentation, label: "settings.tab.reports" },
     ],
   },
 ];
@@ -108,6 +97,14 @@ export function ConfigSettingsPage() {
   const [sms, setSms] = useState<SmsSettings>(EMPTY_SMS);
   const [templates, setTemplates] = useState<EmailTemplates>(DEFAULT_EMAIL_TEMPLATES);
   const [spTest, setSpTest] = useState<string | null>(null);
+
+  // The people tabs moved to Administration; an old link still lands in the right place.
+  useEffect(() => {
+    const old = params.get("tab");
+    if (old === "clients") navigate("/admin/clients", { replace: true });
+    else if (old === "users") navigate("/admin/staff", { replace: true });
+    else if (old === "reports") navigate("/admin/access/staff", { replace: true });
+  }, [params, navigate]);
 
   const tab = useMemo<SetupTab>(() => {
     const requested = params.get("tab");
@@ -626,15 +623,6 @@ export function ConfigSettingsPage() {
             </Card>
             <SaveBar saved={saved} saving={saving} />
           </form>
-        </TabsContent>
-        <TabsContent value="clients">
-          <ConfigClientsPage embedded />
-        </TabsContent>
-        <TabsContent value="users">
-          <ConfigInternalUsersPage embedded />
-        </TabsContent>
-        <TabsContent value="reports">
-          <ReportAccessPanel />
         </TabsContent>
           </div>
         </div>

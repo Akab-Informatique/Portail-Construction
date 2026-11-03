@@ -20,6 +20,10 @@ const UserAccessPage = lazyPage(() => import("@/pages/UserAccessPage"), "UserAcc
 const ProfilePage = lazyPage(() => import("@/pages/ProfilePage"), "ProfilePage");
 const ConfigUserPage = lazyPage(() => import("@/pages/config/ConfigUserPage"), "ConfigUserPage");
 const AccountingBillingPage = lazyPage(() => import("@/pages/AccountingBillingPage"), "AccountingBillingPage");
+const ConfigClientsPage = lazyPage(() => import("@/pages/config/ConfigClientsPage"), "ConfigClientsPage");
+const ConfigInternalUsersPage = lazyPage(() => import("@/pages/config/ConfigInternalUsersPage"), "ConfigInternalUsersPage");
+const AdminAccessStaffPage = lazyPage(() => import("@/pages/admin/AdminAccessPage"), "AdminAccessStaffPage");
+const AdminAccessClientsPage = lazyPage(() => import("@/pages/admin/AdminAccessPage"), "AdminAccessClientsPage");
 const ConfigSettingsPage = lazyPage(() => import("@/pages/config/ConfigSettingsPage"), "ConfigSettingsPage");
 const PunchPage = lazyPage(() => import("@/pages/PunchPage"), "PunchPage");
 const TimesheetsPage = lazyPage(() => import("@/pages/TimesheetsPage"), "TimesheetsPage");
@@ -82,9 +86,14 @@ export default function App() {
           <Route path="projects/:projectId/:section" element={<ProjectDetailPage />} />
           <Route path="team" element={<RequireAdmin><TeamPage /></RequireAdmin>} />
           <Route path="team/:userId" element={<RequireAdmin><UserAccessPage /></RequireAdmin>} />
-          <Route path="config/clients" element={<Navigate to="/settings?tab=clients" replace />} />
-          <Route path="config/internal" element={<Navigate to="/settings?tab=users" replace />} />
-          <Route path="config/groups" element={<Navigate to="/settings?tab=users" replace />} />
+          <Route path="admin" element={<Navigate to="/admin/clients" replace />} />
+          <Route path="admin/clients" element={<RequireAdmin><ConfigClientsPage /></RequireAdmin>} />
+          <Route path="admin/staff" element={<RequireAdmin><ConfigInternalUsersPage /></RequireAdmin>} />
+          <Route path="admin/access/clients" element={<RequireAdmin><AdminAccessClientsPage /></RequireAdmin>} />
+          <Route path="admin/access/staff" element={<RequireAdmin><AdminAccessStaffPage /></RequireAdmin>} />
+          <Route path="config/clients" element={<Navigate to="/admin/clients" replace />} />
+          <Route path="config/internal" element={<Navigate to="/admin/staff" replace />} />
+          <Route path="config/groups" element={<Navigate to="/admin/access/staff" replace />} />
           <Route path="config/users/:userId" element={<RequireAdmin><ConfigUserPage /></RequireAdmin>} />
           <Route path="config/settings" element={<Navigate to="/settings" replace />} />
           <Route path="settings" element={<RequireAdmin><ConfigSettingsPage /></RequireAdmin>} />

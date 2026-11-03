@@ -1,12 +1,15 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Search, Users } from "lucide-react";
+import { KeyRound, Loader2, Mail, Plus, Search, Users } from "lucide-react";
 import { db, dbReady, schema } from "../../db";
 import { useAuth } from "@/lib/auth";
 import { initials } from "@/lib/format";
 import { logActivity } from "@/lib/activity";
 import { groupFitsUser, isDefaultStaffGroup } from "@/lib/access";
-import { createUser, listUsers } from "@/lib/users-api";
+import { createUser, listUsers, sendUserLink } from "@/lib/users-api";
+import { AccessPicker } from "@/components/admin/AccessPicker";
+import { applyAccess, EMPTY_ACCESS, type AccessDraft } from "@/lib/admin-access";
+import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -22,11 +25,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useI18n } from "@/lib/i18n";
-import { GroupPicker } from "./GroupPicker";
-import { GroupsEditor } from "./GroupsEditor";
-import type { AccessGroup, User, UserAccessGroup } from "@/lib/types";
+import type { AccessGroup, Client, Project, User, UserAccessGroup } from "@/lib/types";
 import { hashPassword, randomPassword } from "@/lib/password";
 
 const empty = {
@@ -36,13 +36,12 @@ const empty = {
   title: "",
   phone: "",
   is_admin: false,
-  groupIds: [] as number[],
   must_change_password: true,
 };
 
-export function ConfigInternalUsersPage({ embedded = false }: { embedded?: boolean }) {
+export function ConfigInternalUsersPage() {
   const { realUser } = useAuth();
-  const { t, tr } = useI18n();
+  const { t, tr, locale } = useI18n();
   const [loading, setLoading] = useState(true);
   const [people, setPeople] = useState<User[]>([]);
   const [groups, setGroups] = useState<AccessGroup[]>([]);
@@ -52,6 +51,11 @@ export function ConfigInternalUsersPage({ embedded = false }: { embedded?: boole
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [access, setAccess] = useState<AccessDraft>(EMPTY_ACCESS);
+  const [notice, setNotice] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+  const [linkBusy, setLinkBusy] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -60,6 +64,8 @@ export function ConfigInternalUsersPage({ embedded = false }: { embedded?: boole
       setPeople(rows.filter((p) => p.user_type !== "external"));
       setGroups((await db.select().from(schema.access_groups)) as AccessGroup[]);
       setMemberships((await db.select().from(schema.user_access_groups)) as UserAccessGroup[]);
+      setProjects((await db.select().from(schema.projects)) as Project[]);
+      setClients((await db.select().from(schema.clients)) as Client[]);
     } catch (err) {
       console.error("load users failed", err);
     } finally {
@@ -90,7 +96,7 @@ export function ConfigInternalUsersPage({ embedded = false }: { embedded?: boole
     const email = form.email.trim().toLowerCase();
     const name = form.name.trim();
     try {
-      await createUser({
+      const created = await createUser({
         name,
         email,
         password: await hashPassword(form.password.trim() || randomPassword()),
@@ -99,8 +105,12 @@ export function ConfigInternalUsersPage({ embedded = false }: { embedded?: boole
         phone: form.phone.trim() || null,
         is_admin: form.is_admin,
         avatar_initials: initials(name),
-        groupIds: form.groupIds,
         must_change_password: form.must_change_password,
+      });
+      const result = await applyAccess({ userId: created.id, clientId: 0, draft: access, locale });
+      setNotice({
+        tone: result.invite === "failed" ? "bad" : "ok",
+        text: result.invite === "sent" ? t("cu.inviteSent", { email }) : result.invite === "local" ? t("cu.linkLocal") : result.invite === "failed" ? t("adm.inviteFailed") : t("adm.accountCreated"),
       });
       await logActivity({
         action: "created user",
@@ -133,43 +143,41 @@ export function ConfigInternalUsersPage({ embedded = false }: { embedded?: boole
     setForm({
       ...empty,
       password: randomPassword(),
-      groupIds: internalGroups.filter(isDefaultStaffGroup).map((g) => g.id),
     });
+    setAccess({ ...EMPTY_ACCESS, groupIds: internalGroups.filter(isDefaultStaffGroup).map((g) => g.id) });
     setOpen(true);
+  }
+
+  /** An invitation (a new account) or a password reset: the person gets a link by email to choose their password. */
+  async function onSendLink(person: User, kind: "invite" | "reset") {
+    setLinkBusy(`${kind}-${person.id}`);
+    setNotice(null);
+    try {
+      const out = await sendUserLink(person.id, kind, locale);
+      setNotice(out.local ? { tone: "bad", text: t("cu.linkLocal") } : { tone: "ok", text: t(kind === "invite" ? "cu.inviteSent" : "cu.resetSent", { email: out.email ?? person.email }) });
+    } catch (err) {
+      setNotice({ tone: "bad", text: tr(err, "users.link.failed") });
+    } finally {
+      setLinkBusy(null);
+    }
   }
 
   return (
     <div>
-      {embedded ? (
-        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium">{t("config.internal.title")}</p>
-          </div>
+      <PageHeader
+        eyebrow={t("nav.section.admin")}
+        title={t("config.internal.title")}
+        description={t("adm.staff.desc")}
+        actions={
           <Button onClick={openCreate}>
             <Plus className="size-4" />
             {t("config.internal.new")}
           </Button>
-        </div>
-      ) : (
-        <PageHeader
-          eyebrow={t("config.eyebrow")}
-          title={t("config.internal.title")}
-          actions={
-            <Button onClick={openCreate}>
-              <Plus className="size-4" />
-              {t("config.internal.new")}
-            </Button>
-          }
-        />
-      )}
+        }
+      />
 
-      <Tabs defaultValue="users" className="gap-5">
-        <TabsList>
-          <TabsTrigger value="users">{t("config.internal.tab.users")}</TabsTrigger>
-          <TabsTrigger value="groups">{t("config.internal.tab.groups")}</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="users">
+      <div>
+        {notice ? <p className={cn("mb-4 rounded-lg border px-3 py-2 text-sm", notice.tone === "ok" ? "border-emerald-500/40 bg-emerald-500/10" : "border-destructive/40 bg-destructive/10 text-destructive")}>{notice.text}</p> : null}
           <div className="relative mb-5 max-w-sm">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -195,10 +203,10 @@ export function ConfigInternalUsersPage({ embedded = false }: { embedded?: boole
                     .map((m) => groups.find((g) => g.id === m.group_id)?.name)
                     .filter(Boolean);
                   return (
-                    <li key={p.id}>
+                    <li key={p.id} className="flex items-center transition-colors hover:bg-muted/50">
                       <Link
                         to={`/config/users/${p.id}`}
-                        className="flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-muted/50"
+                        className="flex min-w-0 flex-1 items-center gap-3 px-5 py-3.5"
                       >
                         <UserAvatar name={p.name} hint={p.avatar_initials} />
                         <div className="min-w-0 flex-1">
@@ -217,21 +225,27 @@ export function ConfigInternalUsersPage({ embedded = false }: { embedded?: boole
                         </div>
                         <StatusBadge value={p.is_active ? "active" : "inactive"} />
                       </Link>
+                      <div className="flex shrink-0 items-center gap-0.5 pr-3">
+                        <Button variant="ghost" size="icon-sm" title={t("cu.resendInvite")} aria-label={t("cu.resendInvite")} disabled={linkBusy !== null || !p.is_active} onClick={() => void onSendLink(p, "invite")}>
+                          {linkBusy === `invite-${p.id}` ? <Loader2 className="size-4 animate-spin" /> : <Mail className="size-4" />}
+                        </Button>
+                        <Button variant="ghost" size="icon-sm" title={t("cu.resetPassword")} aria-label={t("cu.resetPassword")} disabled={linkBusy !== null || !p.is_active} onClick={() => void onSendLink(p, "reset")}>
+                          {linkBusy === `reset-${p.id}` ? <Loader2 className="size-4 animate-spin" /> : <KeyRound className="size-4" />}
+                        </Button>
+                        <Button variant="ghost" size="sm" asChild>
+                          <Link to={`/admin/access/staff?user=${p.id}`}>{t("clients.access")}</Link>
+                        </Button>
+                      </div>
                     </li>
                   );
                 })}
               </ul>
             </div>
           )}
-        </TabsContent>
-
-        <TabsContent value="groups">
-          <GroupsEditor compact audience="internal" />
-        </TabsContent>
-      </Tabs>
+      </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("config.internal.new")}</DialogTitle>
           </DialogHeader>
@@ -284,11 +298,11 @@ export function ConfigInternalUsersPage({ embedded = false }: { embedded?: boole
                 <span className="mt-0.5 block text-xs text-muted-foreground">{t("people.mustChangeHint")}</span>
               </span>
             </label>
-            <GroupPicker
-              groups={internalGroups}
-              selected={form.groupIds}
-              onChange={(groupIds) => setForm({ ...form, groupIds })}
-            />
+            {form.is_admin ? (
+              <p className="rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">{t("people.adminBanner")}</p>
+            ) : (
+              <AccessPicker groups={internalGroups} projects={projects} clients={clients} draft={access} onChange={setAccess} docsHint={t("adm.staffDocsHint")} />
+            )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                 {t("people.cancel")}

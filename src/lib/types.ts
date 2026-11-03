@@ -135,6 +135,12 @@ export type AccessGroupClient = {
   client_id: number;
 };
 
+export type GroupProject = {
+  id: number;
+  group_id: number;
+  project_id: number;
+};
+
 export type UserAccessGroup = {
   id: number;
   user_id: number;
@@ -272,6 +278,8 @@ export type SharePointShare = {
   item_id: string;
   /** null = the whole company; otherwise a right for this one client user. */
   user_id: number | null;
+  /** Set when the right belongs to an access group (client_id is then -1). */
+  group_id?: number | null;
   can_view: number;
   can_upload: number;
   can_edit: number;

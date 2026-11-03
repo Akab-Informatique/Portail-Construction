@@ -38,6 +38,7 @@ const ADMIN_TABLES = [
   "access_groups",
   "access_group_permissions",
   "access_group_clients",
+  "group_projects",
   "user_access_groups",
   "user_clients",
   "client_users",
@@ -165,7 +166,7 @@ function rowScopes(): Record<string, string> {
     THEN id = ANY(string_to_array(substr(current_setting('frx.project_ids', true), 3), ',')::int[])
     ELSE frx_client_ok(client_id) END)`;
   // Document rights: a person reads their own (an employee's rows carry client 0) and their company's; only administrators write them.
-  scopes.sharepoint_shares = `(${ALL_CLIENTS} OR (client_id = 0 AND user_id = ${ME}) OR (client_id > 0 AND frx_client_ok(client_id) AND (user_id IS NULL OR user_id = ${ME})))`;
+  scopes.sharepoint_shares = `(${ALL_CLIENTS} OR (group_id IS NOT NULL AND group_id IN (SELECT group_id FROM user_access_groups WHERE user_id = ${ME})) OR (client_id = 0 AND user_id = ${ME}) OR (client_id > 0 AND frx_client_ok(client_id) AND (user_id IS NULL OR user_id = ${ME})))`;
   scopes.time_punches = `(user_id = ${ME})`;
   // Expenses: each person reads their own; administrators see all (frx_admin_all).
   scopes.expenses = `(user_id = ${ME})`;
@@ -438,18 +439,31 @@ async function allowedScopeUncached(session: ScopedSession): Promise<{ ids: stri
       "SELECT pm.project_id AS id FROM project_members pm JOIN projects p ON p.id = pm.project_id JOIN client_users cu ON cu.client_id = p.client_id AND cu.user_id = $1 WHERE pm.user_id = $1",
       [session.id],
     );
-    return { ids: digits(result.rows, "client_id").join(","), projects: `p:${digits(assigned.rows, "id").join(",")}` };
+    // Projects opened by an access group the person belongs to count too, within their own company.
+    const viaGroups = await pool.query(
+      `SELECT gp.project_id AS id FROM group_projects gp
+       JOIN user_access_groups ug ON ug.group_id = gp.group_id AND ug.user_id = $1
+       JOIN projects p ON p.id = gp.project_id
+       JOIN client_users cu ON cu.client_id = p.client_id AND cu.user_id = $1`,
+      [session.id],
+    );
+    return {
+      ids: digits(result.rows, "client_id").join(","),
+      projects: `p:${[...new Set([...digits(assigned.rows, "id"), ...digits(viaGroups.rows, "id")])].join(",")}`,
+    };
   }
   if (Number(session.all_clients) !== 0) return { ids: "*", projects: "" };
   const [clients, projects] = await Promise.all([
     pool.query(
       `SELECT client_id FROM user_clients WHERE user_id = $1
-       UNION SELECT p.client_id FROM project_members pm JOIN projects p ON p.id = pm.project_id WHERE pm.user_id = $1`,
+       UNION SELECT p.client_id FROM project_members pm JOIN projects p ON p.id = pm.project_id WHERE pm.user_id = $1
+       UNION SELECT p.client_id FROM group_projects gp JOIN user_access_groups ug ON ug.group_id = gp.group_id AND ug.user_id = $1 JOIN projects p ON p.id = gp.project_id`,
       [session.id],
     ),
     pool.query(
       `SELECT project_id AS id FROM project_members WHERE user_id = $1
-       UNION SELECT p.id FROM projects p JOIN user_clients uc ON uc.client_id = p.client_id WHERE uc.user_id = $1`,
+       UNION SELECT p.id FROM projects p JOIN user_clients uc ON uc.client_id = p.client_id WHERE uc.user_id = $1
+       UNION SELECT gp.project_id FROM group_projects gp JOIN user_access_groups ug ON ug.group_id = gp.group_id AND ug.user_id = $1`,
       [session.id],
     ),
   ]);
