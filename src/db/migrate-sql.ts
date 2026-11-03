@@ -146,6 +146,7 @@ ALTER TABLE project_notes ADD COLUMN IF NOT EXISTS dismissed INTEGER NOT NULL DE
 CREATE TABLE IF NOT EXISTS feature_requests (id SERIAL PRIMARY KEY, title TEXT NOT NULL, notes TEXT, priority INTEGER NOT NULL DEFAULT 5, done INTEGER NOT NULL DEFAULT 0, done_at TIMESTAMP, created_by INTEGER, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
 ALTER TABLE project_notes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;
 CREATE TABLE IF NOT EXISTS form_templates (id SERIAL PRIMARY KEY, name TEXT NOT NULL, description TEXT, definition TEXT NOT NULL, created_by INTEGER, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
+ALTER TABLE form_templates ADD COLUMN IF NOT EXISTS base_key TEXT;
 CREATE TABLE IF NOT EXISTS form_entries (id SERIAL PRIMARY KEY, project_id INTEGER NOT NULL, template_key TEXT NOT NULL, template_name TEXT NOT NULL, definition TEXT NOT NULL, data TEXT NOT NULL, entry_date TEXT NOT NULL, created_by INTEGER, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
 CREATE TABLE IF NOT EXISTS personal_notes (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL, title TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', project_id INTEGER, shared_note_id INTEGER, shared_visibility TEXT, created_on TEXT NOT NULL, updated_on TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS personal_notes_user_idx ON personal_notes (user_id, updated_on DESC);

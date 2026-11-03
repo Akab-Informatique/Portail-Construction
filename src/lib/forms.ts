@@ -2,7 +2,19 @@ import { desc, eq } from "drizzle-orm";
 import { db, dbReady, schema } from "../db";
 import type { Locale } from "./types";
 
-export type FieldType = "text" | "longtext" | "date" | "time" | "number" | "yesno" | "select";
+export type FieldType = "text" | "longtext" | "date" | "time" | "number" | "yesno" | "select" | "photo";
+
+/** A photo answer is a list of pictures kept inside the form (stored as JSON in the answer). */
+export type FormPhoto = { name: string; data: string };
+export function photosOf(value: string | undefined): FormPhoto[] {
+  if (!value) return [];
+  try {
+    const list = JSON.parse(value) as FormPhoto[];
+    return Array.isArray(list) ? list.filter((p) => p && typeof p.data === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 export type FormField = {
   id: string;
@@ -36,6 +48,8 @@ export type FormTemplate = {
   def: FormDef;
   builtin: boolean;
   id?: number;
+  /** For a standard form that was edited: its key. */
+  baseKey?: string;
 };
 
 const f = (id: string, label: string, type: FieldType = "text", extra: Partial<FormField> = {}): FormField => ({ id, label, type, ...extra });
@@ -79,6 +93,7 @@ export function builtinForms(locale: Locale): FormTemplate[] {
             addLabel: fr ? "Ajouter un travailleur" : "Add a worker",
             fields: [f("name", fr ? "Nom du travailleur" : "Worker name"), f("trade", fr ? "Métier du travailleur" : "Worker’s trade"), f("hours", fr ? "Nombre d’heures effectuées" : "Hours worked", "number")],
           },
+          { id: "photos", title: "Photos", fields: [f("photos", "Photos", "photo")] },
         ],
       },
     },
@@ -110,6 +125,7 @@ export function builtinForms(locale: Locale): FormTemplate[] {
               f("report", fr ? "Compte-rendu / travaux effectués" : "Report / work done", "longtext", { required: true }),
               f("material", fr ? "Matériel acheté" : "Material bought", "yesno", { required: true }),
               f("remarks", fr ? "Remarque(s)" : "Remarks", "longtext"),
+              f("photos", "Photos", "photo"),
             ],
           },
           {
@@ -149,6 +165,7 @@ export function builtinForms(locale: Locale): FormTemplate[] {
               f("careWhere", fr ? "Si répondu oui à la question précédente, où est allée la victime?" : "If yes, where did the victim go?", "text"),
               f("careHow", fr ? "Si la victime est allée à un endroit pour recevoir des soins, comment y est-elle allée?" : "If the victim went somewhere for care, how did they get there?", "text"),
               f("returned", fr ? "Suite à l’accident de travail, est-ce que la victime est retournée au travail?" : "Did the victim return to work after the accident?", "yesno"),
+              f("photos", "Photos", "photo"),
             ],
           },
         ],
@@ -157,7 +174,7 @@ export function builtinForms(locale: Locale): FormTemplate[] {
   ];
 }
 
-export const FIELD_TYPES: FieldType[] = ["text", "longtext", "date", "time", "number", "yesno", "select"];
+export const FIELD_TYPES: FieldType[] = ["text", "longtext", "date", "time", "number", "yesno", "select", "photo"];
 
 /** One empty row of answers for a section. */
 export const blankRow = (section: FormSection, today: string): Record<string, string> =>
@@ -171,7 +188,8 @@ export function missingRequired(def: FormDef, data: FormData): string[] {
   for (const s of def.sections) {
     (data[s.id] ?? []).forEach((row, i) => {
       for (const fl of s.fields) {
-        if (fl.required && !(row[fl.id] ?? "").trim()) out.push(s.repeat && (data[s.id]?.length ?? 0) > 1 ? `${fl.label} (${i + 1})` : fl.label);
+        const empty = fl.type === "photo" ? photosOf(row[fl.id]).length === 0 : !(row[fl.id] ?? "").trim();
+        if (fl.required && empty) out.push(s.repeat && (data[s.id]?.length ?? 0) > 1 ? `${fl.label} (${i + 1})` : fl.label);
       }
     });
   }
@@ -201,14 +219,15 @@ export const parseData = (raw: string): FormData => {
 export async function loadCustomTemplates(): Promise<FormTemplate[]> {
   await dbReady;
   const rows = await db.select().from(schema.form_templates).orderBy(desc(schema.form_templates.id));
-  return rows.map((r) => ({ key: `custom:${r.id}`, id: r.id, name: r.name, description: r.description ?? "", def: parseDef(r.definition), builtin: false }));
+  // An edited standard form keeps the standard form's key, so the forms already filled stay in the same binder divider.
+  return rows.map((r) => ({ key: r.base_key || `custom:${r.id}`, baseKey: r.base_key ?? undefined, id: r.id, name: r.name, description: r.description ?? "", def: parseDef(r.definition), builtin: false }));
 }
 
-export async function saveCustomTemplate(input: { id?: number; name: string; description: string; def: FormDef; userId: number | null }) {
+export async function saveCustomTemplate(input: { id?: number; name: string; description: string; def: FormDef; userId: number | null; baseKey?: string }) {
   await dbReady;
   const values = { name: input.name.trim(), description: input.description.trim() || null, definition: JSON.stringify(input.def) };
   if (input.id) await db.update(schema.form_templates).set(values).where(eq(schema.form_templates.id, input.id));
-  else await db.insert(schema.form_templates).values({ ...values, created_by: input.userId });
+  else await db.insert(schema.form_templates).values({ ...values, base_key: input.baseKey ?? null, created_by: input.userId });
 }
 
 export async function deleteCustomTemplate(id: number) {

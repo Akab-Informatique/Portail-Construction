@@ -409,7 +409,7 @@ function Heading({ children, sub, right }: { children: React.ReactNode; sub?: st
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <p className="font-display text-2xl leading-tight tracking-wide">{children}</p>
+        <div className="font-display text-2xl leading-tight tracking-wide">{children}</div>
         {sub ? <p className="text-sm text-muted-foreground">{sub}</p> : null}
       </div>
       {right}

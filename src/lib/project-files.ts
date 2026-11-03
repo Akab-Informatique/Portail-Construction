@@ -41,6 +41,12 @@ async function shrinkImage(file: File): Promise<{ bytes: Uint8Array; type: strin
   }
 }
 
+/** A photo shrunk to a JPEG data URL, to keep inside a filled form (null when the file is not a photo). */
+export async function photoDataUrl(file: File): Promise<string | null> {
+  const small = await shrinkImage(file);
+  return small ? `data:${small.type};base64,${toBase64(small.bytes)}` : null;
+}
+
 const cols = {
   id: schema.project_attachments.id,
   file_name: schema.project_attachments.file_name,

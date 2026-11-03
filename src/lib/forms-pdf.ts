@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import { downloadBlob } from "./download";
 import { logoImage } from "./schedule-pdf";
-import { answerOf, type FormData, type FormDef } from "./forms";
+import { answerOf, photosOf, type FormData, type FormDef } from "./forms";
 import type { PdfAttachment } from "./project-files";
 
 export type FormPdfItem = {
@@ -107,6 +107,46 @@ export async function exportFormsPdf(input: { items: FormPdfItem[]; labels: Form
           y += 12;
         }
         for (const fl of section.fields) {
+          if (fl.type === "photo") {
+            const photos = photosOf(row[fl.id]);
+            pdf.setFont("helvetica", "normal");
+            pdf.setFontSize(9.5);
+            const labelLines = pdf.splitTextToSize(fl.label, innerW) as string[];
+            ensure(labelLines.length * 12 + 20);
+            pdf.setTextColor(...MUTED);
+            pdf.text(labelLines, M, y);
+            y += labelLines.length * 12 + 2;
+            if (photos.length === 0) {
+              pdf.setFont("helvetica", "bold");
+              pdf.setTextColor(...INK);
+              pdf.text("—", M, y + 4);
+              y += 16;
+              continue;
+            }
+            // two pictures per row, each as large as the column allows
+            const colW = (innerW - 10) / 2;
+            for (let k = 0; k < photos.length; k += 2) {
+              const pair = photos.slice(k, k + 2).flatMap((p) => {
+                try {
+                  const props = pdf.getImageProperties(p.data);
+                  const scale = Math.min(colW / props.width, 210 / props.height, 1);
+                  return [{ p, props, w: props.width * scale, h: props.height * scale }];
+                } catch {
+                  return [];
+                }
+              });
+              if (pair.length === 0) continue;
+              const rowH = Math.max(...pair.map((x) => x.h));
+              ensure(rowH + 12);
+              pair.forEach((x, n) => pdf.addImage(x.p.data, x.props.fileType, M + n * (colW + 10), y, x.w, x.h, undefined, "FAST"));
+              y += rowH + 10;
+            }
+            pdf.setDrawColor(...LINE);
+            pdf.setLineWidth(0.5);
+            pdf.line(M, y, W - M, y);
+            y += 12;
+            continue;
+          }
           const answer = answerOf(row, fl) || "—";
           pdf.setFont("helvetica", "normal");
           pdf.setFontSize(9.5);

@@ -611,6 +611,8 @@ export const form_templates = pgTable("form_templates", {
   description: text("description"),
   /** JSON: the sections and their questions. */
   definition: text("definition").notNull(),
+  /** Set when this is the edited version of a standard form ("builtin:<slug>"): it replaces that form in the list. */
+  base_key: text("base_key"),
   created_by: integer("created_by"),
   created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });

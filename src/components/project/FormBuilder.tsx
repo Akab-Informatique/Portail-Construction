@@ -32,12 +32,15 @@ function move<T>(list: T[], index: number, dir: -1 | 1): T[] {
 export function FormBuilder({
   open,
   template,
+  clone = false,
   onClose,
   onSaved,
 }: {
   open: boolean;
-  /** An existing custom form to change, or a built-in one copied as a starting point; null = a blank form. */
+  /** The form to change (a standard form is saved as its own edited version), or the form to copy; null = a blank form. */
   template: FormTemplate | null;
+  /** Make a new form from `template` instead of changing it. */
+  clone?: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -53,7 +56,7 @@ export function FormBuilder({
     if (!open) return;
     setError(null);
     if (template) {
-      setName(template.builtin ? `${template.name} (${t("frm.copy")})` : template.name);
+      setName(clone ? `${template.name} (${t("frm.copy")})` : template.name);
       setDescription(template.description);
       setDef(JSON.parse(JSON.stringify(template.def)) as FormDef);
     } else {
@@ -62,7 +65,7 @@ export function FormBuilder({
       setDef({ sections: [emptySection()] });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, template]);
+  }, [open, template, clone]);
 
   const setSection = (i: number, patch: Partial<FormDef["sections"][number]>) => setDef((d) => ({ sections: d.sections.map((s, k) => (k === i ? { ...s, ...patch } : s)) }));
   const setField = (i: number, j: number, patch: Partial<FormField>) =>
@@ -74,7 +77,16 @@ export function FormBuilder({
     if (sections.length === 0) return setError(t("frm.b.needQuestion"));
     setBusy(true);
     try {
-      await saveCustomTemplate({ id: template && !template.builtin ? template.id : undefined, name, description, def: { sections }, userId: user?.id ?? null });
+      // Changing a custom (or already edited standard) form updates it; changing a pure standard form saves its edited version;
+      // a copy is always a new form.
+      await saveCustomTemplate({
+        id: template && !clone && !template.builtin ? template.id : undefined,
+        baseKey: template && !clone && template.builtin ? template.key : undefined,
+        name,
+        description,
+        def: { sections },
+        userId: user?.id ?? null,
+      });
       onSaved();
       onClose();
     } finally {
@@ -86,7 +98,7 @@ export function FormBuilder({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[94vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{template && !template.builtin ? t("frm.b.edit") : t("frm.b.new")}</DialogTitle>
+          <DialogTitle>{template && !clone ? t("frm.b.edit") : t("frm.b.new")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-5">
           <div className="grid gap-4 sm:grid-cols-2">

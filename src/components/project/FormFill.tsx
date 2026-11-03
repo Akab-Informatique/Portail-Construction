@@ -8,9 +8,9 @@ import { useI18n } from "@/lib/i18n";
 import { todayISO } from "@/lib/format";
 import { projectColor } from "@/lib/project-colors";
 import { logActivity } from "@/lib/activity";
-import { blankData, blankRow, missingRequired, parseData, type FormData, type FormDef, type FormField } from "@/lib/forms";
+import { blankData, blankRow, missingRequired, parseData, photosOf, type FormData, type FormDef, type FormField } from "@/lib/forms";
 import { exportFormsPdf } from "@/lib/forms-pdf";
-import { addAttachment, attachmentsForPdf, MAX_FILE_BYTES, type PdfAttachment } from "@/lib/project-files";
+import { addAttachment, attachmentsForPdf, MAX_FILE_BYTES, photoDataUrl, type PdfAttachment } from "@/lib/project-files";
 import { Attachments } from "@/components/project/Attachments";
 import type { Project } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -161,6 +161,49 @@ export function FormFill({
 
   const input = (fl: FormField, sectionId: string, rowIndex: number, value: string) => {
     const set = (v: string) => setCell(sectionId, rowIndex, fl.id, v);
+    if (fl.type === "photo") {
+      const photos = photosOf(value);
+      const add = async (list: FileList | null) => {
+        if (!list?.length) return;
+        const added = (await Promise.all(Array.from(list).map(async (f) => ({ name: f.name, data: await photoDataUrl(f) })))).filter((p): p is { name: string; data: string } => Boolean(p.data));
+        if (added.length) set(JSON.stringify([...photos, ...added]));
+        else setFileError(t("att.failed"));
+      };
+      return (
+        <div className="space-y-2 sm:col-span-2">
+          {photos.length ? (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {photos.map((p, i) => (
+                <div key={i} className="relative overflow-hidden rounded-lg border bg-muted">
+                  <img src={p.data} alt={p.name} className="aspect-[4/3] w-full object-cover" />
+                  {!readOnly ? (
+                    <button type="button" aria-label={t("exp.delete")} className="absolute top-1 right-1 flex size-6 items-center justify-center rounded-full bg-background/90 text-muted-foreground shadow hover:text-destructive" onClick={() => set(JSON.stringify(photos.filter((_, k) => k !== i)))}>
+                      <X className="size-3.5" />
+                    </button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : readOnly ? (
+            <p className="text-sm text-muted-foreground">—</p>
+          ) : null}
+          {!readOnly ? (
+            <div className="flex flex-wrap gap-2">
+              <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted">
+                <Paperclip className="size-4" />
+                {t("frm.addPhoto")}
+                <input type="file" accept="image/*" multiple className="sr-only" onChange={(e) => { void add(e.target.files); e.target.value = ""; }} />
+              </label>
+              <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border bg-background px-3 text-sm font-medium hover:bg-muted">
+                <Camera className="size-4" />
+                {t("att.photo")}
+                <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => { void add(e.target.files); e.target.value = ""; }} />
+              </label>
+            </div>
+          ) : null}
+        </div>
+      );
+    }
     if (readOnly) return <p className="min-h-6 whitespace-pre-wrap border-b border-dashed pb-1 text-sm font-medium">{value || "—"}</p>;
     switch (fl.type) {
       case "longtext":
@@ -258,7 +301,7 @@ export function FormFill({
                       </div>
                     ) : null}
                     {section.fields.map((fl) => (
-                      <div key={fl.id} className="grid gap-1.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] sm:items-start sm:gap-6">
+                      <div key={fl.id} className={cn("grid gap-1.5 sm:items-start sm:gap-6", fl.type === "photo" ? "sm:grid-cols-1" : "sm:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]")}>
                         <Label className="pt-2 text-[13px] leading-snug">
                           {fl.label}
                           {fl.required && !readOnly ? <span className="text-destructive"> *</span> : null}

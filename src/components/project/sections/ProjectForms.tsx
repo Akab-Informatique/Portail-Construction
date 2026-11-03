@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { desc, eq } from "drizzle-orm";
-import { BookOpenCheck, Copy, FilePlus2, FileOutput, ClipboardList, Paperclip, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { BookOpenCheck, Copy, FilePlus2, FileOutput, ClipboardList, Paperclip, Pencil, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
 import { db, schema } from "../../../db";
 import { useI18n } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
@@ -30,7 +30,7 @@ export function ProjectForms({ project, people }: SectionProps) {
   const [custom, setCustom] = useState<FormTemplate[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [fill, setFill] = useState<FillTarget | null>(null);
-  const [builder, setBuilder] = useState<{ open: boolean; template: FormTemplate | null }>({ open: false, template: null });
+  const [builder, setBuilder] = useState<{ open: boolean; template: FormTemplate | null; clone: boolean }>({ open: false, template: null, clone: false });
   const [binderKey, setBinderKey] = useState<string>("all");
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<number[]>([]);
@@ -50,7 +50,12 @@ export function ProjectForms({ project, people }: SectionProps) {
     void load();
   }, [load]);
 
-  const templates = useMemo(() => [...builtinForms(locale), ...custom], [locale, custom]);
+  // A standard form that was edited is replaced, in place, by its edited version.
+  const templates = useMemo(() => {
+    const edited = new Set(custom.filter((c) => c.baseKey).map((c) => c.baseKey));
+    const standard = builtinForms(locale).map((b) => custom.find((c) => c.baseKey === b.key) ?? b);
+    return [...standard, ...custom.filter((c) => !c.baseKey)].filter((tpl, i, all) => all.findIndex((x) => x.key === tpl.key) === i && (tpl.baseKey || !edited.has(tpl.key)));
+  }, [locale, custom]);
   const who = (id: number | null) => people.find((p) => p.id === id)?.name ?? "—";
   const countOf = (key: string) => entries.filter((e) => e.template_key === key).length;
   const questions = (tpl: FormTemplate) => tpl.def.sections.reduce((n, s) => n + s.fields.length, 0);
@@ -122,7 +127,7 @@ export function ProjectForms({ project, people }: SectionProps) {
             </button>
           ))}
         </div>
-        <Button onClick={() => setBuilder({ open: true, template: null })}>
+        <Button onClick={() => setBuilder({ open: true, template: null, clone: false })}>
           <FilePlus2 className="size-4" />
           {t("frm.create")}
         </Button>
@@ -145,29 +150,33 @@ export function ProjectForms({ project, people }: SectionProps) {
                 <span>{t("frm.questions", { n: questions(tpl) })}</span>
                 <span>·</span>
                 <span>{t("frm.filledCount", { n: countOf(tpl.key) })}</span>
-                {tpl.builtin ? <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold">{t("frm.standard")}</span> : null}
+                {tpl.builtin || tpl.baseKey ? <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold">{tpl.baseKey ? t("frm.standardEdited") : t("frm.standard")}</span> : null}
               </p>
               <div className="mt-auto flex flex-wrap items-center gap-2">
                 <Button size="sm" onClick={() => setFill({ key: tpl.key, name: tpl.name, def: tpl.def })}>
                   <Plus className="size-4" />
                   {t("frm.fill")}
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => setBuilder({ open: true, template: tpl })}>
-                  {tpl.builtin ? <Copy className="size-4" /> : <Pencil className="size-4" />}
-                  {tpl.builtin ? t("frm.duplicate") : t("exp.edit")}
+                <Button size="sm" variant="outline" onClick={() => setBuilder({ open: true, template: tpl, clone: false })}>
+                  <Pencil className="size-4" />
+                  {t("frm.b.edit")}
+                </Button>
+                <Button size="icon-sm" variant="outline" aria-label={t("frm.clone")} title={t("frm.clone")} onClick={() => setBuilder({ open: true, template: tpl, clone: true })}>
+                  <Copy className="size-4" />
                 </Button>
                 {!tpl.builtin ? (
                   <Button
                     size="icon-sm"
                     variant="ghost"
-                    aria-label={t("exp.delete")}
+                    aria-label={tpl.baseKey ? t("frm.restore") : t("exp.delete")}
+                    title={tpl.baseKey ? t("frm.restore") : t("exp.delete")}
                     onClick={async () => {
-                      if (!window.confirm(t("frm.deleteTemplate"))) return;
+                      if (!window.confirm(tpl.baseKey ? t("frm.restoreConfirm") : t("frm.deleteTemplate"))) return;
                       if (tpl.id) await deleteCustomTemplate(tpl.id);
                       await load();
                     }}
                   >
-                    <Trash2 className="size-4" />
+                    {tpl.baseKey ? <RotateCcw className="size-4" /> : <Trash2 className="size-4" />}
                   </Button>
                 ) : null}
               </div>
@@ -264,7 +273,7 @@ export function ProjectForms({ project, people }: SectionProps) {
       )}
 
       <FormFill project={project} target={fill} filledByName={who} onClose={() => setFill(null)} onSaved={() => void load().then(() => setView((v) => (fill?.entry ? v : "binder")))} />
-      <FormBuilder open={builder.open} template={builder.template} onClose={() => setBuilder({ open: false, template: null })} onSaved={() => void load()} />
+      <FormBuilder open={builder.open} template={builder.template} clone={builder.clone} onClose={() => setBuilder({ open: false, template: null, clone: false })} onSaved={() => void load()} />
     </div>
   );
 }
