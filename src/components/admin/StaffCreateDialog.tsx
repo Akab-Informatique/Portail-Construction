@@ -70,6 +70,8 @@ export function StaffCreateDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   if (!f) return null;
+  // A client user picks from the groups of their own company (and the older shared ones).
+  const pickable = client ? groups.filter((g) => !g.client_id || g.client_id === f.companyId) : groups;
   const set = (patch: Partial<Form>) => setF((cur) => (cur ? { ...cur, ...patch } : cur));
 
   async function submit(e: FormEvent) {
@@ -143,8 +145,8 @@ export function StaffCreateDialog({
             {client ? (
               <div className="space-y-1.5">
                 <Label>{t("adm.prof.company")}</Label>
-                <select className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm" value={f.companyId ?? ""} onChange={(e) => set({ companyId: e.target.value ? Number(e.target.value) : null })}>
-                  <option value="">{t("adm.prof.noCompany")}</option>
+                <select required className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm" value={f.companyId ?? ""} onChange={(e) => set({ companyId: e.target.value ? Number(e.target.value) : null, groupIds: [] })}>
+                  <option value="">{t("adm.prof.chooseCompany")}</option>
                   {[...clients].sort((a, b) => a.company_name.localeCompare(b.company_name)).map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.company_name}
@@ -203,7 +205,7 @@ export function StaffCreateDialog({
 
           {!f.admin || client ? (
             <Block n={4} title={t("adm.new.groups")} hint={t("adm.new.groupsHint")} icon={Users}>
-              <GroupPicker groups={groups} selected={f.groupIds} onChange={(groupIds) => set({ groupIds })} />
+              {client && !f.companyId ? <p className="text-sm text-muted-foreground">{t("adm.new.pickCompanyFirst")}</p> : <GroupPicker groups={pickable} selected={f.groupIds} onChange={(groupIds) => set({ groupIds })} />}
             </Block>
           ) : null}
 

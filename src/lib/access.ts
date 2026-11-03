@@ -368,6 +368,8 @@ async function dedupeAccessGroups() {
   const groups = (await db.select().from(schema.access_groups)) as AccessGroup[];
   const buckets = new Map<string, AccessGroup[]>();
   for (const group of groups) {
+    // A company's own groups are never merged with anything: two companies can each have an Accounting group.
+    if (group.client_id) continue;
     const key = groupFamily(group);
     const bucket = buckets.get(key) ?? [];
     bucket.push(group);
@@ -409,7 +411,7 @@ async function findOrCreateGroup(input: {
   all_clients: number;
 }) {
   const existing = (await db.select().from(schema.access_groups)) as AccessGroup[];
-  const found = existing.find((g) => groupFamily(g) === input.family);
+  const found = existing.find((g) => !g.client_id && groupFamily(g) === input.family);
   if (found) return found;
   const [created] = await db
     .insert(schema.access_groups)

@@ -279,6 +279,8 @@ export const access_groups = pgTable("access_groups", {
   description: text("description"),
   audience: text("audience").notNull(),
   all_clients: integer("all_clients").notNull(),
+  /** A client group belongs to one company (each company has its own groups); null for staff groups and older shared client groups. */
+  client_id: integer("client_id"),
   created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 

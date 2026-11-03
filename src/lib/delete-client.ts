@@ -54,6 +54,15 @@ export async function deleteClientCascade(clientId: number) {
   const links = await db.select().from(schema.client_users).where(eq(schema.client_users.client_id, clientId));
   const linkedUserIds = [...new Set(links.map((l) => l.user_id))];
 
+  // The company's own groups go with it.
+  const ownGroups = await db.select({ id: schema.access_groups.id }).from(schema.access_groups).where(eq(schema.access_groups.client_id, clientId));
+  for (const g of ownGroups) {
+    await db.delete(schema.access_group_permissions).where(eq(schema.access_group_permissions.group_id, g.id));
+    await db.delete(schema.group_projects).where(eq(schema.group_projects.group_id, g.id));
+    await db.delete(schema.sharepoint_shares).where(eq(schema.sharepoint_shares.group_id, g.id));
+    await db.delete(schema.user_access_groups).where(eq(schema.user_access_groups.group_id, g.id));
+    await db.delete(schema.access_groups).where(eq(schema.access_groups.id, g.id));
+  }
   await db.delete(schema.client_users).where(eq(schema.client_users.client_id, clientId));
   await db.delete(schema.user_clients).where(eq(schema.user_clients.client_id, clientId));
   await db.delete(schema.access_group_clients).where(eq(schema.access_group_clients.client_id, clientId));

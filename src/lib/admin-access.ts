@@ -93,11 +93,11 @@ export async function writeUserFlags(userId: number, module: string, flags: Flag
   else if (!none) await db.insert(schema.user_permissions).values({ user_id: userId, module, scope_type: "global", scope_id: 0, ...payload });
 }
 
-export async function createGroup(input: { name: string; description: string | null; audience: Exclude<AccessGroupAudience, "both"> }) {
+export async function createGroup(input: { name: string; description: string | null; audience: Exclude<AccessGroupAudience, "both">; /** The company a client group belongs to. */ clientId?: number | null }) {
   await dbReady;
   const [row] = await db
     .insert(schema.access_groups)
-    .values({ name: input.name, description: input.description, audience: input.audience, all_clients: input.audience === "external" ? 0 : 1 })
+    .values({ name: input.name, description: input.description, audience: input.audience, all_clients: input.audience === "external" ? 0 : 1, client_id: input.clientId ?? null })
     .returning();
   return row;
 }

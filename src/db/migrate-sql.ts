@@ -156,6 +156,7 @@ CREATE INDEX IF NOT EXISTS note_comments_note_idx ON note_comments (note_id);
 CREATE TABLE IF NOT EXISTS report_access (id SERIAL PRIMARY KEY, report_key TEXT NOT NULL, subject_type TEXT NOT NULL, subject_id INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS report_access_key_idx ON report_access (report_key);
 ALTER TABLE sharepoint_shares ADD COLUMN IF NOT EXISTS group_id INTEGER;
+ALTER TABLE access_groups ADD COLUMN IF NOT EXISTS client_id INTEGER;
 CREATE TABLE IF NOT EXISTS group_projects (id SERIAL PRIMARY KEY, group_id INTEGER NOT NULL, project_id INTEGER NOT NULL, created_at TIMESTAMP DEFAULT NOW() NOT NULL);
 CREATE INDEX IF NOT EXISTS group_projects_group_idx ON group_projects (group_id);
 UPDATE sharepoint_shares u SET can_view = LEAST(u.can_view, c.can_view), can_upload = LEAST(u.can_upload, c.can_upload), can_edit = LEAST(u.can_edit, c.can_edit) FROM sharepoint_shares c WHERE u.client_id > 0 AND u.user_id IS NOT NULL AND u.group_id IS NULL AND c.client_id = u.client_id AND c.user_id IS NULL AND c.group_id IS NULL AND c.folder_id = u.folder_id AND c.item_id = u.item_id;

@@ -21,7 +21,7 @@ import {
 } from "@/lib/admin-access";
 import { logActivity } from "@/lib/activity";
 import { deleteClientCascade } from "@/lib/delete-client";
-import { moveUserToCompany } from "@/lib/admin-access";
+import { removeClientUser } from "@/lib/users-api";
 import type {
   AccessGroup,
   AccessGroupPermission,
@@ -85,7 +85,9 @@ const flagsOf = (rows: { can_view: number; can_create: number; can_edit: number;
  * the right: the sidebar pages and what they may do in them, the projects, the documentation folders, the reports. A group
  * carries the same four things, and everyone in it gets them on top of what they were given alone.
  */
-export function AdminAccessPage({ audience, embedded = false }: { audience: Audience; embedded?: boolean }) {
+export type ClientView = "companies" | "users" | "groups";
+
+export function AdminAccessPage({ audience, embedded = false, view = "users" }: { audience: Audience; embedded?: boolean; /** Clients only: companies, their users, or the groups of each company. */ view?: ClientView }) {
   const { user, realUser } = useAuth();
   const { t } = useI18n();
   const [params, setParams] = useSearchParams();
@@ -99,12 +101,12 @@ export function AdminAccessPage({ audience, embedded = false }: { audience: Audi
   const [companyDlg, setCompanyDlg] = useState<{ open: boolean; company: Client | null }>({ open: false, company: null });
   const [delCompany, setDelCompany] = useState<Client | null>(null);
   const [clientUserDlg, setClientUserDlg] = useState<{ open: boolean; companyId: number | null }>({ open: false, companyId: null });
-  const [addToCompany, setAddToCompany] = useState<Client | null>(null);
-  const [opened, setOpened] = useState<Set<number>>(new Set());
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
   const [groupForm, setGroupForm] = useState({ name: "", description: "" });
   const [confirmDelete, setConfirmDelete] = useState<AccessGroup | null>(null);
   const staff = audience === "internal";
+  const [delUser, setDelUser] = useState<{ person: User; companyId: number } | null>(null);
+  const gcoParam = Number(params.get("gco")) || 0;
 
   const load = useCallback(async () => {
     await dbReady;
@@ -171,6 +173,9 @@ export function AdminAccessPage({ audience, embedded = false }: { audience: Audi
     [data.users, staff],
   );
 
+  // The company whose groups are shown (Clients › Groups): the selected group's, or the one chosen on the left.
+  const gco = sel?.kind === "group" ? (data.groups.find((g) => g.id === sel.id)?.client_id ?? 0) : gcoParam;
+
   // A link to a person opens the list they are in.
   useEffect(() => {
     if (sel?.kind === "group") setList("groups");
@@ -178,6 +183,7 @@ export function AdminAccessPage({ audience, embedded = false }: { audience: Audi
   }, [sel?.kind, sel?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <PageSkeleton />;
+  const mode = staff ? list : view === "groups" ? "groups" : "people";
   if (!realUser?.is_admin) return <EmptyState icon={<Shield className="size-5" />} title={t("config.restricted")} description={t("config.restrictedDesc")} />;
 
   const q = query.trim().toLowerCase();
@@ -188,7 +194,7 @@ export function AdminAccessPage({ audience, embedded = false }: { audience: Audi
   async function onCreateGroup(e: FormEvent) {
     e.preventDefault();
     if (!groupForm.name.trim()) return;
-    const row = await createGroup({ name: groupForm.name.trim(), description: groupForm.description.trim() || null, audience });
+    const row = await createGroup({ name: groupForm.name.trim(), description: groupForm.description.trim() || null, audience, clientId: staff ? null : gco || null });
     await logActivity({ action: "created access group", details: row.name, userId: user?.id });
     setGroupForm({ name: "", description: "" });
     setNewGroup(false);
@@ -214,12 +220,14 @@ export function AdminAccessPage({ audience, embedded = false }: { audience: Audi
     <div>
       {embedded ? (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <p className="max-w-3xl text-sm text-muted-foreground">{t(staff ? "adm.access.staffDesc" : "adm.access.clientsDesc")}</p>
+          <p className="max-w-3xl text-sm text-muted-foreground">{t(staff ? "adm.access.staffDesc" : view === "companies" ? "adm.view.companiesDesc" : view === "users" ? "adm.view.usersDesc" : "adm.view.groupsDesc")}</p>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => setNewGroup(true)}>
-              <Plus className="size-4" />
-              {t("config.groups.new")}
-            </Button>
+            {staff || view === "groups" ? (
+              <Button variant="outline" disabled={!staff && gco <= 0} title={!staff && gco <= 0 ? t("adm.groups.pickCompany") : undefined} onClick={() => setNewGroup(true)}>
+                <Plus className="size-4" />
+                {t("config.groups.new")}
+              </Button>
+            ) : null}
             {staff ? (
               <Button onClick={() => setNewStaff(true)}>
                 <UserRound className="size-4" />
@@ -227,14 +235,18 @@ export function AdminAccessPage({ audience, embedded = false }: { audience: Audi
               </Button>
             ) : (
               <>
-                <Button variant="outline" onClick={() => setClientUserDlg({ open: true, companyId: null })}>
-                  <UserRound className="size-4" />
-                  {t("adm.newc.button")}
-                </Button>
-                <Button onClick={() => setCompanyDlg({ open: true, company: null })}>
-                  <Building2 className="size-4" />
-                  {t("adm.company.add")}
-                </Button>
+                {view === "users" ? (
+                  <Button onClick={() => setClientUserDlg({ open: true, companyId: null })}>
+                    <UserRound className="size-4" />
+                    {t("adm.newc.button")}
+                  </Button>
+                ) : null}
+                {view === "companies" ? (
+                  <Button onClick={() => setCompanyDlg({ open: true, company: null })}>
+                    <Building2 className="size-4" />
+                    {t("adm.company.add")}
+                  </Button>
+                ) : null}
               </>
             )}
           </div>
@@ -244,7 +256,7 @@ export function AdminAccessPage({ audience, embedded = false }: { audience: Audi
 
       <div className="grid gap-4 lg:grid-cols-[minmax(260px,320px)_minmax(0,1fr)]">
         <Card className="gap-3 p-3 lg:max-h-[76vh] lg:overflow-y-auto">
-          <div className="flex items-center gap-1 rounded-xl border bg-muted/40 p-1">
+          <div className={cn("flex items-center gap-1 rounded-xl border bg-muted/40 p-1", !staff && "hidden")}>
             {(
               [
                 ["people", staff ? t("adm.list.staff") : t("adm.list.companies"), staff ? HardHat : Building2, staff ? people.length : companies.length],
@@ -255,7 +267,7 @@ export function AdminAccessPage({ audience, embedded = false }: { audience: Audi
                 key={id}
                 type="button"
                 onClick={() => setList(id)}
-                className={cn("flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 text-sm font-medium transition-all", list === id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+                className={cn("flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 text-sm font-medium transition-all", mode === id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
               >
                 <Icon className="size-4" />
                 {label}
@@ -265,10 +277,61 @@ export function AdminAccessPage({ audience, embedded = false }: { audience: Audi
           </div>
           <div className="relative">
             <Search className="pointer-events-none absolute top-2.5 left-3 size-4 text-muted-foreground" />
-            <Input className="pl-9" value={query} placeholder={t(list === "groups" ? "adm.searchGroup" : staff ? "pda.searchStaff" : "pda.searchClient")} onChange={(e) => setQuery(e.target.value)} />
+            <Input className="pl-9" value={query} placeholder={t(mode === "groups" ? "adm.searchGroup" : staff ? "pda.searchStaff" : "pda.searchClient")} onChange={(e) => setQuery(e.target.value)} />
           </div>
 
-          {list === "groups" ? (
+          {mode === "groups" && !staff ? (
+            <ul className="space-y-1">
+              {[{ id: 0, company_name: t("adm.groups.legacy") } as Client, ...companies].filter((c) => c.id > 0 || groups.some((g) => !g.client_id)).map((c) => {
+                const mine = groups.filter((g) => (g.client_id ?? 0) === c.id);
+                const open = gco === c.id;
+                return (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTab(null);
+                        setParams((prev) => {
+                          const out = new URLSearchParams(prev);
+                          for (const k of ["user", "group", "company"]) out.delete(k);
+                          out.set("gco", String(c.id));
+                          return out;
+                        }, { replace: true });
+                      }}
+                      className={cn("flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors", open ? "bg-primary/15 shadow-[inset_2px_0_0_var(--primary)]" : "hover:bg-muted")}
+                    >
+                      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                        <Building2 className="size-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">{c.company_name}</span>
+                        <span className="block text-[11px] text-muted-foreground">{t("adm.groupsCount", { n: mine.length })}</span>
+                      </span>
+                      {open ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
+                    </button>
+                    {open ? (
+                      <ul className="mt-0.5 mb-1 ml-6 space-y-0.5 border-l pl-2">
+                        {mine.filter((g) => matches(g.name, g.description)).map((g) => {
+                          const n = data.memberships.filter((m) => m.group_id === g.id).length;
+                          const on = sel?.kind === "group" && sel.id === g.id;
+                          return (
+                            <li key={g.id}>
+                              <button type="button" onClick={() => select({ kind: "group", id: g.id })} className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors", on ? "bg-primary/15 font-medium" : "hover:bg-muted")}>
+                                <Users className="size-3.5 shrink-0 text-muted-foreground" />
+                                <span className="min-w-0 flex-1 truncate">{g.name}</span>
+                                <span className="text-[10px] text-muted-foreground">{n}</span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                        {mine.length === 0 ? <li className="px-2 py-1 text-xs text-muted-foreground">{t("adm.groups.none")}</li> : null}
+                      </ul>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : mode === "groups" ? (
             <ul className="space-y-1">
               {groups.filter((g) => matches(g.name, g.description)).map((g) => {
                 const n = data.memberships.filter((m) => m.group_id === g.id).length;
@@ -307,80 +370,49 @@ export function AdminAccessPage({ audience, embedded = false }: { audience: Audi
                 );
               })}
             </ul>
-          ) : (
+          ) : view === "companies" ? (
             <ul className="space-y-1">
               {companies
-                .map((c) => ({ c, users: usersOf(c.id) }))
-                .filter(({ c, users }) => matches(c.company_name, c.name) || users.some((u) => matches(u.name, u.email)))
-                .map(({ c, users }) => {
-                  const open = Boolean(q) || opened.has(c.id) || (sel?.kind === "company" && sel.id === c.id) || users.some((u) => sel?.kind === "user" && sel.id === u.id);
+                .filter((c) => matches(c.company_name, c.name))
+                .map((c) => {
                   const on = sel?.kind === "company" && sel.id === c.id;
+                  const n = usersOf(c.id).length;
                   return (
                     <li key={c.id}>
-                      <div className={cn("flex items-center rounded-lg transition-colors", on ? "bg-primary/15 shadow-[inset_2px_0_0_var(--primary)]" : "hover:bg-muted")}>
-                        <button
-                          type="button"
-                          aria-label={open ? "−" : "+"}
-                          className="p-2 text-muted-foreground hover:text-foreground"
-                          onClick={() =>
-                            setOpened((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(c.id)) next.delete(c.id);
-                              else next.add(c.id);
-                              return next;
-                            })
-                          }
-                        >
-                          {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
-                        </button>
-                        <button type="button" onClick={() => select({ kind: "company", id: c.id })} className="flex min-w-0 flex-1 items-center gap-2 py-2 pr-3 text-left">
-                          <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-                            <Building2 className="size-3.5" />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-medium">{c.company_name}</span>
-                            <span className="block text-[11px] text-muted-foreground">{t("adm.usersCount", { n: users.length })}</span>
-                          </span>
-                        </button>
-                      </div>
-                      {open ? (
-                        <ul className="mt-0.5 mb-1 ml-6 space-y-0.5 border-l pl-2">
-                          {users.filter((u) => !q || matches(c.company_name, c.name) || matches(u.name, u.email)).map((u) => {
-                            const onUser = sel?.kind === "user" && sel.id === u.id;
-                            return (
-                              <li key={u.id}>
-                                <button type="button" onClick={() => select({ kind: "user", id: u.id })} className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors", onUser ? "bg-primary/15 font-medium" : "hover:bg-muted")}>
-                                  <UserRound className="size-3.5 shrink-0 text-muted-foreground" />
-                                  <span className="min-w-0 flex-1 truncate">{u.name}</span>
-                                  {!u.is_active ? <span className="rounded-full bg-muted px-1.5 text-[9px] font-semibold text-muted-foreground">{t("cu.inactive")}</span> : null}
-                                </button>
-                              </li>
-                            );
-                          })}
-                          {users.length === 0 ? <li className="px-2 py-1 text-xs text-muted-foreground">{t("clients.noUsers")}</li> : null}
-                        </ul>
-                      ) : null}
+                      <button type="button" onClick={() => select({ kind: "company", id: c.id })} className={cn("flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors", on ? "bg-primary/15 shadow-[inset_2px_0_0_var(--primary)]" : "hover:bg-muted")}>
+                        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                          <Building2 className="size-4" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium">{c.company_name}</span>
+                          <span className="block text-[11px] text-muted-foreground">{t("adm.usersCount", { n })}</span>
+                        </span>
+                      </button>
                     </li>
                   );
                 })}
-              {people.filter((p) => !data.clientUsers.some((l) => l.user_id === p.id) && matches(p.name, p.email)).length ? (
-                <li className="pt-2">
-                  <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t("adm.unassigned")}</p>
-                  <ul className="space-y-0.5">
-                    {people.filter((p) => !data.clientUsers.some((l) => l.user_id === p.id) && matches(p.name, p.email)).map((u) => {
-                      const onUser = sel?.kind === "user" && sel.id === u.id;
-                      return (
-                        <li key={u.id}>
-                          <button type="button" onClick={() => select({ kind: "user", id: u.id })} className={cn("flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm transition-colors", onUser ? "bg-primary/15 font-medium" : "hover:bg-muted")}>
-                            <UserRound className="size-3.5 shrink-0 text-muted-foreground" />
-                            <span className="min-w-0 flex-1 truncate">{u.name}</span>
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </li>
-              ) : null}
+            </ul>
+          ) : (
+            <ul className="space-y-1">
+              {people
+                .filter((p) => matches(p.name, p.email))
+                .map((p) => {
+                  const on = sel?.kind === "user" && sel.id === p.id;
+                  const co = data.clients.find((c) => data.clientUsers.some((l) => l.user_id === p.id && l.client_id === c.id));
+                  return (
+                    <li key={p.id}>
+                      <button type="button" onClick={() => select({ kind: "user", id: p.id })} className={cn("flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors", on ? "bg-primary/15 shadow-[inset_2px_0_0_var(--primary)]" : "hover:bg-muted")}>
+                        <UserAvatar name={p.name} hint={p.avatar_initials} size="sm" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium">{p.name}</span>
+                          <span className="block truncate text-[11px] text-muted-foreground">{co?.company_name ?? t("adm.noCompanyShort")}</span>
+                        </span>
+                        {!p.is_active ? <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">{t("cu.inactive")}</span> : null}
+                      </button>
+                    </li>
+                  );
+                })}
+              {people.length === 0 ? <li className="px-2 py-4 text-sm text-muted-foreground">{t("adm.users.none")}</li> : null}
             </ul>
           )}
         </Card>
@@ -396,16 +428,15 @@ export function AdminAccessPage({ audience, embedded = false }: { audience: Audi
               client={selectedCompany}
               users={usersOf(selectedCompany.id)}
               projectCount={data.projects.filter((p) => p.client_id === selectedCompany.id).length}
-              onPick={(id) => select({ kind: "user", id })}
+              onPick={(id) => setParams({ tab: "clients", sub: "users", user: String(id) }, { replace: true })}
               onEdit={() => setCompanyDlg({ open: true, company: selectedCompany })}
               onDelete={() => setDelCompany(selectedCompany)}
-              onAddExisting={() => setAddToCompany(selectedCompany)}
-              onCreateUser={() => setClientUserDlg({ open: true, companyId: selectedCompany.id })}
+              onRemoveUser={(u) => setDelUser({ person: u, companyId: selectedCompany.id })}
             />
           ) : (
             <Card className="flex min-h-64 flex-col items-center justify-center gap-2 p-10 text-center">
               <KeyRound className="size-6 text-muted-foreground" />
-              <p className="font-medium">{t(staff ? "adm.pick.staff" : "adm.pick.client")}</p>
+              <p className="font-medium">{t(staff ? "adm.pick.staff" : view === "companies" ? "adm.pick.company" : view === "users" ? "adm.pick.cuser" : "adm.pick.cgroup")}</p>
               <p className="max-w-md text-sm text-muted-foreground">{t("adm.pick.hint")}</p>
             </Card>
           )}
@@ -422,7 +453,6 @@ export function AdminAccessPage({ audience, embedded = false }: { audience: Audi
               setCompanyDlg({ open: false, company: null });
               void load().then(() => {
                 setList("people");
-                setOpened((prev) => new Set(prev).add(id));
                 select({ kind: "company", id });
               });
             }}
@@ -443,19 +473,32 @@ export function AdminAccessPage({ audience, embedded = false }: { audience: Audi
               });
             }}
           />
-          <AddUserDialog
-            company={addToCompany}
-            candidates={people.filter((p) => !data.clientUsers.some((l) => l.user_id === p.id))}
-            onClose={() => setAddToCompany(null)}
-            onAdd={async (userId) => {
-              if (!addToCompany) return;
-              await moveUserToCompany(userId, addToCompany.id);
-              await logActivity({ action: "added client user", details: String(userId), clientId: addToCompany.id, userId: user?.id });
-              setAddToCompany(null);
-              await load();
-              select({ kind: "user", id: userId }, "projects");
-            }}
-          />
+          <Dialog open={Boolean(delUser)} onOpenChange={(o) => !o && setDelUser(null)}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>{t("cu.deleteTitle", { name: delUser?.person.name ?? "" })}</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground">{t("cu.deleteBody")}</p>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDelUser(null)}>
+                  {t("people.cancel")}
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={async () => {
+                    if (!delUser) return;
+                    await removeClientUser(delUser.person.id, delUser.companyId);
+                    await logActivity({ action: "removed client user", details: delUser.person.name, clientId: delUser.companyId, userId: user?.id });
+                    setDelUser(null);
+                    await load();
+                  }}
+                >
+                  <Trash2 className="size-4" />
+                  {t("cu.delete")}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <Dialog open={Boolean(delCompany)} onOpenChange={(o) => !o && setDelCompany(null)}>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
@@ -684,7 +727,7 @@ function PersonEditor({
             <Card className="gap-4 p-5">
               <p className="text-sm text-muted-foreground">{t("adm.person.groupsHelp")}</p>
               <GroupPicker
-                groups={groups}
+                groups={staff ? groups : groups.filter((g) => !g.client_id || g.client_id === companyIds[0])}
                 selected={myGroupIds}
                 onChange={(ids) => void setUserGroups(person.id, ids).then(done)}
               />
@@ -770,7 +813,11 @@ function GroupEditor({
     ...(staff ? [{ id: "reports" as Tab, label: t("adm.tab.reports") }] : []),
   ];
   const active: Tab = tab && tabs.some((x) => x.id === tab) ? tab : "groups";
-  const candidates = people.filter((p) => p.is_active === 1 && p.is_admin !== 1);
+  const companyId = group.client_id ?? null;
+  const inCompany = (userId: number) => staff || !companyId || data.clientUsers.some((l) => l.user_id === userId && l.client_id === companyId);
+  const candidates = people.filter((p) => p.is_active === 1 && p.is_admin !== 1 && inCompany(p.id));
+  const scopeProjects = staff || !companyId ? data.projects : data.projects.filter((p) => p.client_id === companyId);
+  const scopeClients = staff || !companyId ? data.clients : data.clients.filter((c) => c.id === companyId);
   const shown = candidates.filter((p) => {
     const q = query.trim().toLowerCase();
     return !q || p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q);
@@ -846,8 +893,8 @@ function GroupEditor({
         <Card className="gap-3 p-5">
           <p className="text-sm text-muted-foreground">{t(staff ? "adm.projects.groupStaffHelp" : "adm.projects.groupClientHelp")}</p>
           <ProjectPicker
-            projects={data.projects}
-            clients={data.clients}
+            projects={scopeProjects}
+            clients={scopeClients}
             selected={data.groupProjects.filter((g) => g.group_id === group.id).map((g) => g.project_id)}
             onChange={(ids) => void setGroupProjects(group.id, ids).then(reload)}
             maxHeight="max-h-[55vh]"
@@ -888,8 +935,7 @@ function CompanyPanel({
   onPick,
   onEdit,
   onDelete,
-  onAddExisting,
-  onCreateUser,
+  onRemoveUser,
 }: {
   client: Client;
   users: User[];
@@ -897,8 +943,7 @@ function CompanyPanel({
   onPick: (id: number) => void;
   onEdit: () => void;
   onDelete: () => void;
-  onAddExisting: () => void;
-  onCreateUser: () => void;
+  onRemoveUser: (u: User) => void;
 }) {
   const { t } = useI18n();
   return (
@@ -936,26 +981,21 @@ function CompanyPanel({
       <Card className="gap-0 overflow-hidden p-0">
         <header className="flex flex-wrap items-center gap-3 border-b bg-[#141414] px-4 py-2.5 text-white">
           <span className="flex-1 font-display text-lg uppercase tracking-wide">{t("adm.tab.users")}</span>
-          <Button size="sm" variant="secondary" onClick={onAddExisting}>
-            {t("adm.company.addExisting")}
-          </Button>
-          <Button size="sm" onClick={onCreateUser}>
-            <Plus className="size-3.5" />
-            {t("adm.newc.button")}
-          </Button>
         </header>
         {users.length === 0 ? <p className="p-5 text-sm text-muted-foreground">{t("clients.noUsers")}</p> : null}
         <ul className="divide-y">
           {users.map((u) => (
-            <li key={u.id}>
-              <button type="button" onClick={() => onPick(u.id)} className="flex w-full items-center gap-3 px-5 py-3 text-left hover:bg-muted/40">
+            <li key={u.id} className="flex items-center hover:bg-muted/40">
+              <button type="button" onClick={() => onPick(u.id)} className="flex min-w-0 flex-1 items-center gap-3 px-5 py-3 text-left">
                 <UserAvatar name={u.name} hint={u.avatar_initials} size="sm" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{u.name}</span>
                   <span className="block truncate text-[11px] text-muted-foreground">{u.email}</span>
                 </span>
-                <ChevronRight className="size-4 text-muted-foreground" />
               </button>
+              <Button variant="ghost" size="icon-sm" className="mr-3 text-destructive hover:text-destructive" title={t("cu.delete")} aria-label={t("cu.delete")} onClick={() => onRemoveUser(u)}>
+                <Trash2 className="size-4" />
+              </Button>
             </li>
           ))}
         </ul>
@@ -964,36 +1004,3 @@ function CompanyPanel({
   );
 }
 
-/** Put an already created client user into a company. A person can be in only one company, so only users with none are offered. */
-function AddUserDialog({ company, candidates, onClose, onAdd }: { company: Client | null; candidates: User[]; onClose: () => void; onAdd: (userId: number) => void }) {
-  const { t } = useI18n();
-  const [query, setQuery] = useState("");
-  const q = query.trim().toLowerCase();
-  const shown = candidates.filter((u) => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
-  return (
-    <Dialog open={Boolean(company)} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{t("adm.company.addExistingTitle", { name: company?.company_name ?? "" })}</DialogTitle>
-        </DialogHeader>
-        <p className="text-sm text-muted-foreground">{t("adm.company.addExistingHint")}</p>
-        <Input value={query} placeholder={t("people.search")} onChange={(e) => setQuery(e.target.value)} />
-        <ul className="max-h-72 divide-y overflow-y-auto rounded-lg border">
-          {shown.map((u) => (
-            <li key={u.id} className="flex items-center gap-3 px-3 py-2">
-              <UserAvatar name={u.name} hint={u.avatar_initials} size="sm" />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium">{u.name}</span>
-                <span className="block truncate text-[11px] text-muted-foreground">{u.email}</span>
-              </span>
-              <Button size="sm" onClick={() => onAdd(u.id)}>
-                {t("adm.company.add1")}
-              </Button>
-            </li>
-          ))}
-          {shown.length === 0 ? <li className="p-4 text-sm text-muted-foreground">{t("adm.company.noneFree")}</li> : null}
-        </ul>
-      </DialogContent>
-    </Dialog>
-  );
-}

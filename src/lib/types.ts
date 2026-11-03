@@ -116,6 +116,8 @@ export type AccessGroup = {
   description: string | null;
   audience: AccessGroupAudience;
   all_clients: number;
+  /** The company a client group belongs to. */
+  client_id?: number | null;
   created_at: Date;
 };
 
