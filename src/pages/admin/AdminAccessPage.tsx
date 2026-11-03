@@ -48,7 +48,7 @@ import { GroupPicker } from "@/pages/config/GroupPicker";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -98,6 +98,10 @@ export function AdminAccessPage({ audience, embedded = false, view = "users" }: 
   const [tab, setTab] = useState<Tab | null>(null);
   const [newGroup, setNewGroup] = useState(false);
   const [newStaff, setNewStaff] = useState(false);
+  /** After creating someone or a group, the access sheet opens in a pop-up so the granular rights are set right away. */
+  const [wizard, setWizard] = useState<{ kind: "user" | "group"; id: number } | null>(null);
+  const [wTab, setWTab] = useState<Tab | null>(null);
+  const [groupCompany, setGroupCompany] = useState(0);
   const [companyDlg, setCompanyDlg] = useState<{ open: boolean; company: Client | null }>({ open: false, company: null });
   const [delCompany, setDelCompany] = useState<Client | null>(null);
   const [clientUserDlg, setClientUserDlg] = useState<{ open: boolean; companyId: number | null }>({ open: false, companyId: null });
@@ -194,13 +198,14 @@ export function AdminAccessPage({ audience, embedded = false, view = "users" }: 
   async function onCreateGroup(e: FormEvent) {
     e.preventDefault();
     if (!groupForm.name.trim()) return;
-    const row = await createGroup({ name: groupForm.name.trim(), description: groupForm.description.trim() || null, audience, clientId: staff ? null : gco || null });
+    if (!staff && !groupCompany) return;
+    const row = await createGroup({ name: groupForm.name.trim(), description: groupForm.description.trim() || null, audience, clientId: staff ? null : groupCompany });
     await logActivity({ action: "created access group", details: row.name, userId: user?.id });
     setGroupForm({ name: "", description: "" });
     setNewGroup(false);
+    setWTab("groups");
     await load();
-    setList("groups");
-    select({ kind: "group", id: row.id });
+    setWizard({ kind: "group", id: row.id });
   }
 
   async function onDeleteGroup() {
@@ -223,7 +228,13 @@ export function AdminAccessPage({ audience, embedded = false, view = "users" }: 
           <p className="max-w-3xl text-sm text-muted-foreground">{t(staff ? "adm.access.staffDesc" : view === "companies" ? "adm.view.companiesDesc" : view === "users" ? "adm.view.usersDesc" : "adm.view.groupsDesc")}</p>
           <div className="flex flex-wrap gap-2">
             {staff || view === "groups" ? (
-              <Button variant="outline" disabled={!staff && gco <= 0} title={!staff && gco <= 0 ? t("adm.groups.pickCompany") : undefined} onClick={() => setNewGroup(true)}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setGroupCompany(gco > 0 ? gco : 0);
+                  setNewGroup(true);
+                }}
+              >
                 <Plus className="size-4" />
                 {t("config.groups.new")}
               </Button>
@@ -466,11 +477,9 @@ export function AdminAccessPage({ audience, embedded = false, view = "users" }: 
             onClose={() => setClientUserDlg({ open: false, companyId: null })}
             onCreated={(id, n) => {
               setClientUserDlg({ open: false, companyId: null });
-              setNotice({ ok: n.ok, text: `${n.text} ${t("adm.new.nextStep")}` });
-              void load().then(() => {
-                setList("people");
-                select({ kind: "user", id }, "projects");
-              });
+              setNotice({ ok: n.ok, text: n.text });
+              setWTab("projects");
+              void load().then(() => setWizard({ kind: "user", id }));
             }}
           />
           <Dialog open={Boolean(delUser)} onOpenChange={(o) => !o && setDelUser(null)}>
@@ -535,14 +544,51 @@ export function AdminAccessPage({ audience, embedded = false, view = "users" }: 
           onClose={() => setNewStaff(false)}
           onCreated={(id, n) => {
             setNewStaff(false);
-            setNotice({ ok: n.ok, text: `${n.text} ${t("adm.new.nextStep")}` });
-            void load().then(() => {
-              setList("people");
-              select({ kind: "user", id }, "menu");
-            });
+            setNotice({ ok: n.ok, text: n.text });
+            setWTab("menu");
+            void load().then(() => setWizard({ kind: "user", id }));
           }}
         />
       ) : null}
+      <Dialog
+        open={Boolean(wizard)}
+        onOpenChange={(o) => {
+          if (o || !wizard) return;
+          const done = wizard;
+          setWizard(null);
+          setList(done.kind === "group" ? "groups" : "people");
+          select(done.kind === "group" ? { kind: "group", id: done.id } : { kind: "user", id: done.id });
+        }}
+      >
+        <DialogContent className="max-h-[94vh] overflow-y-auto sm:max-w-5xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl uppercase tracking-wide">
+              {t(wizard?.kind === "group" ? "adm.wiz.group" : "adm.wiz.user", { name: wizard?.kind === "group" ? (data.groups.find((g) => g.id === wizard.id)?.name ?? "") : (data.users.find((u) => u.id === wizard?.id)?.name ?? "") })}
+            </DialogTitle>
+            <DialogDescription>{t("adm.wiz.desc")}</DialogDescription>
+          </DialogHeader>
+          {wizard?.kind === "user" && data.users.find((u) => u.id === wizard.id) ? (
+            <PersonEditor wizard person={data.users.find((u) => u.id === wizard.id)!} staff={staff} data={data} groups={groups} tab={wTab} setTab={setWTab} reload={load} />
+          ) : null}
+          {wizard?.kind === "group" && data.groups.find((g) => g.id === wizard.id) ? (
+            <GroupEditor wizard group={data.groups.find((g) => g.id === wizard.id)!} staff={staff} data={data} people={people} tab={wTab} setTab={setWTab} reload={load} onDelete={() => undefined} />
+          ) : null}
+          <DialogFooter>
+            <Button
+              onClick={() => {
+                const done = wizard;
+                setWizard(null);
+                if (done) {
+                  setList(done.kind === "group" ? "groups" : "people");
+                  select(done.kind === "group" ? { kind: "group", id: done.id } : { kind: "user", id: done.id });
+                }
+              }}
+            >
+              {t("adm.wiz.done")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={newGroup} onOpenChange={setNewGroup}>
         <DialogContent className="sm:max-w-md">
           <form onSubmit={onCreateGroup}>
@@ -551,6 +597,20 @@ export function AdminAccessPage({ audience, embedded = false, view = "users" }: 
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <p className="text-sm text-muted-foreground">{t("adm.group.intro")}</p>
+              {staff ? null : (
+                <div className="space-y-1.5">
+                  <Label>{t("adm.prof.company")}</Label>
+                  <select required className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm" value={groupCompany || ""} onChange={(e) => setGroupCompany(Number(e.target.value) || 0)}>
+                    <option value="">{t("adm.prof.chooseCompany")}</option>
+                    {companies.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.company_name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">{t("adm.group.companyHint")}</p>
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label>{t("config.groups.name")}</Label>
                 <Input required value={groupForm.name} onChange={(e) => setGroupForm({ ...groupForm, name: e.target.value })} />
@@ -631,6 +691,7 @@ function PersonEditor({
   tab,
   setTab,
   reload,
+  wizard = false,
 }: {
   person: User;
   staff: boolean;
@@ -639,20 +700,23 @@ function PersonEditor({
   tab: Tab | null;
   setTab: (t: Tab) => void;
   reload: () => Promise<void>;
+  /** Shown in the creation pop-up: no header, no profile or groups tabs (already filled in), straight to the rights. */
+  wizard?: boolean;
 }) {
   const { t } = useI18n();
   const { user: me, refreshPermissions } = useAuth();
   const admin = person.is_admin === 1;
   const tabs: { id: Tab; label: string }[] = [
-    { id: "profile" as Tab, label: t("adm.tab.profile") },
-    { id: "summary", label: t("adm.tab.summary") },
-    { id: "groups", label: t("adm.tab.groups") },
+    ...(wizard ? [] : [{ id: "profile" as Tab, label: t("adm.tab.profile") }]),
+    ...(wizard ? [] : [{ id: "summary" as Tab, label: t("adm.tab.summary") }]),
+    ...(wizard ? [] : [{ id: "groups" as Tab, label: t("adm.tab.groups") }]),
     ...(staff ? [{ id: "menu" as Tab, label: t("adm.tab.menu") }] : []),
     { id: "projects", label: t("adm.tab.projects") },
     { id: "docs", label: t("adm.tab.docs") },
     ...(staff ? [{ id: "reports" as Tab, label: t("adm.tab.reports") }] : []),
+    ...(wizard ? [{ id: "summary" as Tab, label: t("adm.tab.summary") }] : []),
   ];
-  const active: Tab = tab && tabs.some((x) => x.id === tab) ? tab : "summary";
+  const active: Tab = tab && tabs.some((x) => x.id === tab) ? tab : wizard ? tabs[0].id : "summary";
   const myGroupIds = data.memberships.filter((m) => m.user_id === person.id).map((m) => m.group_id);
   const companyIds = data.clientUsers.filter((l) => l.user_id === person.id).map((l) => l.client_id);
 
@@ -686,7 +750,7 @@ function PersonEditor({
 
   return (
     <div className="grid gap-4">
-      <Card className="gap-4 p-5">
+      <Card className={cn("gap-4 p-5", wizard && "hidden")}>
         <Heading
           sub={[person.title, person.email].filter(Boolean).join(" · ")}
         >
@@ -792,7 +856,9 @@ function GroupEditor({
   setTab,
   reload,
   onDelete,
+  wizard = false,
 }: {
+  wizard?: boolean;
   group: AccessGroup;
   staff: boolean;
   data: Data;
@@ -831,7 +897,7 @@ function GroupEditor({
 
   return (
     <div className="grid gap-4">
-      <Card className="gap-3 p-5">
+      <Card className={cn("gap-3 p-5", wizard && "hidden")}>
         <Heading
           sub={group.description ?? undefined}
           right={
