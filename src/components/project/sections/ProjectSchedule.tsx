@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { asc, eq } from "drizzle-orm";
-import { CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Circle, FileUp, GanttChartSquare, ListChecks, Lock, MessageSquare, Paperclip, Plus, Rows3, Search, TrendingUp } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Circle, FileUp, GanttChartSquare, Pencil, TableProperties, ListChecks, Lock, MessageSquare, Paperclip, Plus, Rows3, Search, TrendingUp } from "lucide-react";
 import { db, schema } from "../../../db";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -13,6 +13,8 @@ import { countAttachments } from "@/lib/project-files";
 import { logActivity } from "@/lib/activity";
 import { PortfolioCalendar, marksFromPortfolio } from "@/components/PortfolioCalendar";
 import { TaskDrawer, type Task } from "@/components/project/TaskDrawer";
+import { TaskDetailDialog } from "@/components/project/TaskDetailDialog";
+import { BulkEditDialog } from "@/components/project/BulkEditDialog";
 import { ScheduleBreakdown } from "@/components/project/ScheduleBreakdown";
 import { ScheduleImportDialog } from "@/components/project/ScheduleImportDialog";
 import { ScheduleForecast } from "@/components/project/ScheduleForecast";
@@ -41,7 +43,7 @@ const PRIORITY_DOT: Record<string, string> = { low: "bg-slate-400", medium: "bg-
 /** Schedule: tasks first, then the calendar and the Gantt, all on one page. */
 export function ProjectSchedule({ project, people }: SectionProps) {
   const { t, locale } = useI18n();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   // A client account reads the schedule: no forecast, nothing to add or change, no task details.
   const viewer = user?.user_type === "external" || user?.view_as === "client";
   const [params, setParams] = useSearchParams();
@@ -72,7 +74,10 @@ export function ProjectSchedule({ project, people }: SectionProps) {
   const [checkCount, setCheckCount] = useState<Record<number, { done: number; total: number }>>({});
   const [noteCount, setNoteCount] = useState<Record<number, number>>({});
   const [fileCount, setFileCount] = useState<Record<number, number>>({});
+  /** The task being edited (side editor) and the task shown in the details pop-up. */
   const [openId, setOpenId] = useState<number | null>(null);
+  const [detailId, setDetailId] = useState<number | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [filter, setFilter] = useState<"all" | "open" | "completed">("open");
   const [query, setQuery] = useState("");
   const [addOpen, setAddOpen] = useState(false);
@@ -148,6 +153,9 @@ export function ProjectSchedule({ project, people }: SectionProps) {
       .filter((x): x is Task => Boolean(x));
   const phases = tasks.filter((x) => x.kind === "phase").sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
   const openTask = tasks.find((x) => x.id === openId) ?? null;
+  const detailTask = tasks.find((x) => x.id === detailId) ?? null;
+  // Editing the whole schedule at once is its own right: administrators, and staff given "Edit the whole schedule".
+  const canBulk = !viewer && (Boolean(user?.is_admin) || can("tasks_bulk", "edit", { projectId: project.id }));
   const who = (id: number | null) => people.find((p) => p.id === id)?.name ?? "";
   const today = todayISO();
 
@@ -207,26 +215,34 @@ export function ProjectSchedule({ project, people }: SectionProps) {
             </button>
           ))}
         </div>
-        <div className={cn("flex items-center gap-2", viewer && "hidden")}>
-          {view === "calendar" ? (
-            <Button variant="outline" onClick={() => setEventOpen(true)}>
+        <div className={cn("flex flex-col items-end gap-2", viewer && "hidden")}>
+          <div className="flex items-center gap-2">
+            {view === "calendar" ? (
+              <Button variant="outline" onClick={() => setEventOpen(true)}>
+                <Plus className="size-4" />
+                {t("sch.addEvent")}
+              </Button>
+            ) : null}
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <FileUp className="size-4" />
+              {t("simp.button")}
+            </Button>
+            <Button
+              onClick={() => {
+                setAddPreset({ kind: "task", parentId: null });
+                setAddOpen(true);
+              }}
+            >
               <Plus className="size-4" />
-              {t("sch.addEvent")}
+              {t("sch.addTask")}
+            </Button>
+          </div>
+          {canBulk ? (
+            <Button variant="outline" onClick={() => setBulkOpen(true)}>
+              <TableProperties className="size-4" />
+              {t("sch.editAll")}
             </Button>
           ) : null}
-          <Button variant="outline" onClick={() => setImportOpen(true)}>
-            <FileUp className="size-4" />
-            {t("simp.button")}
-          </Button>
-          <Button
-            onClick={() => {
-              setAddPreset({ kind: "task", parentId: null });
-              setAddOpen(true);
-            }}
-          >
-            <Plus className="size-4" />
-            {t("sch.addTask")}
-          </Button>
         </div>
       </div>
 
@@ -290,6 +306,27 @@ export function ProjectSchedule({ project, people }: SectionProps) {
                       >
                         <ChevronDown className={cn("size-4 shrink-0 transition-transform duration-300", isFolded && "-rotate-90")} />
                         <span className="min-w-0 flex-1 truncate font-semibold">{g.title}</span>
+                        {!viewer && g.phase ? (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            aria-label={t("sch.modify")}
+                            title={t("sch.modify")}
+                            className="flex size-7 shrink-0 items-center justify-center rounded-md hover:bg-foreground/10"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenId(g.phase!.id);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.stopPropagation();
+                                setOpenId(g.phase!.id);
+                              }
+                            }}
+                          >
+                            <Pencil className="size-3.5" />
+                          </span>
+                        ) : null}
                         <span className="hidden h-1.5 w-24 overflow-hidden rounded-full sm:block" style={{ background: `color-mix(in srgb, ${color} 18%, transparent)` }}>
                           <span className="block h-full rounded-full" style={{ width: `${pctDone}%`, background: color }} />
                         </span>
@@ -310,9 +347,9 @@ export function ProjectSchedule({ project, people }: SectionProps) {
                                   <div
                                     role="button"
                                     tabIndex={isFolded ? -1 : 0}
-                                    onClick={() => !viewer && setOpenId(task.id)}
-                                    onKeyDown={(e) => !viewer && (e.key === "Enter" || e.key === " ") && setOpenId(task.id)}
-                                    className={cn("frx-glass group flex items-center gap-3 border border-[color:var(--glass-edge)] px-4 py-3 transition-all", !viewer && "cursor-pointer hover:-translate-y-0.5", flashId === task.id && "ring-2 ring-primary")}
+                                    onClick={() => setDetailId(task.id)}
+                                    onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setDetailId(task.id)}
+                                    className={cn("frx-glass group flex cursor-pointer items-center gap-3 border border-[color:var(--glass-edge)] px-4 py-3 transition-all hover:-translate-y-0.5", flashId === task.id && "ring-2 ring-primary")}
                                     style={{ boxShadow: `var(--glass-shadow), inset 3px 0 0 ${done ? "transparent" : blockers.length ? "#ef4444" : color}` }}
                                   >
                                     <button
@@ -385,6 +422,20 @@ export function ProjectSchedule({ project, people }: SectionProps) {
                                     ) : null}
                                     <StatusBadge value={task.status} />
                                     {task.assigned_to ? <UserAvatar name={who(task.assigned_to)} size="sm" /> : null}
+                                    {viewer ? null : (
+                                      <button
+                                        type="button"
+                                        aria-label={t("sch.modify")}
+                                        title={t("sch.modify")}
+                                        className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setOpenId(task.id);
+                                        }}
+                                      >
+                                        <Pencil className="size-4" />
+                                      </button>
+                                    )}
                                   </div>
                                   {relOpen.has(task.id) ? (
                                     <div className="mt-1 ml-6 space-y-1 border-l-2 pl-4" style={{ borderColor: `color-mix(in srgb, ${color} 40%, transparent)` }}>
@@ -434,7 +485,8 @@ export function ProjectSchedule({ project, people }: SectionProps) {
           tasks={tasks}
           check={checkCount}
           people={people}
-          onOpen={setOpenId}
+          onOpen={setDetailId}
+          onEdit={viewer ? undefined : setOpenId}
           readOnly={viewer}
           onAdd={(kind, parentId) => {
             setAddPreset({ kind, parentId });
@@ -444,7 +496,7 @@ export function ProjectSchedule({ project, people }: SectionProps) {
         />
       ) : null}
 
-      {view === "forecast" ? <ScheduleForecast project={project} tasks={tasks} deps={deps} check={checkCount} onOpen={setOpenId} /> : null}
+      {view === "forecast" ? <ScheduleForecast project={project} tasks={tasks} deps={deps} check={checkCount} onOpen={setDetailId} /> : null}
 
       {view === "calendar" ? (
         <Card className="p-5">
@@ -456,8 +508,23 @@ export function ProjectSchedule({ project, people }: SectionProps) {
         </Card>
       ) : null}
 
-      {view === "gantt" ? <TaskGantt tasks={tasks} color={color} checkCount={checkCount} onOpen={setOpenId} /> : null}
+      {view === "gantt" ? <TaskGantt tasks={tasks} color={color} checkCount={checkCount} onOpen={setDetailId} /> : null}
 
+      <TaskDetailDialog
+        project={project}
+        task={detailTask}
+        tasks={tasks}
+        deps={deps}
+        people={people}
+        viewer={viewer}
+        onClose={() => setDetailId(null)}
+        onEdit={(id) => {
+          setDetailId(null);
+          setOpenId(id);
+        }}
+        onNavigate={setDetailId}
+      />
+      {canBulk ? <BulkEditDialog open={bulkOpen} project={project} tasks={tasks} onClose={() => setBulkOpen(false)} onSaved={() => void load()} /> : null}
       {viewer ? null : <TaskDrawer project={project} task={openTask} people={people} phases={phases} allTasks={tasks} deps={deps} open={openTask !== null} onClose={() => setOpenId(null)} onChanged={() => void load()} />}
 
       {viewer ? null : <ScheduleImportDialog open={importOpen} project={project} existing={tasks.length} userId={user?.id} onClose={() => setImportOpen(false)} onDone={() => void load()} />}

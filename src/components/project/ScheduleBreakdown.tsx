@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { eq } from "drizzle-orm";
-import { ArrowDown, ArrowUp, FileOutput, Loader2, Plus, PlusCircle } from "lucide-react";
+import { ArrowDown, ArrowUp, FileOutput, Loader2, Pencil, Plus, PlusCircle } from "lucide-react";
 import { db, schema } from "../../db";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
@@ -27,6 +27,7 @@ export function ScheduleBreakdown({
   check,
   people,
   onOpen,
+  onEdit,
   onAdd,
   onChanged,
   readOnly = false,
@@ -36,6 +37,8 @@ export function ScheduleBreakdown({
   check: Record<number, { done: number; total: number }>;
   people: User[];
   onOpen: (id: number) => void;
+  /** Opens the editor of a row directly (the pencil). */
+  onEdit?: (id: number) => void;
   /** Ask for a new phase (kind "phase") or a task under a phase. */
   onAdd: (kind: "phase" | "task", parentId: number | null) => void;
   onChanged: () => void;
@@ -176,7 +179,7 @@ export function ScheduleBreakdown({
                 const isBreak = row.kind === "break";
                 const bg = isPhase ? `color-mix(in srgb, ${color} 22%, var(--card))` : isBreak ? "color-mix(in srgb, var(--foreground) 12%, var(--card))" : undefined;
                 return (
-                  <tr key={row.task.id} className={cn("group border-b border-border/70 transition-colors", !readOnly && "cursor-pointer hover:brightness-95")} style={{ background: bg }} onClick={() => !readOnly && onOpen(row.task.id)}>
+                  <tr key={row.task.id} className="group cursor-pointer border-b border-border/70 transition-colors hover:brightness-95" style={{ background: bg }} onClick={() => onOpen(row.task.id)}>
                     <td className="border-r border-border/50 px-2 text-[10px] tabular-nums text-muted-foreground">{row.n}</td>
                     <td className={cn("border-r border-border/50 py-1.5 pr-2", isPhase || isBreak ? "font-bold" : "")} style={{ paddingLeft: row.depth === 1 ? 26 : 10 }}>
                       {row.task.title}
@@ -193,6 +196,11 @@ export function ScheduleBreakdown({
                     <td className="border-r border-border/50 px-2">{row.task.description ?? ""}</td>
                     <td className="px-1" onClick={(e) => e.stopPropagation()}>
                       <span className={cn("flex items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100", readOnly && "hidden")}>
+                        {onEdit ? (
+                          <button type="button" title={t("sch.modify")} aria-label={t("sch.modify")} className="rounded p-1 hover:bg-foreground/10" onClick={() => onEdit(row.task.id)}>
+                            <Pencil className="size-3.5" />
+                          </button>
+                        ) : null}
                         {isPhase ? (
                           <button type="button" title={t("wbs.addTask")} aria-label={t("wbs.addTask")} className="rounded p-1 hover:bg-foreground/10" onClick={() => onAdd("task", row.task.id)}>
                             <Plus className="size-3.5" />

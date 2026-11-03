@@ -310,6 +310,7 @@ export type ModuleId =
   | "forms"
   | "qrt"
   | "project_billing"
+  | "tasks_bulk"
   | "app_overview"
   | "app_dashboard"
   | "app_all_projects"
