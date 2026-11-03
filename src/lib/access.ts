@@ -1,9 +1,8 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { db, schema } from "../db";
-import { CLIENT_KEY } from "./constants";
+import { CLIENT_KEY, MODULES } from "./constants";
 import type {
   AccessGroup,
-  AccessGroupAudience,
   AccessGroupClient,
   AccessGroupPermission,
   Permission,
@@ -35,30 +34,19 @@ export async function loadAccessBundle(userId: number): Promise<AccessBundle> {
   return { groups, memberships, groupPermissions, groupClients };
 }
 
-/** Permissions from the seeded Default — staff / Default — clients groups (for admin view-as). */
-export async function loadDefaultRolePermissions(
-  userId: number,
-  audience: "internal" | "external",
-): Promise<Permission[]> {
-  await ensureDefaultGroups();
-  const groups = (await db.select().from(schema.access_groups)) as AccessGroup[];
-  const family = audience === "external" ? "default:external" : "default:internal";
-  const group = groups.find((g) => groupFamily(g) === family);
-  if (!group) return [];
-  const perms = (await db
-    .select()
-    .from(schema.access_group_permissions)
-    .where(eq(schema.access_group_permissions.group_id, group.id))) as AccessGroupPermission[];
-  return perms.map((p) => ({
-    id: -p.id,
+/** What an administrator sees when previewing as an employee or a client: no group is involved, so staff get view on every page and a client the standard client access. */
+export async function loadDefaultRolePermissions(userId: number, audience: "internal" | "external"): Promise<Permission[]> {
+  if (audience === "external") return [];
+  return MODULES.map((m, i) => ({
+    id: -(i + 1),
     user_id: userId,
-    module: p.module,
+    module: m.id,
     scope_type: "global" as const,
     scope_id: 0,
-    can_view: p.can_view,
-    can_create: p.can_create,
-    can_edit: p.can_edit,
-    can_delete: p.can_delete,
+    can_view: 1,
+    can_create: 0,
+    can_edit: 0,
+    can_delete: 0,
   }));
 }
 
@@ -264,350 +252,18 @@ export async function writeGroupFlags(
   }
 }
 
-function canonGroupName(name: string) {
-  return name
-    .toLowerCase()
-    .replace(/[—–-]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function groupFamily(group: AccessGroup) {
-  const name = canonGroupName(group.name);
-  if (name === "default" || name === "default staff" || name === "default internal") {
-    return `default:${group.audience === "external" ? "external" : "internal"}`;
-  }
-  if (name === "default clients" || name === "default client" || name === "default external") {
-    return "default:external";
-  }
-  if (name === "accounting" || name === "comptabilite" || name === "comptabilité") {
-    return "accounting";
-  }
-  return `${name}:${group.audience}`;
-}
-
-async function mergeGroupInto(keeperId: number, extraId: number) {
-  if (keeperId === extraId) return;
-
-  const extraPerms = (await db
-    .select()
-    .from(schema.access_group_permissions)
-    .where(eq(schema.access_group_permissions.group_id, extraId))) as AccessGroupPermission[];
-  const keeperPerms = (await db
-    .select()
-    .from(schema.access_group_permissions)
-    .where(eq(schema.access_group_permissions.group_id, keeperId))) as AccessGroupPermission[];
-
-  for (const perm of extraPerms) {
-    const existing = keeperPerms.find((row) => row.module === perm.module);
-    if (!existing) {
-      await db.insert(schema.access_group_permissions).values({
-        group_id: keeperId,
-        module: perm.module,
-        can_view: perm.can_view,
-        can_create: perm.can_create,
-        can_edit: perm.can_edit,
-        can_delete: perm.can_delete,
-      });
-      continue;
-    }
-    await db
-      .update(schema.access_group_permissions)
-      .set({
-        can_view: existing.can_view || perm.can_view,
-        can_create: existing.can_create || perm.can_create,
-        can_edit: existing.can_edit || perm.can_edit,
-        can_delete: existing.can_delete || perm.can_delete,
-      })
-      .where(eq(schema.access_group_permissions.id, existing.id));
-  }
-
-  const extraClients = (await db
-    .select()
-    .from(schema.access_group_clients)
-    .where(eq(schema.access_group_clients.group_id, extraId))) as AccessGroupClient[];
-  const keeperClients = (await db
-    .select()
-    .from(schema.access_group_clients)
-    .where(eq(schema.access_group_clients.group_id, keeperId))) as AccessGroupClient[];
-  const haveClients = new Set(keeperClients.map((row) => row.client_id));
-  for (const link of extraClients) {
-    if (!haveClients.has(link.client_id)) {
-      await db.insert(schema.access_group_clients).values({
-        group_id: keeperId,
-        client_id: link.client_id,
-      });
-    }
-  }
-
-  const extraMembers = (await db
-    .select()
-    .from(schema.user_access_groups)
-    .where(eq(schema.user_access_groups.group_id, extraId))) as UserAccessGroup[];
-  const keeperMembers = (await db
-    .select()
-    .from(schema.user_access_groups)
-    .where(eq(schema.user_access_groups.group_id, keeperId))) as UserAccessGroup[];
-  const haveUsers = new Set(keeperMembers.map((row) => row.user_id));
-  for (const membership of extraMembers) {
-    if (!haveUsers.has(membership.user_id)) {
-      await db.insert(schema.user_access_groups).values({
-        user_id: membership.user_id,
-        group_id: keeperId,
-      });
-    }
-  }
-
-  await db.delete(schema.access_group_permissions).where(eq(schema.access_group_permissions.group_id, extraId));
-  await db.delete(schema.access_group_clients).where(eq(schema.access_group_clients.group_id, extraId));
-  await db.delete(schema.user_access_groups).where(eq(schema.user_access_groups.group_id, extraId));
-  await db.delete(schema.access_groups).where(eq(schema.access_groups.id, extraId));
-}
-
-async function dedupeAccessGroups() {
-  const groups = (await db.select().from(schema.access_groups)) as AccessGroup[];
-  const buckets = new Map<string, AccessGroup[]>();
-  for (const group of groups) {
-    // A company's own groups are never merged with anything: two companies can each have an Accounting group.
-    if (group.client_id) continue;
-    const key = groupFamily(group);
-    const bucket = buckets.get(key) ?? [];
-    bucket.push(group);
-    buckets.set(key, bucket);
-  }
-
-  for (const [key, bucket] of buckets) {
-    if (bucket.length < 2) {
-      const only = bucket[0];
-      if (!only) continue;
-      if (key === "default:internal" && only.name !== "Default — staff") {
-        await db.update(schema.access_groups).set({ name: "Default — staff" }).where(eq(schema.access_groups.id, only.id));
-      }
-      if (key === "default:external" && only.name !== "Default — clients") {
-        await db.update(schema.access_groups).set({ name: "Default — clients" }).where(eq(schema.access_groups.id, only.id));
-      }
-      continue;
-    }
-
-    bucket.sort((a, b) => a.id - b.id);
-    const keeper = bucket[0];
-    for (const extra of bucket.slice(1)) {
-      await mergeGroupInto(keeper.id, extra.id);
-    }
-    if (key === "default:internal" && keeper.name !== "Default — staff") {
-      await db.update(schema.access_groups).set({ name: "Default — staff" }).where(eq(schema.access_groups.id, keeper.id));
-    }
-    if (key === "default:external" && keeper.name !== "Default — clients") {
-      await db.update(schema.access_groups).set({ name: "Default — clients" }).where(eq(schema.access_groups.id, keeper.id));
-    }
-  }
-}
-
-async function findOrCreateGroup(input: {
-  family: string;
-  name: string;
-  description: string;
-  audience: AccessGroupAudience;
-  all_clients: number;
-}) {
-  const existing = (await db.select().from(schema.access_groups)) as AccessGroup[];
-  const found = existing.find((g) => !g.client_id && groupFamily(g) === input.family);
-  if (found) return found;
-  const [created] = await db
-    .insert(schema.access_groups)
-    .values({
-      name: input.name,
-      description: input.description,
-      audience: input.audience,
-      all_clients: input.all_clients,
-    })
-    .returning();
-  return created as AccessGroup;
-}
-
-async function seedPermissionsIfEmpty(
-  groupId: number,
-  rows: { module: string; can_view: number; can_create: number; can_edit: number; can_delete: number }[],
-) {
-  const existing = await db
-    .select()
-    .from(schema.access_group_permissions)
-    .where(eq(schema.access_group_permissions.group_id, groupId));
-  if (existing.length > 0) return;
-  for (const row of rows) {
-    await db.insert(schema.access_group_permissions).values({ group_id: groupId, ...row });
-  }
-}
-
-async function ensureModulePermission(
-  groupId: number,
-  row: { module: string; can_view: number; can_create: number; can_edit: number; can_delete: number },
-) {
-  const existing = await db
-    .select()
-    .from(schema.access_group_permissions)
-    .where(eq(schema.access_group_permissions.group_id, groupId));
-  if (existing.some((p) => p.module === row.module)) return;
-  await db.insert(schema.access_group_permissions).values({ group_id: groupId, ...row });
-}
-
 /**
- * The Employee role, which is what "Default — staff" is. Admins have everything on their own.
- *   dashboard and reports: view            documentation: view only, no managing
- *   all projects: view (only assigned)     timesheets, expenses, punch: their own, create where it makes sense
+ * Nothing is created behind your back any more: no "Default" group, no "Accounting" group, and nobody is put in a group
+ * automatically. Groups exist only because an administrator made them.
  */
-const EMPLOYEE_ROLE: { module: string; can_view: number; can_create: number; can_edit: number; can_delete: number }[] = [
-  { module: "app_overview", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },
-  { module: "app_dashboard", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },
-  { module: "app_reports", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },
-  { module: "app_client", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },
-  { module: "app_notebook", can_view: 1, can_create: 1, can_edit: 1, can_delete: 1 },
-  { module: "app_calendar", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },
-  { module: "app_client_documents", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },
-  { module: "app_all_projects", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },
-  { module: "app_client_projects", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },
-  { module: "app_timesheets", can_view: 1, can_create: 0, can_edit: 0, can_delete: 0 },
-  { module: "app_expenses", can_view: 1, can_create: 1, can_edit: 1, can_delete: 1 },
-  { module: "app_punch", can_view: 1, can_create: 1, can_edit: 0, can_delete: 0 },
-];
-
-async function ensureEmployeeRole(groupId: number) {
-  const existing = await db.select().from(schema.access_group_permissions).where(eq(schema.access_group_permissions.group_id, groupId));
-  // An earlier version seeded every menu module as view/create/edit. Move those untouched rows to the Employee role.
-  for (const want of EMPLOYEE_ROLE) {
-    const row = existing.find((p) => p.module === want.module);
-    if (!row) {
-      await db.insert(schema.access_group_permissions).values({ group_id: groupId, ...want });
-    } else if (row.can_view === 1 && row.can_create === 1 && row.can_edit === 1 && row.can_delete === 0 && !(want.can_create === 1 && want.can_edit === 1)) {
-      await db
-        .update(schema.access_group_permissions)
-        .set({ can_view: want.can_view, can_create: want.can_create, can_edit: want.can_edit, can_delete: want.can_delete })
-        .where(eq(schema.access_group_permissions.id, row.id));
-    }
-  }
-}
-
-async function ensureDefaultGroupsInner() {
-  await dedupeAccessGroups();
-
-  const internalDefault = await findOrCreateGroup({
-    family: "default:internal",
-    name: "Default — staff",
-    description: "Base access for internal staff. Combine with other groups — rights add up.",
-    audience: "internal",
-    all_clients: 1,
-  });
-  const externalDefault = await findOrCreateGroup({
-    family: "default:external",
-    name: "Default — clients",
-    description: "Read-only site file for client users.",
-    audience: "external",
-    all_clients: 0,
-  });
-  const accounting = await findOrCreateGroup({
-    family: "accounting",
-    name: "Accounting",
-    description: "Budget and cost codes. Stacks on top of Default.",
-    audience: "internal",
-    all_clients: 1,
-  });
-
-  const staffModules = [
-    "dashboard",
-    "calendar",
-    "budget",
-    "tasks",
-    "documents",
-    "rfis",
-    "change_orders",
-    "daily_logs",
-    "punch",
-    "safety",
-    "team",
-    "clients",
-  ];
-  await seedPermissionsIfEmpty(
-    internalDefault.id,
-    staffModules.map((module) => ({
-      module,
-      can_view: 1,
-      can_create: module === "clients" ? 0 : 1,
-      can_edit: module === "clients" ? 0 : 1,
-      can_delete: 0,
-    })),
-  );
-  await seedPermissionsIfEmpty(
-    externalDefault.id,
-    ["dashboard", "calendar", "documents", "punch", "team", "billing"].map((module) => ({
-      module,
-      can_view: 1,
-      can_create: 0,
-      can_edit: 0,
-      can_delete: 0,
-    })),
-  );
-  await seedPermissionsIfEmpty(accounting.id, [
-    { module: "budget", can_view: 1, can_create: 1, can_edit: 1, can_delete: 1 },
-  ]);
-  await ensureModulePermission(internalDefault.id, {
-    module: "billing",
-    can_view: 1,
-    can_create: 1,
-    can_edit: 1,
-    can_delete: 0,
-  });
-  await ensureModulePermission(internalDefault.id, {
-    module: "reports",
-    can_view: 1,
-    can_create: 1,
-    can_edit: 1,
-    can_delete: 0,
-  });
-  await ensureEmployeeRole(internalDefault.id);
-  for (const module of ["notes", "forms", "qrt"] as const) {
-    await ensureModulePermission(internalDefault.id, { module, can_view: 1, can_create: 1, can_edit: 1, can_delete: 0 });
-  }
-  for (const module of ["app_finance", "app_billing_mgmt"] as const) {
-    await ensureModulePermission(accounting.id, { module, can_view: 1, can_create: 1, can_edit: 1, can_delete: 0 });
-  }
-  await ensureModulePermission(externalDefault.id, {
-    module: "billing",
-    can_view: 1,
-    can_create: 0,
-    can_edit: 0,
-    can_delete: 0,
-  });
-
-  const users = await db.select().from(schema.users);
-  for (const u of users) {
-    if (u.is_admin) continue;
-    const already = await db
-      .select()
-      .from(schema.user_access_groups)
-      .where(eq(schema.user_access_groups.user_id, u.id));
-    if (already.length > 0) continue;
-    const groupId = u.user_type === "external" ? externalDefault.id : internalDefault.id;
-    await db.insert(schema.user_access_groups).values({ user_id: u.id, group_id: groupId });
-  }
-
-  await dedupeAccessGroups();
-}
-
-let ensurePromise: Promise<void> | null = null;
-
 export async function ensureDefaultGroups() {
-  if (!ensurePromise) {
-    ensurePromise = ensureDefaultGroupsInner().finally(() => {
-      ensurePromise = null;
-    });
-  }
-  return ensurePromise;
+  /* intentionally empty */
 }
 
-export function isDefaultStaffGroup(group: AccessGroup) {
-  return groupFamily(group) === "default:internal";
+export function isDefaultStaffGroup(_group: AccessGroup) {
+  return false;
 }
 
-export function isDefaultClientGroup(group: AccessGroup) {
-  return groupFamily(group) === "default:external";
+export function isDefaultClientGroup(_group: AccessGroup) {
+  return false;
 }
