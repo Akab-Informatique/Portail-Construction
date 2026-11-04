@@ -18,6 +18,9 @@ import {
   type SharePointConfig,
 } from "./_lib/sharepoint.js";
 import { isEffectiveAdmin, readStoredSetting, requireApiUser, runSql } from "./db.ts";
+import { sendMail } from "./_lib/morning.ts";
+
+const escHtml = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 type Req = {
   method?: string;
@@ -400,6 +403,60 @@ export default async function handler(req: Req, res: Res) {
           editUrl: officeEditUrl(file.webUrl),
         },
       });
+    }
+    if (action === "notify_upload") {
+      // Tells the client users who can see a folder that documents were added to it. Recipients are worked out here from the
+      // same rights that decide who sees the folder; the caller only chooses whether to send and may add a short message.
+      const folderId = String(body.parentId ?? "");
+      const names = (Array.isArray(body.names) ? body.names : []).map((n) => String(n)).filter(Boolean).slice(0, 30);
+      const message = String(body.message ?? "").trim().slice(0, 1000);
+      if (names.length === 0) return res.status(400).json({ error: "err.badRequest" });
+      if (!(await allowed(user, token, driveId, folderId || undefined, "upload"))) return deny();
+      const chain = await chainOf(token, driveId, folderId || undefined);
+      const people = (await runSql("SELECT id, name, email, locale FROM users WHERE user_type = 'external' AND is_active = 1 AND email <> ''", [])).rows as unknown[][];
+      const recipients: { id: number; name: string; email: string; locale: string }[] = [];
+      for (const [id, name, email, locale] of people) {
+        const subjects = await loadGrants({ id: Number(id), user_type: "external" } as ApiUser);
+        if (granted(subjects, chain, "view")) recipients.push({ id: Number(id), name: String(name), email: String(email), locale: String(locale || "fr") });
+      }
+      if (body.dryRun === true) return res.status(200).json({ recipients: recipients.map((r) => ({ name: r.name, email: r.email })) });
+
+      const folderName = folderId ? (await getItem(token, driveId, folderId)).name : cfg.library_name || "";
+      let portal = String(process.env.APP_URL || "").trim();
+      if (!portal) {
+        try {
+          const raw = await readStoredSetting("smtp");
+          portal = String((raw ? (JSON.parse(raw) as { portal_url?: string }).portal_url : "") || "").trim();
+        } catch {
+          portal = "";
+        }
+      }
+      if (!portal) {
+        const host = String(req.headers?.["x-forwarded-host"] || req.headers?.host || "").split(",")[0].trim();
+        const proto = String(req.headers?.["x-forwarded-proto"] || "https").split(",")[0].trim();
+        if (/^[a-z0-9.-]+(:\d+)?$/i.test(host)) portal = `${proto === "http" ? "http" : "https"}://${host}`;
+      }
+      const link = `${portal.replace(/\/+$/, "")}/documents`;
+      let sent = 0;
+      let failed = 0;
+      let firstError = "";
+      for (const r of recipients) {
+        const fr = r.locale !== "en";
+        const subject = fr ? `Nouveau document · ${folderName}` : `New document · ${folderName}`;
+        const intro = fr ? `Bonjour ${r.name},` : `Hello ${r.name},`;
+        const lead = fr ? `Un ou plusieurs documents ont été ajoutés au dossier « ${folderName} » :` : `One or more documents were added to the folder “${folderName}”:`;
+        const open = fr ? "Ouvrir dans le portail" : "Open in the portal";
+        const text = [intro, "", ...(message ? [message, ""] : []), lead, ...names.map((n) => `- ${n}`), "", `${open}: ${link}`].join("\n");
+        const html = `<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.5;color:#222"><p>${escHtml(intro)}</p>${message ? `<p style="white-space:pre-wrap">${escHtml(message)}</p>` : ""}<p>${escHtml(lead)}</p><ul>${names.map((n) => `<li>${escHtml(n)}</li>`).join("")}</ul><p><a href="${link}" style="color:#e4002b;font-weight:bold">${escHtml(open)}</a></p></div>`;
+        try {
+          await sendMail(r.email, { subject, text, html });
+          sent += 1;
+        } catch (err) {
+          failed += 1;
+          if (!firstError) firstError = err instanceof Error ? err.message : "?";
+        }
+      }
+      return res.status(200).json({ sent, failed, error: firstError || undefined });
     }
     return res.status(400).json({ error: "err.badRequest" });
   } catch (err) {

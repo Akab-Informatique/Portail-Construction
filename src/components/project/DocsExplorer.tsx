@@ -18,6 +18,7 @@ import {
   FolderOpen,
   FolderPlus,
   Loader2,
+  Mail,
   Printer,
   RefreshCw,
   Upload,
@@ -33,6 +34,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
@@ -140,6 +142,7 @@ export function DocsExplorer({ root, settings, color, rootLabel, caps }: { root:
   async function uploadFiles(fileList: FileList | File[]) {
     setBusy(true);
     setError(null);
+    const added: string[] = [];
     try {
       for (const file of Array.from(fileList)) {
         if (file.size > MAX_BYTES) {
@@ -152,12 +155,47 @@ export function DocsExplorer({ root, settings, color, rootLabel, caps }: { root:
           binary += String.fromCharCode(b);
         });
         await callSharePoint("upload", { driveId: drive, parentId: currentId, name: file.name, content: btoa(binary) });
+        added.push(file.name);
       }
       await tree.list(currentId, true);
     } catch (err) {
       setError(tr(err, "sp.error.upload"));
     } finally {
       setBusy(false);
+      // With "Email clients" on, the clients who can see this folder are told about what was just added: no pop-up to answer.
+      if (added.length && notifyClients) void tellClients(added, currentId);
+    }
+  }
+
+  /** The "Email clients" switch next to Upload: remembered, off until turned on, so nothing asks a question at each upload. */
+  const [notifyClients, setNotifyClients] = useState(() => {
+    try {
+      return localStorage.getItem("frx.docs.notifyClients") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [notifyNote, setNotifyNote] = useState<{ ok: boolean; text: string } | null>(null);
+  function toggleNotify(on: boolean) {
+    setNotifyClients(on);
+    try {
+      localStorage.setItem("frx.docs.notifyClients", on ? "1" : "0");
+    } catch {
+      /* storage unavailable */
+    }
+  }
+  async function tellClients(names: string[], folderId: string) {
+    try {
+      const out = await callSharePoint<{ sent: number; failed: number; recipients?: unknown[]; error?: string }>("notify_upload", { driveId: drive, parentId: folderId, names });
+      setNotifyNote(
+        out.sent + out.failed === 0
+          ? { ok: false, text: t("nu.none") }
+          : out.failed > 0
+            ? { ok: false, text: t("nu.partial", { sent: out.sent, failed: out.failed }) + (out.error ? ` (${out.error})` : "") }
+            : { ok: true, text: t("nu.sent", { n: out.sent }) },
+      );
+    } catch (err) {
+      setNotifyNote({ ok: false, text: tr(err, "nu.failed") });
     }
   }
 
@@ -354,6 +392,13 @@ export function DocsExplorer({ root, settings, color, rootLabel, caps }: { root:
             {t("pdoc.upload")}
           </Button>
         ) : null}
+        {here.upload ? (
+          <label className="flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1 text-xs font-medium" title={t("nu.toggleHint")}>
+            <Switch checked={notifyClients} onCheckedChange={toggleNotify} aria-label={t("nu.toggle")} />
+            <Mail className="size-3.5 text-muted-foreground" />
+            {t("nu.toggle")}
+          </label>
+        ) : null}
         <input
           ref={fileInput}
           type="file"
@@ -429,6 +474,14 @@ export function DocsExplorer({ root, settings, color, rootLabel, caps }: { root:
         {busy ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : null}
       </Card>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {notifyNote ? (
+        <p className={cn("flex items-start gap-2 rounded-lg border px-3 py-2 text-sm", notifyNote.ok ? "border-emerald-500/40 bg-emerald-500/10" : "border-amber-500/40 bg-amber-500/10")}>
+          <span className="flex-1">{notifyNote.text}</span>
+          <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setNotifyNote(null)}>
+            ×
+          </button>
+        </p>
+      ) : null}
 
       <div className="grid gap-3 lg:grid-cols-[minmax(220px,280px)_minmax(0,1fr)]">
         <Card className="gap-1 p-2 lg:max-h-[66vh] lg:overflow-y-auto">
