@@ -137,8 +137,8 @@ export function useDocShares() {
     const base = all.filter((s) => !s.group_id);
     for (const g of mine) {
       const i = base.findIndex((s) => s.folder_id === 0 && s.client_id === g.client_id && s.user_id === g.user_id && (s.item_id || "") === (g.item_id || ""));
+      // What is set for the person on a folder wins over their groups' level on that same folder.
       if (i < 0) base.push(g);
-      else base[i] = { ...base[i], can_view: Math.max(base[i].can_view, g.can_view), can_upload: Math.max(base[i].can_upload, g.can_upload), can_edit: Math.max(base[i].can_edit, g.can_edit) };
     }
     setShares(base);
     setLoading(false);

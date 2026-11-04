@@ -929,7 +929,7 @@ function PersonEditor({
             !staff && companyIds.length === 0 ? (
               <Card className="p-6 text-sm text-muted-foreground">{t("adm.needCompany")}</Card>
             ) : (
-              <SubjectDocs subject={staff ? { clientId: 0, userId: person.id } : { clientId: companyIds[0], userId: person.id }} />
+              <SubjectDocs subject={staff ? { clientId: 0, userId: person.id } : { clientId: companyIds[0], userId: person.id }} viaGroups={myGroupIds.map((id) => ({ id, name: data.groups.find((g) => g.id === id)?.name ?? "" }))} />
             )
           ) : null}
           {active === "reports" ? <ReportPicker subject={{ type: "user", id: person.id }} viaGroups={myGroupIds} /> : null}

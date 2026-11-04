@@ -98,8 +98,11 @@ export function AccessSummary(p: Props) {
     const owners = p.staff ? [0] : p.clientIds;
     const mine = shares.filter((s) => s.folder_id === 0 && ((s.user_id === p.person.id && owners.includes(s.client_id)) || (s.group_id && p.myGroupIds.includes(s.group_id))));
     const byItem = new Map<string, { flags: { can_view: boolean; can_upload: boolean; can_edit: boolean }; sources: string[] }>();
+    // A level set for the person on a folder overrides their groups' on that folder.
+    const ownKeys = new Set(mine.filter((x) => !x.group_id).map((x) => x.item_id || ""));
     for (const s of mine) {
       const key = s.item_id || "";
+      if (s.group_id && ownKeys.has(key)) continue;
       const cur = byItem.get(key) ?? { flags: { can_view: false, can_upload: false, can_edit: false }, sources: [] };
       cur.flags = { can_view: cur.flags.can_view || s.can_view === 1, can_upload: cur.flags.can_upload || s.can_upload === 1, can_edit: cur.flags.can_edit || s.can_edit === 1 };
       cur.sources.push(s.group_id ? groupName(s.group_id) : t("adm.sum.personal"));

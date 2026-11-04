@@ -107,8 +107,23 @@ async function loadGrants(user: ApiUser) {
     [user.id],
   );
   const subjects = new Map<string, Map<string, Grant>>();
-  // Rights given to an access group the person belongs to are added to their own, folder by folder (the widest wins). A client
-  // user still stays within what their company has, so a group can never open more than the company does.
+  // What was set for the person on a folder is theirs alone and wins on that folder; their groups give the levels where
+  // nothing was set for them (the widest wins among several groups). A client company holds no rights of its own.
+  const own = new Set<string>();
+  for (const [clientId, userId, folderId, itemId, canView, canUpload, canEdit, spItemId] of rows as unknown[][]) {
+    const key = String(itemId || "") || (Number(folderId) === 0 ? "" : String(spItemId || ""));
+    if (!key && Number(folderId) !== 0) continue;
+    const who = `${clientId}:${userId ?? ""}`;
+    const nodes = subjects.get(who) ?? new Map<string, Grant>();
+    const prev = nodes.get(key) ?? { view: false, upload: false, edit: false };
+    nodes.set(key, {
+      view: prev.view || Number(canView) === 1,
+      upload: prev.upload || Number(canUpload) === 1,
+      edit: prev.edit || Number(canEdit) === 1,
+    });
+    subjects.set(who, nodes);
+    own.add(`${who}|${key}`);
+  }
   const viaGroups = await runSql(
     `SELECT s.folder_id, s.item_id, s.can_view, s.can_upload, s.can_edit, f.sp_item_id
      FROM sharepoint_shares s
@@ -124,24 +139,12 @@ async function loadGrants(user: ApiUser) {
     if (!key && Number(folderId) !== 0) continue;
     for (const owner of owners) {
       const who = `${owner}:${user.id}`;
+      if (own.has(`${who}|${key}`)) continue;
       const nodes = subjects.get(who) ?? new Map<string, Grant>();
       const prev = nodes.get(key) ?? { view: false, upload: false, edit: false };
       nodes.set(key, { view: prev.view || Number(canView) === 1, upload: prev.upload || Number(canUpload) === 1, edit: prev.edit || Number(canEdit) === 1 });
       subjects.set(who, nodes);
     }
-  }
-  for (const [clientId, userId, folderId, itemId, canView, canUpload, canEdit, spItemId] of rows as unknown[][]) {
-    const key = String(itemId || "") || (Number(folderId) === 0 ? "" : String(spItemId || ""));
-    if (!key && Number(folderId) !== 0) continue;
-    const who = `${clientId}:${userId ?? ""}`;
-    const nodes = subjects.get(who) ?? new Map<string, Grant>();
-    const prev = nodes.get(key) ?? { view: false, upload: false, edit: false };
-    nodes.set(key, {
-      view: prev.view || Number(canView) === 1,
-      upload: prev.upload || Number(canUpload) === 1,
-      edit: prev.edit || Number(canEdit) === 1,
-    });
-    subjects.set(who, nodes);
   }
   return subjects;
 }

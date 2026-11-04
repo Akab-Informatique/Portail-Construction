@@ -3,12 +3,12 @@ import { eq } from "drizzle-orm";
 import { ChevronDown, ChevronRight, Folder, FolderOpen, Library, Lock, RotateCcw } from "lucide-react";
 import { db, dbReady, schema } from "../../db";
 import { clearDocLevel, setDocLevel, type DocSubject } from "@/lib/admin-access";
-import { DOC_LEVELS, levelOf, shareFlags, type DocLevel } from "@/lib/doc-rights";
+import { DOC_LEVELS, levelOf, shareFlags, type DocFlags, type DocLevel } from "@/lib/doc-rights";
 import { getSharePointSettings } from "@/lib/settings";
 import { useI18n } from "@/lib/i18n";
 import type { SharePointSettings, SharePointShare } from "@/lib/types";
 import { useSpTree, type SpRoot } from "@/components/project/useSpTree";
-import { LevelSelect } from "@/components/admin/parts";
+import { LEVEL_LABEL, LevelSelect } from "@/components/admin/parts";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -21,7 +21,17 @@ const same = (s: SharePointShare, subject: DocSubject) =>
  * above (the nearest one that is set decides); a client user is never above their company, so their level is capped by it.
  * These are the same rights as the Documentation page's: set once, they apply wherever the folder is reached.
  */
-export function SubjectDocs({ subject, cap }: { subject: DocSubject; /** The company a client user belongs to: its level on a folder is the most this user can have. */ cap?: DocSubject }) {
+export function SubjectDocs({
+  subject,
+  cap,
+  viaGroups = [],
+}: {
+  subject: DocSubject;
+  /** The company a client user belongs to: its level on a folder is the most this user can have. */
+  cap?: DocSubject;
+  /** The groups this person is in: what they give is shown ("via the group") and the person's own level can override it. */
+  viaGroups?: { id: number; name: string }[];
+}) {
   const { t, tr } = useI18n();
   const [settings, setSettings] = useState<SharePointSettings | null>(null);
   const [ready, setReady] = useState(false);
@@ -54,12 +64,29 @@ export function SubjectDocs({ subject, cap }: { subject: DocSubject; /** The com
   if (!configured || !root) return <Card className="p-8 text-center text-sm text-muted-foreground">{t("sp.notConfiguredHint")}</Card>;
 
   /** The nearest level set on this folder or above, for a grantee. */
-  const resolve = (who: DocSubject, chain: string[]): { level: DocLevel; from: "here" | "above" | "none" } => {
+  type Resolved = { level: DocLevel; from: "here" | "above" | "none"; source: "own" | "group" | "none"; groups: string[]; overrides: boolean; groupLevel: DocLevel };
+  const gids = new Set(viaGroups.map((g) => g.id));
+  /** What the groups alone give on this folder (nearest folder with a group level; the widest among groups). */
+  const groupOnly = (chain: string[]): DocLevel => {
+    for (const node of chain) {
+      const rows = viaGroups.length ? shares.filter((s) => s.group_id && gids.has(s.group_id) && (s.item_id || "") === node) : [];
+      if (rows.length) return levelOf(rows.reduce<DocFlags>((acc, g) => ({ can_view: acc.can_view || g.can_view === 1, can_upload: acc.can_upload || g.can_upload === 1, can_edit: acc.can_edit || g.can_edit === 1 }), { can_view: false, can_upload: false, can_edit: false }));
+    }
+    return "none";
+  };
+  const resolve = (who: DocSubject, chain: string[]): Resolved => {
+    const groupLevel = groupOnly(chain);
     for (let i = 0; i < chain.length; i += 1) {
       const row = shares.find((s) => same(s, who) && (s.item_id || "") === chain[i]);
-      if (row) return { level: levelOf(shareFlags(row)), from: i === 0 ? "here" : "above" };
+      const groupRows = viaGroups.length ? shares.filter((s) => s.group_id && gids.has(s.group_id) && (s.item_id || "") === chain[i]) : [];
+      // The person's own level on a folder wins over their groups' on that folder; otherwise the widest group level applies.
+      if (row) return { level: levelOf(shareFlags(row)), from: i === 0 ? "here" : "above", source: "own", groups: [], overrides: levelOf(shareFlags(row)) !== groupLevel && groupLevel !== "none", groupLevel };
+      if (groupRows.length) {
+        const flags = groupRows.reduce((acc, g) => ({ can_view: acc.can_view || g.can_view === 1, can_upload: acc.can_upload || g.can_upload === 1, can_edit: acc.can_edit || g.can_edit === 1 }), { can_view: false, can_upload: false, can_edit: false });
+        return { level: levelOf(flags), from: i === 0 ? "here" : "above", source: "group", groups: groupRows.map((g) => viaGroups.find((x) => x.id === g.group_id)?.name ?? "").filter(Boolean), overrides: false, groupLevel };
+      }
     }
-    return { level: "none", from: "none" };
+    return { level: "none", from: "none", source: "none", groups: [], overrides: false, groupLevel };
   };
 
   async function change(nodeId: string, level: DocLevel) {
@@ -97,9 +124,16 @@ export function SubjectDocs({ subject, cap }: { subject: DocSubject; /** The com
           <span className={cn("min-w-0 flex-1 truncate", isRoot && "font-semibold")}>{isRoot ? t("sp.wholeLibrary") : name}</span>
           {hasRule(id) ? <Lock className="size-3 shrink-0 opacity-60" /> : null}
           {cap && shown !== mine.level ? <span className="text-[10px] text-muted-foreground">{t("pda.limitedByCompany")}</span> : null}
-          <LevelSelect size="sm" value={shown} inherited={mine.from !== "here"} max={company} onChange={(lv) => void change(id, lv)} />
+          {mine.source === "group" ? (
+            <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium" title={mine.groups.join(", ")}>
+              {t("adm.docs.viaGroup", { names: mine.groups.join(", ") })}
+              {mine.from === "above" ? ` · ${t("pda.inheritedShort")}` : ""}
+            </span>
+          ) : null}
+          {mine.source === "own" && mine.overrides ? <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium">{t("adm.docs.overridden", { level: t(LEVEL_LABEL[mine.groupLevel]) })}</span> : null}
+          <LevelSelect size="sm" value={shown} inherited={mine.source !== "own" || mine.from !== "here"} max={company} onChange={(lv) => void change(id, lv)} />
           <span className="flex w-7 shrink-0 justify-end">
-            {mine.from === "here" ? (
+            {mine.source === "own" && mine.from === "here" ? (
               <Button size="icon-sm" variant="ghost" title={t("pda.reset")} aria-label={t("pda.reset")} onClick={() => void reset(id)}>
                 <RotateCcw className="size-3.5" />
               </Button>
