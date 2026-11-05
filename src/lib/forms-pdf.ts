@@ -15,11 +15,18 @@ export type FormPdfItem = {
   filledBy?: string;
   /** Documents and photos attached to the form: photos are printed after the answers, other files are listed. */
   files?: PdfAttachment[];
+  /** A numbered form (a work order): its number and the wording of the line that shows it. */
+  number?: string | null;
+  numberLabel?: string;
 };
+
+/** The company block printed beside the logo. */
+const FRX_INFO = ["Construction FRX inc.", "102-2250, rue Antonio-Héroux", "Terrebonne (QC) J6X 4T8", "450 477-9937 · info@frxconstruction.ca", "RBQ : 5588-1809-01"];
+const FRX_DARK: [number, number, number] = [20, 20, 20];
+const FRX_ORANGE: [number, number, number] = [251, 170, 25];
 
 export type FormPdfLabels = { formTitle: string; project: string; date: string; type: string; filledBy: string; exportedOn: string; page: string; of: string; empty: string; attachments: string };
 
-const GREY: [number, number, number] = [128, 128, 128];
 const RED: [number, number, number] = [228, 0, 43];
 const INK: [number, number, number] = [40, 40, 38];
 const MUTED: [number, number, number] = [95, 95, 92];
@@ -43,24 +50,35 @@ export async function exportFormsPdf(input: { items: FormPdfItem[]; labels: Form
     if (index > 0) pdf.addPage();
     let y = 0;
 
-    // ---- title bar ----
-    pdf.setFillColor(...GREY);
-    pdf.rect(0, 0, W, 46, "F");
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(15);
-    pdf.setTextColor(255, 255, 255);
-    pdf.text(labels.formTitle, M, 29);
+    // ---- header: the FRX colours (black with an orange edge), the logo and the company details, then the form's name ----
+    pdf.setFillColor(...FRX_DARK);
+    pdf.rect(0, 0, W, 84, "F");
+    pdf.setFillColor(...FRX_ORANGE);
+    pdf.rect(0, 84, W, 4, "F");
     if (logo) {
-      const lh = 26;
-      pdf.addImage(logo.data, "PNG", W - M - (lh * logo.w) / logo.h, 10, (lh * logo.w) / logo.h, lh, undefined, "FAST");
+      const lh = 30;
+      const lw = (lh * logo.w) / logo.h;
+      pdf.setFillColor(255, 255, 255);
+      pdf.roundedRect(M, 12, lw + 16, lh + 10, 4, 4, "F");
+      pdf.addImage(logo.data, "PNG", M + 8, 17, lw, lh, undefined, "FAST");
     }
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(17);
+    pdf.setTextColor(255, 255, 255);
+    pdf.text(item.templateName.toUpperCase(), M, 70);
+    FRX_INFO.forEach((line, i) => {
+      pdf.setFont("helvetica", i === 0 ? "bold" : "normal");
+      pdf.setFontSize(i === 0 ? 9.5 : 8);
+      pdf.setTextColor(...(i === 0 ? FRX_ORANGE : ([225, 225, 225] as [number, number, number])));
+      pdf.text(line, W - M, 22 + i * 11.5, { align: "right" });
+    });
 
     // ---- who / when / what ----
-    y = 72;
+    y = 112;
     const head: [string, string, boolean][] = [
       [labels.project, `${item.projectName}${item.projectNumber ? ` (${item.projectNumber})` : ""}`, false],
       [labels.date, item.date, false],
-      [labels.type, item.templateName, true],
+      item.number ? [item.numberLabel ?? labels.type, item.number, true] : [labels.type, item.templateName, true],
     ];
     if (item.filledBy) head.push([labels.filledBy, item.filledBy, false]);
     pdf.setFontSize(10);

@@ -174,6 +174,32 @@ export function builtinForms(locale: Locale): FormTemplate[] {
   ];
 }
 
+/**
+ * Forms whose every filled copy gets a running number (BT-0001, BT-0002…), kept with the filled form. The number is given when
+ * the form is first saved and never changes; the binder lists the forms by it, then the date and who filled it.
+ */
+export const NUMBERED_FORMS: Record<string, { prefix: string; fr: string; en: string }> = {
+  "builtin:work-order": { prefix: "BT", fr: "Numéro de bon travail", en: "Work order number" },
+};
+
+/** The number kept with a filled form, if it has one. */
+export const numberOf = (data: FormData): string | null => data._meta?.[0]?.number || null;
+
+/** The next free number for a numbered form: one more than the highest already used, across every project. */
+export async function nextFormNumber(templateKey: string): Promise<string | null> {
+  const rule = NUMBERED_FORMS[templateKey];
+  if (!rule) return null;
+  await dbReady;
+  const rows = await db.select({ data: schema.form_entries.data }).from(schema.form_entries).where(eq(schema.form_entries.template_key, templateKey));
+  let max = 0;
+  for (const r of rows) {
+    const n = numberOf(parseData(r.data));
+    const m = n && new RegExp(`^${rule.prefix}-(\\d+)$`).exec(n);
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return `${rule.prefix}-${String(max + 1).padStart(4, "0")}`;
+}
+
 export const FIELD_TYPES: FieldType[] = ["text", "longtext", "date", "time", "number", "yesno", "select", "photo"];
 
 /** One empty row of answers for a section. */

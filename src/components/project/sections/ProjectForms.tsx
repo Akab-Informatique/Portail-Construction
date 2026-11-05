@@ -5,7 +5,7 @@ import { db, schema } from "../../../db";
 import { useI18n } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
 import { projectColor } from "@/lib/project-colors";
-import { builtinForms, deleteCustomTemplate, loadCustomTemplates, parseData, parseDef, type FormTemplate } from "@/lib/forms";
+import { builtinForms, deleteCustomTemplate, loadCustomTemplates, NUMBERED_FORMS, numberOf, parseData, parseDef, type FormTemplate } from "@/lib/forms";
 import { exportFormsPdf } from "@/lib/forms-pdf";
 import { attachmentsForPdf, countAttachments, removeAttachmentsOf } from "@/lib/project-files";
 import { FormBuilder } from "@/components/project/FormBuilder";
@@ -96,6 +96,8 @@ export function ProjectForms({ project, people }: SectionProps) {
         data: parseData(e.data),
         filledBy: who(e.created_by),
         files: files[i],
+        number: numberOf(parseData(e.data)),
+        numberLabel: NUMBERED_FORMS[e.template_key]?.[locale === "fr" ? "fr" : "en"],
       })),
       labels: pdfLabels,
       locale,
@@ -235,8 +237,9 @@ export function ProjectForms({ project, people }: SectionProps) {
                         <ClipboardList className="size-4" />
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate font-medium">{e.template_name}</span>
+                        <span className="block truncate font-medium">{numberOf(parseData(e.data)) ?? e.template_name}</span>
                         <span className="block text-xs text-muted-foreground">
+                          {numberOf(parseData(e.data)) ? `${e.template_name} · ` : ""}
                           {formatDate(e.entry_date, locale)} · {who(e.created_by)}
                           {fileCount[e.id] ? (
                             <span className="ml-2 inline-flex items-center gap-1" title={t("frm.attachCount", { n: fileCount[e.id] })}>

@@ -8,7 +8,7 @@ import { useI18n } from "@/lib/i18n";
 import { todayISO } from "@/lib/format";
 import { projectColor } from "@/lib/project-colors";
 import { logActivity } from "@/lib/activity";
-import { blankData, blankRow, missingRequired, parseData, photosOf, type FormData, type FormDef, type FormField } from "@/lib/forms";
+import { blankData, blankRow, missingRequired, NUMBERED_FORMS, nextFormNumber, numberOf, parseData, photosOf, type FormData, type FormDef, type FormField } from "@/lib/forms";
 import { exportFormsPdf } from "@/lib/forms-pdf";
 import { addAttachment, attachmentsForPdf, MAX_FILE_BYTES, photoDataUrl, type PdfAttachment } from "@/lib/project-files";
 import { Attachments } from "@/components/project/Attachments";
@@ -90,7 +90,13 @@ export function FormFill({
     if (missing.length) return;
     setBusy(true);
     try {
-      const values = { data: JSON.stringify(data), entry_date: date };
+      // A numbered form (a work order) gets its running number the first time it is saved, and keeps it.
+      const toSave: FormData = { ...data };
+      if (!target.entry && !numberOf(toSave)) {
+        const number = await nextFormNumber(target.key);
+        if (number) toSave._meta = [{ number }];
+      }
+      const values = { data: JSON.stringify(toSave), entry_date: date };
       if (target.entry) await db.update(schema.form_entries).set(values).where(eq(schema.form_entries.id, target.entry.id));
       else {
         const [created] = await db
@@ -141,7 +147,7 @@ export function FormFill({
         ),
       );
     await exportFormsPdf({
-      items: [{ templateName: target.name, projectName: project.name, projectNumber: project.project_number, date, def, data, filledBy: target.entry ? filledByName(target.entry.created_by) : user?.name, files }],
+      items: [{ templateName: target.name, projectName: project.name, projectNumber: project.project_number, date, def, data, filledBy: target.entry ? filledByName(target.entry.created_by) : user?.name, files, number: numberOf(data), numberLabel: NUMBERED_FORMS[target.key]?.[locale === "fr" ? "fr" : "en"] }],
       labels: {
         formTitle: t("frm.pdfTitle"),
         project: t("frm.projectName"),
@@ -255,7 +261,7 @@ export function FormFill({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[94vh] overflow-y-auto p-0 sm:max-w-3xl">
         <DialogHeader className="space-y-0">
-          <div className="bg-neutral-500 px-6 py-4 text-white dark:bg-neutral-600">
+          <div className="border-b-4 border-primary bg-[#141414] px-6 py-4 text-white">
             <DialogTitle className="font-sans text-lg font-medium normal-case tracking-normal">{target.entry ? t("frm.titleOpen") : t("frm.titleNew")}</DialogTitle>
           </div>
           <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 px-6 pt-4 text-sm">
@@ -267,8 +273,8 @@ export function FormFill({
             <span className="text-right">
               {readOnly ? <span className="font-medium">{date}</span> : <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="ml-auto h-8 w-40" />}
             </span>
-            <span className="text-muted-foreground">{t("frm.type")}</span>
-            <span className="text-right font-bold uppercase tracking-wide">{target.name}</span>
+            <span className="text-muted-foreground">{NUMBERED_FORMS[target.key] && numberOf(data) ? NUMBERED_FORMS[target.key][locale === "fr" ? "fr" : "en"] : t("frm.type")}</span>
+            <span className="text-right font-bold uppercase tracking-wide">{NUMBERED_FORMS[target.key] && numberOf(data) ? numberOf(data) : target.name}</span>
             {target.entry ? (
               <>
                 <span className="text-muted-foreground">{t("frm.filledBy")}</span>
