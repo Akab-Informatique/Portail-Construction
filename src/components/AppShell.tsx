@@ -623,6 +623,7 @@ export function AppShell() {
   // Tables with many columns (projects, billing) use the full width so they do not need a horizontal scrollbar.
   const wideLayout =
     location.pathname === "/projects" ||
+    /^\/projects\/\d+\/tasks/.test(location.pathname) ||
     location.pathname.startsWith("/finance") ||
     location.pathname.startsWith("/accounting");
 

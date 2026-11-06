@@ -63,6 +63,8 @@ export async function logoImage(): Promise<{ data: string; w: number; h: number 
  */
 export async function exportSchedulePdf(input: {
   projectName: string;
+  /** The name of this schedule ("Phase 1", "Finition"…): it heads the sheet and names the file. */
+  scheduleName: string;
   yearRange: string;
   rows: BreakdownRow[];
   fr: boolean;
@@ -89,7 +91,7 @@ export async function exportSchedulePdf(input: {
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(21);
   pdf.setTextColor(...INK);
-  pdf.text(`${labels.title} ${input.projectName}  |  ${input.yearRange}`, M, 50);
+  pdf.text(`${input.scheduleName || labels.title}  ·  ${input.projectName}  |  ${input.yearRange}`, M, 50);
 
   const logo = await logoImage();
   if (logo) {
@@ -136,7 +138,7 @@ export async function exportSchedulePdf(input: {
   pdf.text("1", xs[0] + 3, y + 16);
   pdf.setFontSize(15);
   pdf.setTextColor(...ORANGE);
-  pdf.text(input.projectName, xs[1] + 4, y + 18);
+  pdf.text(`${input.projectName}  ·  ${input.scheduleName || labels.title}`, xs[1] + 4, y + 18);
   rule(y, titleH);
   y += titleH;
 
@@ -211,5 +213,5 @@ export async function exportSchedulePdf(input: {
   }
 
   const day = new Date().toISOString().slice(0, 10);
-  downloadBlob(pdf.output("blob"), `${labels.title}_${input.projectName}_V${day}.pdf`.replace(/[\\/:*?"<>|]+/g, " "));
+  downloadBlob(pdf.output("blob"), `${input.scheduleName || labels.title}_${input.projectName}_V${day}.pdf`.replace(/[\\/:*?"<>|]+/g, " "));
 }

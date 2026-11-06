@@ -180,12 +180,14 @@ export function ProjectSchedule({ project, people }: SectionProps) {
     const out: { key: string; title: string; phase: Task | null; items: Task[] }[] = [];
     for (const p of phs) {
       const items = ordered(shown.filter((x) => x.parent_id === p.id));
-      if (items.length) out.push({ key: String(p.id), title: p.title, phase: p, items });
+      const hasAny = tasks.some((x) => x.parent_id === p.id);
+      // A phase with nothing under it yet still shows, so tasks can be added to it.
+      if (items.length || (!hasAny && !query.trim())) out.push({ key: String(p.id), title: p.title, phase: p, items });
     }
     const loose = ordered(shown.filter((x) => x.parent_id === null || !phs.some((p) => p.id === x.parent_id)));
     if (loose.length) out.push({ key: "none", title: phs.length ? t("sch.noPhaseGroup") : t("sch.allTasks"), phase: null, items: loose });
     return out;
-  }, [tasks, shown, t]);
+  }, [tasks, shown, t, query]);
   /** Unfinished tasks that this one waits for. */
   const blockersOf = (id: number) =>
     deps
@@ -248,36 +250,54 @@ export function ProjectSchedule({ project, people }: SectionProps) {
   return (
     <div className="space-y-4">
       {schedules.length > 1 || !viewer ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-xl border bg-muted/40 p-1">
-            {schedules.map((sc) => (
-              <button
-                key={sc.id}
-                type="button"
-                onClick={() => pickSchedule(sc.id)}
-                className={cn("flex h-9 shrink-0 items-center rounded-lg px-4 text-sm font-semibold transition-all", active?.id === sc.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
-              >
-                {sc.name}
-              </button>
-            ))}
-          </div>
-          {!viewer && active ? (
-            <>
-              <Button size="icon-sm" variant="ghost" aria-label={t("sch.scheduleRename")} title={t("sch.scheduleRename")} onClick={() => setNaming({ id: active.id, name: active.name })}>
-                <Pencil className="size-4" />
-              </Button>
-              {schedules.length > 1 ? (
-                <Button size="icon-sm" variant="ghost" aria-label={t("sch.scheduleDelete")} title={t("sch.scheduleDelete")} onClick={() => void removeActive()}>
-                  <Trash2 className="size-4" />
+        <section className="space-y-2" aria-label={t("sch.schedulesLabel")}>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">{t("sch.schedulesLabel")}</h2>
+            {!viewer && active ? (
+              <div className="ml-auto flex items-center gap-1">
+                <Button size="sm" variant="ghost" onClick={() => setNaming({ id: active.id, name: active.name })}>
+                  <Pencil className="size-4" />
+                  {t("sch.scheduleRename")}
                 </Button>
-              ) : null}
-              <Button size="sm" variant="outline" onClick={() => setNaming({ id: null, name: "" })}>
+                {schedules.length > 1 ? (
+                  <Button size="icon-sm" variant="ghost" aria-label={t("sch.scheduleDelete")} title={t("sch.scheduleDelete")} onClick={() => void removeActive()}>
+                    <Trash2 className="size-4" />
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
+            {schedules.map((sc) => {
+              const mine = allTasks.filter((x) => (x.schedule_id ?? schedules[0]?.id) === sc.id);
+              const nTasks = mine.filter((x) => x.kind === "task");
+              const pct = nTasks.length ? Math.round((nTasks.filter((x) => x.status === "completed").length / nTasks.length) * 100) : 0;
+              const on = active?.id === sc.id;
+              return (
+                <button
+                  key={sc.id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => pickSchedule(sc.id)}
+                  className={cn("flex min-w-0 flex-col gap-1.5 rounded-xl border px-4 py-3 text-left transition-all", on ? "shadow-md" : "bg-card hover:bg-muted/50")}
+                  style={on ? { background: `color-mix(in srgb, ${color} 14%, var(--card))`, borderColor: color, boxShadow: `inset 0 3px 0 ${color}` } : undefined}
+                >
+                  <span className="truncate text-base font-semibold">{sc.name}</span>
+                  <span className="text-xs text-muted-foreground">{t("sch.scheduleStats", { p: mine.filter((x) => x.kind === "phase").length, n: nTasks.length, pct })}</span>
+                  <span className="h-1 overflow-hidden rounded-full" style={{ background: `color-mix(in srgb, ${color} 18%, transparent)` }}>
+                    <span className="block h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
+                  </span>
+                </button>
+              );
+            })}
+            {!viewer ? (
+              <button type="button" onClick={() => setNaming({ id: null, name: "" })} className="flex min-h-[76px] items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-3 text-sm font-medium text-muted-foreground transition-colors hover:border-primary hover:text-foreground">
                 <Plus className="size-4" />
                 {t("sch.scheduleNew")}
-              </Button>
-            </>
-          ) : null}
-        </div>
+              </button>
+            ) : null}
+          </div>
+        </section>
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-1 rounded-xl border bg-muted/40 p-1 max-w-full overflow-x-auto">
@@ -389,6 +409,29 @@ export function ProjectSchedule({ project, people }: SectionProps) {
                           <span
                             role="button"
                             tabIndex={0}
+                            aria-label={t("wbs.addTask")}
+                            title={t("wbs.addTask")}
+                            className="flex size-7 shrink-0 items-center justify-center rounded-md hover:bg-foreground/10"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setAddPreset({ kind: "task", parentId: g.phase!.id });
+                              setAddOpen(true);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.stopPropagation();
+                                setAddPreset({ kind: "task", parentId: g.phase!.id });
+                                setAddOpen(true);
+                              }
+                            }}
+                          >
+                            <Plus className="size-3.5" />
+                          </span>
+                        ) : null}
+                        {!viewer && g.phase ? (
+                          <span
+                            role="button"
+                            tabIndex={0}
                             aria-label={t("sch.modify")}
                             title={t("sch.modify")}
                             className="flex size-7 shrink-0 items-center justify-center rounded-md hover:bg-foreground/10"
@@ -416,6 +459,17 @@ export function ProjectSchedule({ project, people }: SectionProps) {
                       <div className="grid transition-[grid-template-rows] duration-300" style={{ gridTemplateRows: isFolded ? "0fr" : "1fr" }}>
                         <div className="min-h-0 overflow-hidden">
                           <ul className="space-y-2 pb-1">
+                            {g.items.length === 0 ? (
+                              <li className="flex flex-wrap items-center gap-3 rounded-xl border border-dashed px-4 py-3 text-sm text-muted-foreground">
+                                {t("sch.emptyPhase")}
+                                {!viewer && g.phase ? (
+                                  <Button size="sm" variant="outline" onClick={() => { setAddPreset({ kind: "task", parentId: g.phase!.id }); setAddOpen(true); }}>
+                                    <Plus className="size-4" />
+                                    {t("wbs.addTask")}
+                                  </Button>
+                                ) : null}
+                              </li>
+                            ) : null}
                             {g.items.map((task) => {
                               const done = task.status === "completed";
                               const c = checkCount[task.id];
@@ -561,6 +615,7 @@ export function ProjectSchedule({ project, people }: SectionProps) {
       {view === "wbs" ? (
         <ScheduleBreakdown
           project={project}
+          scheduleName={active?.name ?? ""}
           tasks={tasks}
           check={checkCount}
           people={people}
@@ -629,10 +684,19 @@ export function ProjectSchedule({ project, people }: SectionProps) {
         phases={phases}
         preset={addPreset}
         onClose={() => setAddOpen(false)}
-        onSave={async (v) => {
+        onSave={async (input) => {
+          let v = input;
+          if (v.newPhase && v.kind !== "phase") {
+            const phaseOrder = tasks.filter((x) => x.kind === "phase").reduce((m, x) => Math.max(m, x.sort_order), -1) + 1;
+            const [ph] = await db
+              .insert(schema.project_tasks)
+              .values({ title: v.newPhase, description: null, start_date: v.start_date, end_date: v.end_date, status: "not_started", priority: "medium", kind: "phase", parent_id: null, sort_order: phaseOrder, updated_on: todayISO(), project_id: project.id, schedule_id: active?.id || null })
+              .returning();
+            v = { ...v, parent_id: ph.id };
+          }
           const sameLevel = tasks.filter((x) => (v.kind === "phase" ? x.kind === "phase" : x.parent_id === v.parent_id && x.kind !== "phase"));
           const sort_order = sameLevel.reduce((m, x) => Math.max(m, x.sort_order), -1) + 1;
-          const [row] = await db.insert(schema.project_tasks).values({ ...v, sort_order, updated_on: todayISO(), project_id: project.id, schedule_id: active?.id || null }).returning();
+          const [row] = await db.insert(schema.project_tasks).values({ ...stripNewPhase(v), sort_order, updated_on: todayISO(), project_id: project.id, schedule_id: active?.id || null }).returning();
           await logActivity({ action: "added task", details: v.title, projectId: project.id, userId: user?.id });
           // With the switch on in the dialog, the project's clients are told about the new task.
           if (v.kind !== "break") {
@@ -730,6 +794,12 @@ function TaskGantt({ tasks, color, checkCount, onOpen }: { tasks: Task[]; color:
   );
 }
 
+function stripNewPhase<T extends { newPhase?: string }>(v: T): Omit<T, "newPhase"> {
+  const { newPhase: _drop, ...rest } = v;
+  void _drop;
+  return rest;
+}
+
 function AddTaskDialog({
   open,
   people,
@@ -753,10 +823,12 @@ function AddTaskDialog({
     assigned_to: number | null;
     kind: string;
     parent_id: number | null;
+    /** When set, a new phase of this name is made first and the task goes under it. */
+    newPhase?: string;
   }) => Promise<void>;
 }) {
   const { t } = useI18n();
-  const blank = { title: "", description: "", start_date: todayISO(), end_date: "", priority: "medium", assigned_to: "none", kind: "task", parent: "none" };
+  const blank = { title: "", description: "", start_date: todayISO(), end_date: "", priority: "medium", assigned_to: "none", kind: "task", parent: "none", newPhase: "" };
   const [f, setF] = useState(blank);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -792,8 +864,10 @@ function AddTaskDialog({
                     {phases.map((p) => (
                       <SelectItem key={p.id} value={String(p.id)}>{p.title}</SelectItem>
                     ))}
+                    <SelectItem value="__new">{t("sch.newPhaseOption")}</SelectItem>
                   </SelectContent>
                 </Select>
+                {f.parent === "__new" ? <Input correct autoFocus value={f.newPhase} placeholder={t("sch.newPhaseName")} onChange={(e) => setF({ ...f, newPhase: e.target.value })} /> : null}
               </div>
             ) : null}
           </div>
@@ -843,7 +917,7 @@ function AddTaskDialog({
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>{t("clients.cancel")}</Button>
           <Button
-            disabled={busy || !f.title.trim()}
+            disabled={busy || !f.title.trim() || (f.kind !== "phase" && f.parent === "__new" && !f.newPhase.trim())}
             onClick={async () => {
               setBusy(true);
               try {
@@ -856,7 +930,8 @@ function AddTaskDialog({
                   priority: f.priority,
                   assigned_to: f.assigned_to === "none" ? null : Number(f.assigned_to),
                   kind: f.kind,
-                  parent_id: f.kind === "phase" || f.parent === "none" ? null : Number(f.parent),
+                  parent_id: f.kind === "phase" || f.parent === "none" || f.parent === "__new" ? null : Number(f.parent),
+                  newPhase: f.kind !== "phase" && f.parent === "__new" ? f.newPhase.trim() : undefined,
                 });
               } finally {
                 setBusy(false);

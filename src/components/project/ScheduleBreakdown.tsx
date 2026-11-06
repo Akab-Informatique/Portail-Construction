@@ -23,6 +23,7 @@ const noteKey = (projectId: number, fr: boolean) => `frx.scheduleNote.${projectI
  */
 export function ScheduleBreakdown({
   project,
+  scheduleName,
   tasks,
   check,
   people,
@@ -33,6 +34,8 @@ export function ScheduleBreakdown({
   readOnly = false,
 }: {
   project: Project;
+  /** The name of the schedule shown: it appears on the sheet and on the PDF. */
+  scheduleName: string;
   tasks: Task[];
   check: Record<number, { done: number; total: number }>;
   people: User[];
@@ -90,6 +93,7 @@ export function ScheduleBreakdown({
       const y1 = years.length ? Math.max(...years) : y0;
       await exportSchedulePdf({
         projectName: project.name,
+        scheduleName,
         yearRange: y0 === y1 ? String(y0) : `${y0}-${y1}`,
         rows,
         fr,
@@ -171,6 +175,7 @@ export function ScheduleBreakdown({
                 <td className="border-r px-2 text-[10px] text-muted-foreground">1</td>
                 <td colSpan={11} className="px-3 py-2 font-display text-2xl tracking-wide" style={{ color: "#ed7d1e" }}>
                   {project.name}
+                  <span className="ml-3 text-foreground/80">· {scheduleName}</span>
                 </td>
                 <td />
               </tr>
