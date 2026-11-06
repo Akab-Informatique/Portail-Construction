@@ -968,6 +968,7 @@ export const fr: Record<MessageKey, string> = {
   "nu.toggleHint": "Activé : les utilisateurs clients qui voient ce dossier reçoivent un courriel à chaque téléversement. Reste comme vous l’avez laissé.",
   "frm.filterType": "Filtrer par type de formulaire",
   "frm.allTypes": "Tous les types de formulaires",
+  "frm.view": "Voir le PDF",
   "nb.confirmDelete": "Supprimer cette note et ses fichiers?",
   "nb.private": "Privé : toi seul(e) peux lire ton bloc-notes",
   "nb.send": "Envoyer dans les notes du projet",

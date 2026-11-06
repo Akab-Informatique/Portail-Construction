@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { desc, eq } from "drizzle-orm";
-import { BookOpenCheck, Copy, FilePlus2, FileOutput, ClipboardList, Paperclip, Pencil, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
+import { BookOpenCheck, Copy, Eye, Loader2, FilePlus2, FileOutput, ClipboardList, Paperclip, Pencil, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
 import { db, schema } from "../../../db";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
 import { projectColor } from "@/lib/project-colors";
 import { backfillFormNumbers, builtinForms, deleteCustomTemplate, loadCustomTemplates, NUMBERED_FORMS, numberOf, parseData, parseDef, type FormTemplate } from "@/lib/forms";
-import { exportFormsPdf } from "@/lib/forms-pdf";
+import { buildFormsPdf, exportFormsPdf } from "@/lib/forms-pdf";
+import { downloadBlob } from "@/lib/download";
 import { attachmentsForPdf, countAttachments, removeAttachmentsOf } from "@/lib/project-files";
 import { FormBuilder } from "@/components/project/FormBuilder";
 import { FormFill, type FillTarget } from "@/components/project/FormFill";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -88,10 +90,10 @@ export function ProjectForms({ project, people }: SectionProps) {
     attachments: t("frm.attachments"),
   };
 
-  async function exportEntries(list: Entry[]) {
-    if (list.length === 0) return;
+  /** What goes into the PDF of some filled forms (the same for downloading and for viewing). */
+  async function pdfInput(list: Entry[]) {
     const files = await Promise.all(list.map((e) => attachmentsForPdf(project.id, "form", e.id)));
-    await exportFormsPdf({
+    return {
       items: list.map((e, i) => ({
         templateName: e.template_name,
         projectName: project.name,
@@ -107,7 +109,30 @@ export function ProjectForms({ project, people }: SectionProps) {
       labels: pdfLabels,
       locale,
       fileName: list.length === 1 ? `${list[0].template_name}_${project.name}_${list[0].entry_date}.pdf` : `${t("frm.binder")}_${project.name}_${new Date().toISOString().slice(0, 10)}.pdf`,
-    });
+    };
+  }
+
+  async function exportEntries(list: Entry[]) {
+    if (list.length === 0) return;
+    await exportFormsPdf(await pdfInput(list));
+  }
+
+  /** The filled form's PDF, shown in a window of the portal: nothing to download to read it. */
+  const [pdfView, setPdfView] = useState<{ url: string; blob: Blob; name: string; title: string } | null>(null);
+  const [pdfBusy, setPdfBusy] = useState<number | null>(null);
+  async function viewEntry(e: Entry) {
+    setPdfBusy(e.id);
+    try {
+      const input = await pdfInput([e]);
+      const blob = await buildFormsPdf(input);
+      setPdfView({ url: URL.createObjectURL(blob), blob, name: input.fileName.replace(/[\\/:*?"<>|]+/g, " "), title: numberOf(parseData(e.data)) ?? e.template_name });
+    } finally {
+      setPdfBusy(null);
+    }
+  }
+  function closePdf() {
+    if (pdfView) URL.revokeObjectURL(pdfView.url);
+    setPdfView(null);
   }
 
   const tabs = [
@@ -264,6 +289,9 @@ export function ProjectForms({ project, people }: SectionProps) {
                         </span>
                       </span>
                     </button>
+                    <Button size="icon-sm" variant="ghost" aria-label={t("frm.view")} title={t("frm.view")} disabled={pdfBusy === e.id} onClick={() => void viewEntry(e)}>
+                      {pdfBusy === e.id ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
+                    </Button>
                     <Button
                       size="icon-sm"
                       variant="ghost"
@@ -298,6 +326,18 @@ export function ProjectForms({ project, people }: SectionProps) {
         </div>
       )}
 
+      <Dialog open={Boolean(pdfView)} onOpenChange={(o) => !o && closePdf()}>
+        <DialogContent className="flex h-[94vh] max-h-[94vh] flex-col gap-3 p-4 sm:max-w-5xl">
+          <DialogHeader className="flex-row items-center justify-between gap-3 pr-8">
+            <DialogTitle className="truncate font-display text-xl uppercase tracking-wide">{pdfView?.title}</DialogTitle>
+            <Button size="sm" variant="outline" onClick={() => pdfView && downloadBlob(pdfView.blob, pdfView.name)}>
+              <FileOutput className="size-4" />
+              {t("wbs.export")}
+            </Button>
+          </DialogHeader>
+          {pdfView ? <iframe title={pdfView.title} src={pdfView.url} className="min-h-0 w-full flex-1 rounded-lg border bg-white" /> : null}
+        </DialogContent>
+      </Dialog>
       <FormFill project={project} target={fill} filledByName={who} onClose={() => setFill(null)} onSaved={() => void load().then(() => setView((v) => (fill?.entry ? v : "binder")))} />
       <FormBuilder open={builder.open} template={builder.template} clone={builder.clone} onClose={() => setBuilder({ open: false, template: null, clone: false })} onSaved={() => void load()} />
     </div>

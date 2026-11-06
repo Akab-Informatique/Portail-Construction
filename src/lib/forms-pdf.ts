@@ -59,7 +59,15 @@ const LINE: [number, number, number] = [150, 190, 196];
  * Filled forms as a PDF, one form after another, each starting on a new page: a grey title bar, the project, the date
  * and the type of form, then every section with its questions and answers. The FRX logo sits on the bar.
  */
-export async function exportFormsPdf(input: { items: FormPdfItem[]; labels: FormPdfLabels; locale: string; fileName: string }) {
+type FormsPdfInput = { items: FormPdfItem[]; labels: FormPdfLabels; locale: string; fileName: string };
+
+/** Downloads the forms as a PDF file. */
+export async function exportFormsPdf(input: FormsPdfInput) {
+  downloadBlob(await buildFormsPdf(input), input.fileName.replace(/[\\/:*?"<>|]+/g, " "));
+}
+
+/** The forms as a PDF, to show on screen or to save. */
+export async function buildFormsPdf(input: FormsPdfInput): Promise<Blob> {
   const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
   const W = pdf.internal.pageSize.getWidth();
   const H = pdf.internal.pageSize.getHeight();
@@ -289,5 +297,5 @@ export async function exportFormsPdf(input: { items: FormPdfItem[]; labels: Form
     pdf.text(`${labels.exportedOn} ${exported}`, M, H - 22);
     pdf.text(`${labels.page} ${i} ${labels.of} ${pages}`, W - M, H - 22, { align: "right" });
   }
-  downloadBlob(pdf.output("blob"), input.fileName.replace(/[\\/:*?"<>|]+/g, " "));
+  return pdf.output("blob");
 }
