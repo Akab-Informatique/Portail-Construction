@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Building2, Cloud, FileText, Mail, MessageSquare, Send, Settings, Sparkles, Wallet, X, type LucideIcon } from "lucide-react";
+import { Building2, ClipboardList, Cloud, FileText, Mail, MessageSquare, Send, Settings, Sparkles, Wallet, X, type LucideIcon } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -31,6 +31,7 @@ import {
   sharepointReady,
 } from "@/lib/settings";
 import { DEFAULT_COMPANY } from "@/lib/invoice";
+import { cleanRule, DEFAULT_RULE, formatNumber, loadNumbering, saveNumbering, type NumberingConfig } from "@/lib/form-numbering";
 import { EmptyState } from "@/components/EmptyState";
 import { PageSkeleton } from "@/components/Skeleton";
 import { Button } from "@/components/ui/button";
@@ -43,7 +44,7 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import type { MessageKey } from "@/lib/i18n/en";
 import type { AiSettings, SmsSettings, CompanyProfile, EmailTemplateKey, EmailTemplates, QuickBooksSettings, SharePointSettings, SmtpSettings } from "@/lib/types";
 
-const TABS = ["company", "email", "sms", "templates", "quickbooks", "sharepoint", "ai"] as const;
+const TABS = ["company", "email", "sms", "templates", "forms", "quickbooks", "sharepoint", "ai"] as const;
 type SetupTab = (typeof TABS)[number];
 
 function isSetupTab(value: string | null): value is SetupTab {
@@ -58,6 +59,7 @@ const GROUPS: { label: MessageKey; items: { id: SetupTab; icon: LucideIcon; labe
       { id: "email", icon: Mail, label: "settings.tab.email" },
       { id: "sms", icon: MessageSquare, label: "settings.tab.sms" },
       { id: "templates", icon: FileText, label: "settings.tab.templates" },
+      { id: "forms", icon: ClipboardList, label: "settings.tab.forms" },
     ],
   },
   {
@@ -97,6 +99,7 @@ export function ConfigSettingsPage() {
   const [sms, setSms] = useState<SmsSettings>(EMPTY_SMS);
   const [templates, setTemplates] = useState<EmailTemplates>(DEFAULT_EMAIL_TEMPLATES);
   const [spTest, setSpTest] = useState<string | null>(null);
+  const [numbering, setNumbering] = useState<NumberingConfig>({});
 
   // The people tabs moved to Administration; an old link still lands in the right place.
   useEffect(() => {
@@ -121,6 +124,7 @@ export function ConfigSettingsPage() {
         setAi(await getAiSettings());
         setSms(await getSmsSettings());
         setTemplates(await getEmailTemplates());
+        setNumbering(await loadNumbering());
       } catch (err) {
         console.error("settings load failed", err);
       } finally {
@@ -207,6 +211,7 @@ export function ConfigSettingsPage() {
     await setSetting(AI_KEY, JSON.stringify(ai));
     await setSetting(SMS_KEY, JSON.stringify(sms));
     await setSetting(EMAIL_TEMPLATES_KEY, JSON.stringify(templates));
+    await saveNumbering(Object.fromEntries(Object.entries(numbering).map(([k, r]) => [k, cleanRule(r)])));
     setSaving(false);
     setSaved(true);
   }
@@ -387,6 +392,52 @@ export function ConfigSettingsPage() {
                 </Button>
                 {smtpTest ? <p className="w-full text-sm text-muted-foreground">{smtpTest}</p> : null}
               </div>
+            </Card>
+            <SaveBar saved={saved} saving={saving} />
+          </form>
+        </TabsContent>
+
+        <TabsContent value="forms">
+          <form onSubmit={onSave} className="grid gap-5">
+            <Card className="gap-4 p-5">
+              <div>
+                <p className="text-sm font-medium">{t("settings.numbering.title")}</p>
+                <p className="text-xs text-muted-foreground">{t("settings.numbering.hint")}</p>
+              </div>
+              {(() => {
+                const key = "builtin:work-order";
+                const rule = cleanRule(numbering[key] ?? DEFAULT_RULE);
+                const set = (patch: Partial<typeof rule>) => setNumbering({ ...numbering, [key]: { ...rule, ...patch } });
+                return (
+                  <>
+                    <p className="font-display text-lg uppercase tracking-wide">{t("settings.numbering.workOrder")}</p>
+                    <div className="grid gap-4 sm:grid-cols-4">
+                      <Field label={t("settings.numbering.prefix")}>
+                        <Input value={rule.prefix} maxLength={8} onChange={(e) => set({ prefix: e.target.value })} />
+                      </Field>
+                      <Field label={t("settings.numbering.separator")}>
+                        <select className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm" value={rule.separator} onChange={(e) => set({ separator: e.target.value })}>
+                          {[["-", "BT-0001"], ["_", "BT_0001"], [".", "BT.0001"], ["/", "BT/0001"], [" ", "BT 0001"], ["", "BT0001"]].map(([v, l]) => (
+                            <option key={l} value={v}>
+                              {l}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label={t("settings.numbering.digits")}>
+                        <Input type="number" min={1} max={8} value={rule.digits} onChange={(e) => set({ digits: Number(e.target.value) })} />
+                      </Field>
+                      <Field label={t("settings.numbering.start")}>
+                        <Input type="number" min={1} value={rule.start} onChange={(e) => set({ start: Number(e.target.value) })} />
+                      </Field>
+                    </div>
+                    <p className="rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+                      {t("settings.numbering.preview")} <strong className="tabular-nums">{formatNumber(rule, rule.start)}</strong>, <strong className="tabular-nums">{formatNumber(rule, rule.start + 1)}</strong>…
+                    </p>
+                    <p className="text-xs text-muted-foreground">{t("settings.numbering.auto")}</p>
+                  </>
+                );
+              })()}
             </Card>
             <SaveBar saved={saved} saving={saving} />
           </form>

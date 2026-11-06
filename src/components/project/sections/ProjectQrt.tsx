@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { asc, eq } from "drizzle-orm";
-import { CheckCircle2, Clock, HelpCircle, Loader2, MessageCircleQuestion, Pencil, Plus, Search, Send, Trash2 } from "lucide-react";
+import { Camera, CheckCircle2, Clock, HelpCircle, Loader2, MessageCircleQuestion, Paperclip, Pencil, Plus, Search, Send, Trash2, X } from "lucide-react";
 import { db, schema } from "../../../db";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { projectColor } from "@/lib/project-colors";
-import { countAttachments, removeAttachmentsOf } from "@/lib/project-files";
+import { addAttachment, countAttachments, removeAttachmentsOf } from "@/lib/project-files";
 import { notifyEvent, notifySummary, sendNotification } from "@/lib/notify";
+import { notifyProjectEvent } from "@/lib/notify-events";
+import { NotifyToggle } from "@/components/project/NotifyToggle";
 import { Attachments } from "@/components/project/Attachments";
 import { NotifyPicker, type NotifyChoice } from "@/components/project/NotifyPicker";
 import { Button } from "@/components/ui/button";
@@ -39,6 +41,9 @@ export function ProjectQrt({ project, client, people, members }: SectionProps) {
   const [query, setQuery] = useState("");
   const [askOpen, setAskOpen] = useState(false);
   const [question, setQuestion] = useState("");
+  const [pending, setPending] = useState<File[]>([]);
+  const pickFile = useRef<HTMLInputElement>(null);
+  const pickCamera = useRef<HTMLInputElement>(null);
   const [fromClient, setFromClient] = useState(false);
   const [notify, setNotify] = useState<NotifyChoice>({ userIds: [], channels: ["email", "sms"] });
   const [answering, setAnswering] = useState<Entry | null>(null);
@@ -116,7 +121,19 @@ export function ProjectQrt({ project, client, people, members }: SectionProps) {
         answered_at: null,
         prefilled: 0,
       }).returning();
-      // a client's question tells the people on the project by email
+      // Files and photos that go with the question (a failed one is said, not swallowed).
+      let failedFiles = 0;
+      if (created) {
+        for (const file of pending) {
+          try {
+            await addAttachment(file, { projectId: project.id, owner: "qrt", ownerId: created.id, userId: user?.id ?? null });
+          } catch {
+            failedFiles += 1;
+          }
+        }
+      }
+      if (failedFiles) setMessage(t("att.someFailed", { n: failedFiles }));
+      // a client's question tells the people on the project (and the administrators) by email
       if (viewer && created) void notifyEvent("qrt", created.id);
       if (!viewer && notify.userIds.length && notify.channels.length) {
         const result = await sendNotification({
@@ -128,6 +145,7 @@ export function ProjectQrt({ project, client, people, members }: SectionProps) {
         setMessage(notifySummary(result, t as never));
       }
       setQuestion("");
+      setPending([]);
       setAskOpen(false);
       await load();
     } finally {
@@ -142,6 +160,16 @@ export function ProjectQrt({ project, client, people, members }: SectionProps) {
       .update(schema.project_qrt)
       .set({ answer: text || null, status: text ? "answered" : "open", answered_by: text ? user?.id ?? null : null, answered_at: text ? new Date() : null })
       .where(eq(schema.project_qrt.id, answering.id));
+    // With the switch on, the client who asked is told the answer is there.
+    if (text) {
+      void notifyProjectEvent({
+        kind: "qrt_answer",
+        projectId: project.id,
+        audience: "clients",
+        subject: `${t("nt.subject.qrt")} · ${project.project_number} ${project.name}`,
+        text: `${answering.question}\n\n${text.slice(0, 500)}\n\n${window.location.origin}/projects/${project.id}/qrt`,
+      });
+    }
     setAnswering(null);
     await load();
   }
@@ -253,7 +281,7 @@ export function ProjectQrt({ project, client, people, members }: SectionProps) {
                       <Trash2 className="size-4" />
                     </Button>
                   </div>
-                  {viewer && !fileCount[e.id] ? null : <Attachments projectId={project.id} owner="qrt" ownerId={e.id} canEdit={!viewer} compact={!fileCount[e.id]} onChange={() => void load()} />}
+                  {viewer && !fileCount[e.id] && e.asked_by !== user?.id ? null : <Attachments projectId={project.id} owner="qrt" ownerId={e.id} canEdit={!viewer || e.asked_by === user?.id} compact={!fileCount[e.id]} onChange={() => void load()} />}
                 </Card>
               </li>
             );
@@ -270,6 +298,32 @@ export function ProjectQrt({ project, client, people, members }: SectionProps) {
             <div className="space-y-1.5">
               <Label>{t("qrt.question")}</Label>
               <Textarea autoFocus rows={4} value={question} onChange={(e) => setQuestion(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={() => pickFile.current?.click()}>
+                  <Paperclip className="size-4" />
+                  {t("att.add")}
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => pickCamera.current?.click()}>
+                  <Camera className="size-4" />
+                  {t("att.photo")}
+                </Button>
+                <input ref={pickFile} type="file" multiple className="sr-only" onChange={(e) => { setPending((p) => [...p, ...Array.from(e.target.files ?? [])]); e.target.value = ""; }} />
+                <input ref={pickCamera} type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => { setPending((p) => [...p, ...Array.from(e.target.files ?? [])]); e.target.value = ""; }} />
+              </div>
+              {pending.length ? (
+                <ul className="flex flex-wrap gap-2">
+                  {pending.map((f, i) => (
+                    <li key={`${f.name}-${i}`} className="inline-flex max-w-full items-center gap-1.5 rounded-full border bg-muted/40 py-1 pr-1 pl-3 text-xs">
+                      <span className="truncate">{f.name}</span>
+                      <button type="button" aria-label={t("exp.delete")} className="rounded-full p-0.5 hover:bg-foreground/10" onClick={() => setPending((p) => p.filter((_, j) => j !== i))}>
+                        <X className="size-3" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
             {viewer ? null : (
               <>
@@ -297,6 +351,7 @@ export function ProjectQrt({ project, client, people, members }: SectionProps) {
             <DialogTitle className="text-base">{answering?.question}</DialogTitle>
           </DialogHeader>
           <Textarea autoFocus rows={6} value={answerText} placeholder={t("qrt.answerPlaceholder")} onChange={(e) => setAnswerText(e.target.value)} />
+          <NotifyToggle kind="qrt_answer" who="clients" />
           <DialogFooter>
             <Button variant="outline" onClick={() => setAnswering(null)}>{t("clients.cancel")}</Button>
             <Button onClick={() => void saveAnswer()}>{t("settings.save")}</Button>

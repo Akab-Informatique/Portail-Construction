@@ -215,7 +215,7 @@ export function AuthButton({
       <button
         {...props}
         style={{ clipPath: "polygon(0 0, 100% 0, 100% 55%, 14% 100%, 0 100%)" }}
-        className="group flex h-11 min-w-[210px] items-center justify-start gap-3 bg-[#fbaa19] pl-7 pr-14 font-display text-[20px] uppercase tracking-[0.22em] text-black transition-colors hover:bg-[#ffb935] active:translate-y-px disabled:opacity-60"
+        className="group flex min-h-11 min-w-[210px] max-w-full items-center justify-start gap-3 bg-[#fbaa19] py-2 pl-7 pr-12 text-left font-display text-[18px] uppercase leading-tight tracking-[0.12em] text-black transition-colors hover:bg-[#ffb935] active:translate-y-px disabled:opacity-60"
       >
         {children}
       </button>

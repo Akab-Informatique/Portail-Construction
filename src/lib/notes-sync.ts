@@ -51,13 +51,14 @@ export async function updateProjectNote(id: number, patch: { body: string; visib
  */
 export async function deleteProjectNote(note: { id: number; project_id: number; auto: number }) {
   await dbReady;
-  await removeAttachmentsOf(note.project_id, "note", note.id);
-  await db.delete(schema.note_comments).where(eq(schema.note_comments.note_id, note.id));
+  // The note itself goes first, so nobody (a client included) keeps seeing it even if cleaning up what hung on it fails.
   if (note.auto === 1) {
     await db.update(schema.project_notes).set({ dismissed: 1 }).where(eq(schema.project_notes.id, note.id));
   } else {
     await db.delete(schema.project_notes).where(eq(schema.project_notes.id, note.id));
   }
+  await removeAttachmentsOf(note.project_id, "note", note.id).catch(() => undefined);
+  await db.delete(schema.note_comments).where(eq(schema.note_comments.note_id, note.id)).catch(() => undefined);
   await db.update(schema.personal_notes).set({ shared_note_id: null, shared_visibility: null }).where(eq(schema.personal_notes.shared_note_id, note.id));
   notifyNotesChanged();
 }

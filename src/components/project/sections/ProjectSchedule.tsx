@@ -11,6 +11,8 @@ import { EVENT_TYPES, PRIORITIES } from "@/lib/constants";
 import { projectColor } from "@/lib/project-colors";
 import { countAttachments } from "@/lib/project-files";
 import { logActivity } from "@/lib/activity";
+import { notifyProjectEvent } from "@/lib/notify-events";
+import { NotifyToggle } from "@/components/project/NotifyToggle";
 import { PortfolioCalendar, marksFromPortfolio } from "@/components/PortfolioCalendar";
 import { TaskDrawer, type Task } from "@/components/project/TaskDrawer";
 import { TaskDetailDialog } from "@/components/project/TaskDetailDialog";
@@ -539,6 +541,16 @@ export function ProjectSchedule({ project, people }: SectionProps) {
           const sort_order = sameLevel.reduce((m, x) => Math.max(m, x.sort_order), -1) + 1;
           const [row] = await db.insert(schema.project_tasks).values({ ...v, sort_order, updated_on: todayISO(), project_id: project.id }).returning();
           await logActivity({ action: "added task", details: v.title, projectId: project.id, userId: user?.id });
+          // With the switch on in the dialog, the project's clients are told about the new task.
+          if (v.kind !== "break") {
+            void notifyProjectEvent({
+              kind: "task",
+              projectId: project.id,
+              audience: "clients",
+              subject: `${t("nt.subject.task")} · ${project.project_number} ${project.name}`,
+              text: `${v.title}${v.end_date ? ` (${formatDate(v.end_date, locale)})` : ""}\n\n${window.location.origin}/projects/${project.id}/tasks`,
+            });
+          }
           setAddOpen(false);
           await load();
           if (v.kind !== "phase") setOpenId(row.id);
@@ -734,6 +746,7 @@ function AddTaskDialog({
             <Textarea rows={3} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} />
           </div>
         </div>
+        <NotifyToggle kind="task" who="clients" />
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>{t("clients.cancel")}</Button>
           <Button

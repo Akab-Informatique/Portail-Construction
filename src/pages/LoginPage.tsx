@@ -25,7 +25,8 @@ export function LoginPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  if (ready && user) return <Navigate to={from} replace />;
+  // A client always starts on the Dashboard (the home page), whatever address they came from.
+  if (ready && user) return <Navigate to={user.user_type === "external" ? "/" : from} replace />;
 
   function translate(msg: string) {
     const translated = t(msg as "login.error.invalid");

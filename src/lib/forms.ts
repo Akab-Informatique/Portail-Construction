@@ -1,5 +1,6 @@
 import { desc, eq } from "drizzle-orm";
 import { db, dbReady, schema } from "../db";
+import { cleanRule, formatNumber, loadNumbering, parseNumber } from "./form-numbering";
 import type { Locale } from "./types";
 
 export type FieldType = "text" | "longtext" | "date" | "time" | "number" | "yesno" | "select" | "photo";
@@ -198,14 +199,14 @@ export async function nextFormNumber(templateKey: string): Promise<string | null
     /* fall back to the local count */
   }
   await dbReady;
+  const cfg = cleanRule((await loadNumbering())[templateKey] ?? { prefix: rule.prefix });
   const rows = await db.select({ data: schema.form_entries.data }).from(schema.form_entries).where(eq(schema.form_entries.template_key, templateKey));
-  let max = 0;
+  let max = cfg.start - 1;
   for (const r of rows) {
-    const n = numberOf(parseData(r.data));
-    const m = n && new RegExp(`^${rule.prefix}-(\\d+)$`).exec(n);
-    if (m) max = Math.max(max, Number(m[1]));
+    const n = parseNumber(cfg, numberOf(parseData(r.data)));
+    if (n !== null) max = Math.max(max, n);
   }
-  return `${rule.prefix}-${String(max + 1).padStart(4, "0")}`;
+  return formatNumber(cfg, max + 1);
 }
 
 /**
@@ -219,15 +220,16 @@ export async function backfillFormNumbers(): Promise<number> {
     const rows = await db.select().from(schema.form_entries).where(eq(schema.form_entries.template_key, key));
     const missing = rows.filter((r) => !numberOf(parseData(r.data))).sort((a, b) => a.id - b.id);
     if (missing.length === 0) continue;
-    let max = 0;
+    const cfg = cleanRule((await loadNumbering())[key] ?? { prefix: rule.prefix });
+    let max = cfg.start - 1;
     for (const r of rows) {
-      const m = new RegExp(`^${rule.prefix}-(\\d+)$`).exec(numberOf(parseData(r.data)) ?? "");
-      if (m) max = Math.max(max, Number(m[1]));
+      const n = parseNumber(cfg, numberOf(parseData(r.data)));
+      if (n !== null) max = Math.max(max, n);
     }
     for (const r of missing) {
       max += 1;
       const data = parseData(r.data);
-      data._meta = [{ number: `${rule.prefix}-${String(max).padStart(4, "0")}` }];
+      data._meta = [{ number: formatNumber(cfg, max) }];
       await db.update(schema.form_entries).set({ data: JSON.stringify(data) }).where(eq(schema.form_entries.id, r.id));
       done += 1;
     }

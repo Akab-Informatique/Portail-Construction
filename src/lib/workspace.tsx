@@ -96,6 +96,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
 
+  // A client who has just signed in can be asked before the server has their projects ready: ask once more, so the list of
+  // projects is there without having to leave the page and come back.
+  useEffect(() => {
+    if (!ready || user?.user_type !== "external" || projects.length > 0) return;
+    const timer = window.setTimeout(() => void refresh(), 1500);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, user?.id]);
+
   const projectMatch = location.pathname.match(/^\/projects\/(\d+)/);
   const clientMatch = location.pathname.match(/^\/clients\/(\d+)/);
   const urlProjectId = projectMatch ? Number(projectMatch[1]) : null;

@@ -149,6 +149,31 @@ async function loadGrants(user: ApiUser) {
       subjects.set(who, nodes);
     }
   }
+  // A client whose pages and actions were set: Interact on Documentation (add, change) lets them upload and download on the folders
+  // they can see. The folder levels still decide which folders those are.
+  if (external) {
+    const marker = await runSql(
+      `SELECT 1 FROM user_permissions WHERE user_id = $1 AND module = 'client_rights' AND can_view = 1
+       UNION ALL SELECT 1 FROM access_group_permissions gp JOIN user_access_groups ug ON ug.group_id = gp.group_id AND ug.user_id = $1 WHERE gp.module = 'client_rights' AND gp.can_view = 1`,
+      [user.id],
+    );
+    if (marker.rows.length > 0) {
+      const perms = await runSql(
+        `SELECT can_create, can_edit FROM user_permissions WHERE user_id = $1 AND module = 'app_client_documents' AND scope_type = 'global'
+         UNION ALL SELECT gp.can_create, gp.can_edit FROM access_group_permissions gp JOIN user_access_groups ug ON ug.group_id = gp.group_id AND ug.user_id = $1 WHERE gp.module = 'app_client_documents'`,
+        [user.id],
+      );
+      const canCreate = (perms.rows as unknown[][]).some((r) => Number(r[0]) === 1);
+      const canEdit = (perms.rows as unknown[][]).some((r) => Number(r[1]) === 1);
+      for (const nodes of subjects.values()) {
+        for (const g of nodes.values()) {
+          if (!g.view) continue;
+          if (canCreate) g.upload = true;
+          if (canEdit) g.edit = true;
+        }
+      }
+    }
+  }
   return subjects;
 }
 

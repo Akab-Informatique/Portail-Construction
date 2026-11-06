@@ -82,8 +82,9 @@ export default async function handler(
         [row.project_id],
       )
     ).rows as Person[];
-    // Nobody assigned yet: the administrators hear about it.
-    if (!recipients.length) recipients = (await serverQuery("SELECT id, name, email, locale FROM users WHERE is_active = 1 AND is_admin = 1 AND user_type = 'internal'")).rows as Person[];
+    // The administrators always hear about a client's question, on top of the people assigned to the project.
+    const admins = (await serverQuery("SELECT id, name, email, locale FROM users WHERE is_active = 1 AND is_admin = 1 AND user_type = 'internal'")).rows as Person[];
+    for (const a of admins) if (!recipients.some((r) => r.id === a.id)) recipients.push(a);
     project = `${row.project_number} ${row.project}`.trim();
     text = row.question;
     path = `/projects/${row.project_id}/qrt`;

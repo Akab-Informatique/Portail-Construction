@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { eq } from "drizzle-orm";
 import { db, dbReady, schema } from "../db";
 import { useAuth } from "./auth";
+import { CLIENT_MARKER } from "./client-rights";
 import { useWorkspace } from "./workspace";
 import type { Client, SessionUser, SharePointShare } from "./types";
 
@@ -124,7 +125,7 @@ export function sharedItems(shares: SharePointShare[], subjects: Subject[]): str
 
 /** The rights given to the signed-in person (or, for an administrator looking through someone's eyes, to that kind of person). */
 export function useDocShares() {
-  const { user } = useAuth();
+  const { user, can, permissions } = useAuth();
   const { clients, selectedClient } = useWorkspace();
   const [shares, setShares] = useState<SharePointShare[]>([]);
   const [loading, setLoading] = useState(true);
@@ -140,10 +141,21 @@ export function useDocShares() {
       // What is set for the person on a folder wins over their groups' level on that same folder.
       if (i < 0) base.push(g);
     }
+    // A client whose pages and actions were set: Interact on Documentation lets them upload and download where they can view.
+    const asClient = user && (user.user_type === "external" || user.view_as === "client") && !user.is_admin;
+    if (asClient && can(CLIENT_MARKER, "view")) {
+      const up = can("app_client_documents", "create");
+      const full = can("app_client_documents", "edit");
+      for (const row of base) {
+        if (row.can_view !== 1) continue;
+        if (up) row.can_upload = 1;
+        if (full) row.can_edit = 1;
+      }
+    }
     setShares(base);
     setLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, user?.view_as]);
+  }, [user?.id, user?.view_as, permissions]);
   useEffect(() => {
     void load().catch(() => setLoading(false));
   }, [load, user?.id, user?.view_as]);

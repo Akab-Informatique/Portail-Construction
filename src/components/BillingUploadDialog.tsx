@@ -22,6 +22,8 @@ import {
   type FileDetails,
 } from "@/lib/billing-files";
 import { GST_RATE, QST_RATE, roundMoney } from "@/lib/invoice";
+import { notifyProjectEvent } from "@/lib/notify-events";
+import { NotifyToggle } from "@/components/project/NotifyToggle";
 import { useI18n } from "@/lib/i18n";
 import type { BillingFile, BillingRequest, Client, Project } from "@/lib/types";
 
@@ -229,6 +231,16 @@ export function BillingUploadDialog({
         project_id: projectId === NONE ? null : Number(projectId),
       };
       await saveFileDetails(record, details, publish);
+      // A published invoice or quote can be announced to the project's clients (when the switch below is on).
+      if (publish && details.project_id) {
+        void notifyProjectEvent({
+          kind: "billing",
+          projectId: details.project_id,
+          audience: "clients",
+          subject: `${t(kind === "invoice" ? "nt.subject.invoice" : "nt.subject.quote")} · ${details.number || details.title}`,
+          text: `${details.title || details.number}\n\n${window.location.origin}/billing`,
+        });
+      }
       onDone();
     } catch (err) {
       setError(tr(err, "billing.upload.failed"));
@@ -425,6 +437,7 @@ export function BillingUploadDialog({
               <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
             </Field>
             <p className="text-xs text-muted-foreground">{t("billing.review.publishHint")}</p>
+            <NotifyToggle kind="billing" who="clients" />
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
           </div>
         )}

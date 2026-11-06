@@ -43,7 +43,47 @@ export default async function handler(
   if (!user) return res.status(401).json({ error: "err.unauthorized" });
   if (!isInternalStaff(user)) return res.status(403).json({ error: "err.forbidden" });
 
-  const ids = (Array.isArray(req.body?.user_ids) ? req.body.user_ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, MAX_RECIPIENTS);
+  let ids = (Array.isArray(req.body?.user_ids) ? req.body.user_ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, MAX_RECIPIENTS);
+
+  // A project event (a document, an invoice, a task...): the people to tell are the project's clients and/or staff, found here.
+  const projectId = Number(req.body?.project_id);
+  if (Number.isInteger(projectId) && projectId > 0) {
+    const audience = String(req.body?.audience ?? "clients");
+    const allowedStaff = (
+      await serverQuery(
+        `SELECT 1 FROM users u WHERE u.id = $1 AND (u.is_admin = 1 OR u.all_clients <> 0 OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = $2 AND pm.user_id = u.id))`,
+        [user.id, projectId],
+      )
+    ).rows;
+    if (!allowedStaff.length) return res.status(403).json({ error: "err.forbidden" });
+    const found: number[] = [];
+    if (audience === "clients" || audience === "both") {
+      const rows = (
+        await serverQuery(
+          `SELECT DISTINCT u.id FROM users u
+           JOIN client_users cu ON cu.user_id = u.id
+           JOIN projects p ON p.client_id = cu.client_id AND p.id = $1
+           WHERE u.is_active = 1 AND u.user_type = 'external'
+             AND (EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = $1 AND pm.user_id = u.id)
+               OR EXISTS (SELECT 1 FROM group_projects gp JOIN user_access_groups ug ON ug.group_id = gp.group_id AND ug.user_id = u.id WHERE gp.project_id = $1))`,
+          [projectId],
+        )
+      ).rows as { id: number }[];
+      found.push(...rows.map((r) => r.id));
+    }
+    if (audience === "staff" || audience === "both") {
+      const rows = (
+        await serverQuery(
+          `SELECT DISTINCT u.id FROM users u WHERE u.is_active = 1 AND u.user_type = 'internal' AND u.id <> $2
+             AND (u.is_admin = 1 OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = $1 AND pm.user_id = u.id))`,
+          [projectId, user.id],
+        )
+      ).rows as { id: number }[];
+      found.push(...rows.map((r) => r.id));
+    }
+    ids = [...new Set(found)].slice(0, MAX_RECIPIENTS);
+    if (!ids.length) return res.status(200).json({ email: 0, sms: 0, failed: [], skipped: ["none"] });
+  }
   const channels = (Array.isArray(req.body?.channels) ? req.body.channels : []).map(String);
   const subject = String(req.body?.subject ?? "").replace(/[\r\n]+/g, " ").slice(0, 200);
   const text = String(req.body?.text ?? "").slice(0, 4000);

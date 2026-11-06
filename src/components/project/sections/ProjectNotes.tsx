@@ -50,6 +50,7 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
   const viewer = user?.user_type === "external" || user?.view_as === "client";
   // A client comments only when its pages and actions let it (Interact on Notes).
   const canComment = useCanAct("notes", "create");
+  const [clientUserIds, setClientUserIds] = useState<number[]>([]);
   const [comments, setComments] = useState<Record<number, Comment[]>>({});
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [sendingComment, setSendingComment] = useState<number | null>(null);
@@ -66,20 +67,35 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
     ]);
     setNotes(rows);
     setFileCount(counts);
+    if (!viewer) {
+      const links = await db.select({ user_id: schema.client_users.user_id }).from(schema.client_users).where(eq(schema.client_users.client_id, project.client_id)).catch(() => []);
+      setClientUserIds(links.map((l) => l.user_id));
+    }
     const grouped: Record<number, Comment[]> = {};
     for (const c of commentRows) (grouped[c.note_id] ??= []).push(c);
     setComments(grouped);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project.id, isAdminUser]);
+  }, [project.id, isAdminUser, viewer]);
   useEffect(() => {
     void load();
     // an edit or a deletion made from the notebook (or another tab of the project) shows here at once
     const on = () => void load();
     window.addEventListener(NOTES_EVENT, on);
-    return () => window.removeEventListener(NOTES_EVENT, on);
+    // What someone else added, changed or deleted (a client sees an administrator's deletion) shows up on its own: when the
+    // person comes back to the page, and every half minute.
+    const onVisible = () => document.visibilityState === "visible" && void load();
+    document.addEventListener("visibilitychange", onVisible);
+    const timer = window.setInterval(onVisible, 30000);
+    return () => {
+      window.removeEventListener(NOTES_EVENT, on);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.clearInterval(timer);
+    };
   }, [load]);
 
-  const staff = people.filter((p) => p.user_type === "internal");
+  // Everyone who can be told: every active staff member, and the company's client users when the note is for everyone.
+  const staff = people.filter((p) => p.user_type === "internal" && p.is_active === 1);
+  const clientPeople = people.filter((p) => p.user_type === "external" && p.is_active === 1 && clientUserIds.includes(p.id));
   const inCharge = members.map((m) => m.user_id);
   const who = (id: number | null) => people.find((p) => p.id === id)?.name ?? "—";
   const isAdmin = Boolean(user?.is_admin);
@@ -106,7 +122,15 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
     setMessage(null);
     try {
       const [row] = await db.insert(schema.project_notes).values({ project_id: project.id, user_id: user?.id ?? null, body: text, visibility, created_at: new Date() }).returning();
-      for (const file of pending) await addAttachment(file, { projectId: project.id, owner: "note", ownerId: row.id, userId: user?.id ?? null }).catch(() => undefined);
+      let failedFiles = 0;
+      for (const file of pending) {
+        try {
+          await addAttachment(file, { projectId: project.id, owner: "note", ownerId: row.id, userId: user?.id ?? null });
+        } catch (err) {
+          failedFiles += 1;
+          console.error("note attachment failed", err);
+        }
+      }
       await logActivity({ action: "added note", details: text.slice(0, 80), projectId: project.id, userId: user?.id });
       if (notify.userIds.length && notify.channels.length) {
         const result = await sendNotification({
@@ -117,6 +141,7 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
         });
         setMessage(notifySummary(result, t as never));
       }
+      if (failedFiles) setMessage((m) => [m, t("att.someFailed", { n: failedFiles })].filter(Boolean).join(" · "));
       setBody("");
       setPending([]);
       await load();
@@ -191,7 +216,7 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
           </ul>
         ) : null}
 
-        <NotifyPicker people={staff} value={notify} onChange={setNotify} preselect={inCharge} />
+        <NotifyPicker people={visibility === "everyone" ? [...staff, ...clientPeople] : staff} value={notify} onChange={setNotify} preselect={inCharge} />
 
         <Button onClick={() => void post()} disabled={busy || !body.trim()}>
           {busy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}

@@ -227,6 +227,9 @@ async function ensureApiRoles() {
     // A client account reads the notes shared with it, the QRT and the files on them; it may comment and ask questions.
     `GRANT SELECT ON project_notes, project_attachments, project_qrt TO ${ROLE_CLIENT}`,
     `GRANT INSERT ON note_comments, project_qrt TO ${ROLE_CLIENT}`,
+    // A client may add files and photos to its own QRT questions (and nothing else).
+    `GRANT INSERT ON project_attachments TO ${ROLE_CLIENT}`,
+    ...policy("project_attachments", "frx_client_attach", `FOR INSERT TO ${ROLE_CLIENT} WITH CHECK (owner_type = 'qrt' AND uploaded_by = ${ME} AND frx_project_ok(project_id))`),
     `GRANT SELECT (${publicCols}) ON users TO ${all}`,
     `GRANT INSERT, UPDATE, DELETE ON users TO ${ROLE_ADMIN}`,
     `GRANT UPDATE (${USER_SELF_COLUMNS.join(", ")}) ON users TO ${ROLE_USER}, ${ROLE_CLIENT}`,
@@ -1407,23 +1410,30 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       }
       await ensureSchema();
       const key = String(req.body?.template_key ?? "");
-      const prefix = String(req.body?.prefix ?? "").replace(/[^A-Za-z]/g, "").slice(0, 6).toUpperCase();
-      if (!key || !prefix) {
+      const fallbackPrefix = String(req.body?.prefix ?? "").replace(/[^A-Za-z0-9]/g, "").slice(0, 8).toUpperCase();
+      if (!key || !fallbackPrefix) {
         res.status(400).json({ error: "err.badRequest" });
         return;
       }
+      // The numbering rule an administrator set in Setup (prefix, separator, digits, first number); BT-0001 until then.
+      const saved = (await storedJson<Record<string, { prefix?: string; separator?: string; digits?: number; start?: number }>>("form_numbering"))?.[key];
+      const prefix = String(saved?.prefix ?? fallbackPrefix).replace(/[^A-Za-z0-9]/g, "").slice(0, 8).toUpperCase() || fallbackPrefix;
+      const separator = ["-", "_", ".", "/", " ", ""].includes(String(saved?.separator ?? "-")) ? String(saved?.separator ?? "-") : "-";
+      const digits = Math.min(8, Math.max(1, Math.round(Number(saved?.digits ?? 4)) || 4));
+      const start = Math.max(1, Math.round(Number(saved?.start ?? 1)) || 1);
+      const esc = (v: string) => v.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+      const pattern = new RegExp(`^${esc(prefix)}${esc(separator)}(\\d+)$`);
       const found = await getPool().query("SELECT data FROM form_entries WHERE template_key = $1", [key]);
-      let max = 0;
+      let max = start - 1;
       for (const row of found.rows as { data: string }[]) {
         try {
-          const n = String(JSON.parse(row.data)?._meta?.[0]?.number ?? "");
-          const m = new RegExp(`^${prefix}-(\\d+)$`).exec(n);
+          const m = pattern.exec(String(JSON.parse(row.data)?._meta?.[0]?.number ?? ""));
           if (m) max = Math.max(max, Number(m[1]));
         } catch {
           /* an entry without a readable number */
         }
       }
-      return res.status(200).json({ number: `${prefix}-${String(max + 1).padStart(4, "0")}` });
+      return res.status(200).json({ number: `${prefix}${separator}${String(max + 1).padStart(digits, "0")}` });
     }
     // An administrator reads or sets another person's own settings (Outlook calendar, morning email). Those rows are private to
     // their owner for the browser, so this goes through the server.
