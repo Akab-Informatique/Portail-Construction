@@ -1050,6 +1050,7 @@ export const fr: Record<MessageKey, string> = {
   "frm.filterType": "Filtrer par type de formulaire",
   "frm.allTypes": "Tous les types de formulaires",
   "frm.view": "Voir le PDF",
+  "att.someFailedNote": "{n} fichier(s) n’ont pas pu être ajoutés à la note. Ouvrez la note pour les rajouter.",
   "att.someFailed": "{n} fichier(s) n’ont pas pu être ajoutés. La question a été envoyée.",
   "settings.tab.forms": "Formulaires",
   "settings.group.forms": "Formulaires",

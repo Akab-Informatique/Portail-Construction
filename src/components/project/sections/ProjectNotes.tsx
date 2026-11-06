@@ -141,7 +141,7 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
         });
         setMessage(notifySummary(result, t as never));
       }
-      if (failedFiles) setMessage((m) => [m, t("att.someFailed", { n: failedFiles })].filter(Boolean).join(" · "));
+      if (failedFiles) setMessage((m) => [m, t("att.someFailedNote", { n: failedFiles })].filter(Boolean).join(" · "));
       setBody("");
       setPending([]);
       await load();
@@ -308,7 +308,7 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
                     ) : (
                       <p className="whitespace-pre-wrap text-sm leading-relaxed">{n.body}</p>
                     )}
-                    {fileCount[n.id] ? <Attachments projectId={project.id} owner="note" ownerId={n.id} canEdit={!viewer && (mine || isAdmin)} onChange={() => void load()} /> : null}
+                    {fileCount[n.id] || (!viewer && (mine || isAdmin) && n.auto === 0) ? <Attachments projectId={project.id} owner="note" ownerId={n.id} canEdit={!viewer && (mine || isAdmin)} onChange={() => void load()} /> : null}
                     <div className="space-y-2 border-t pt-3">
                       {(comments[n.id] ?? []).map((c) => (
                         <div key={c.id} className="flex gap-2.5">

@@ -1048,6 +1048,7 @@ export const en = {
   "frm.filterType": "Filter by form type",
   "frm.allTypes": "All form types",
   "frm.view": "View the PDF",
+  "att.someFailedNote": "{n} file(s) could not be added to the note. Open the note to add them again.",
   "att.someFailed": "{n} file(s) could not be added. The question was sent.",
   "settings.tab.forms": "Forms",
   "settings.group.forms": "Forms",
