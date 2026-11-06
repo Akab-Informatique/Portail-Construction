@@ -45,6 +45,7 @@ const ADMIN_TABLES = [
   "report_access",
   "sharepoint_shares",
   "feature_requests",
+  "feature_comments",
   // The link between a project and its SharePoint folder decides which folder the document rights apply to.
   "sharepoint_folders",
 ];
@@ -223,7 +224,7 @@ async function ensureApiRoles() {
        END LOOP;
      END $$`,
     // Project money is for administrators: budgets and costs are read by nobody else, whatever SQL is sent.
-    `REVOKE ALL ON project_finance, project_costs, budget_items, feature_requests FROM ${ROLE_USER}, ${ROLE_CLIENT}`,
+    `REVOKE ALL ON project_finance, project_costs, budget_items, feature_requests, feature_comments FROM ${ROLE_USER}, ${ROLE_CLIENT}`,
     // A client account reads the notes shared with it, the QRT and the files on them; it may comment and ask questions.
     `GRANT SELECT ON project_notes, project_attachments, project_qrt TO ${ROLE_CLIENT}`,
     `GRANT INSERT ON note_comments, project_qrt TO ${ROLE_CLIENT}`,

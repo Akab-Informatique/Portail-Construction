@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { desc, eq } from "drizzle-orm";
-import { Check, ListChecks, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Check, CheckCircle2, ListChecks, Loader2, MessageSquare, Pencil, Plus, Send, Trash2, X } from "lucide-react";
 import { db, dbReady, schema } from "../db";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
+import { sendNotification } from "@/lib/notify";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { PageSkeleton } from "@/components/Skeleton";
@@ -17,7 +19,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 type Item = typeof schema.feature_requests.$inferSelect;
-type Filter = "open" | "done" | "all";
+type Comment = typeof schema.feature_comments.$inferSelect;
+type Filter = "open" | "review" | "done" | "all";
 const PRIORITIES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 /** From calm to urgent: 1-3 can wait, 4-6 soon, 7-8 important, 9-10 now. */
@@ -64,18 +67,40 @@ export function FeatureUpdatesPage() {
   const [priority, setPriority] = useState(5);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<{ id: number; title: string; notes: string; priority: number } | null>(null);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [names, setNames] = useState<Record<number, string>>({});
+  const [openThread, setOpenThread] = useState<number | null>(null);
+  const [draft, setDraft] = useState("");
+  const [closing, setClosing] = useState<Item | null>(null);
+  const [closingNote, setClosingNote] = useState("");
+  const [rejecting, setRejecting] = useState<Item | null>(null);
+  const [rejectNote, setRejectNote] = useState("");
 
   const load = useCallback(async () => {
     await dbReady;
     setItems(await db.select().from(schema.feature_requests).orderBy(desc(schema.feature_requests.priority), desc(schema.feature_requests.id)));
+    setComments(await db.select().from(schema.feature_comments).orderBy(schema.feature_comments.id).catch(() => []));
+    const us = await db.select({ id: schema.users.id, name: schema.users.name }).from(schema.users).catch(() => []);
+    setNames(Object.fromEntries(us.map((u) => [u.id, u.name])));
   }, []);
   useEffect(() => {
     void load();
   }, [load]);
 
-  const open = (items ?? []).filter((i) => i.done === 0);
-  const done = (items ?? []).filter((i) => i.done === 1);
-  const shown = useMemo(() => (filter === "open" ? open : filter === "done" ? done : [...open, ...done]), [filter, items]);
+  const open = (items ?? []).filter((i) => i.status === "open");
+  const review = (items ?? []).filter((i) => i.status === "review");
+  const done = (items ?? []).filter((i) => i.status === "done");
+  const shown = useMemo(() => (filter === "open" ? open : filter === "review" ? review : filter === "done" ? done : [...open, ...review, ...done]), [filter, items]);
+  const nameOf = (id: number | null) => (id ? (names[id] ?? "?") : "?");
+  const threadOf = (id: number) => comments.filter((c) => c.request_id === id);
+
+  /** Tells the people around an item (who asked, who closed, who commented) by email, except the one acting. */
+  async function tell(item: Item, subject: string, text: string, extra: (number | null)[] = []) {
+    const ids = new Set<number>();
+    for (const id of [item.created_by, item.closed_by, ...threadOf(item.id).map((c) => c.user_id), ...extra]) if (id && id !== user?.id) ids.add(id);
+    if (ids.size === 0) return;
+    void sendNotification({ userIds: [...ids], channels: ["email"], subject: `${subject} · ${item.title}`, text: `${text}\n\n${window.location.origin}/updates` });
+  }
 
   async function add() {
     const text = title.trim();
@@ -91,11 +116,53 @@ export function FeatureUpdatesPage() {
     }
   }
 
+  /** Ticking an open item asks for the final note; ticking one back reopens it. */
   async function toggle(item: Item) {
-    await db
-      .update(schema.feature_requests)
-      .set(item.done === 1 ? { done: 0, done_at: null } : { done: 1, done_at: new Date() })
-      .where(eq(schema.feature_requests.id, item.id));
+    if (item.status === "open") {
+      setClosing(item);
+      setClosingNote("");
+      return;
+    }
+    await db.update(schema.feature_requests).set({ status: "open", done: 0, done_at: null }).where(eq(schema.feature_requests.id, item.id));
+    await load();
+  }
+
+  /** The administrator closes it with a note on what was done: it waits for the requester to confirm. */
+  async function confirmClose() {
+    if (!closing || !closingNote.trim()) return;
+    const note = closingNote.trim();
+    await db.update(schema.feature_requests).set({ status: "review", done: 0, done_at: new Date(), final_note: note, closed_by: user?.id ?? null }).where(eq(schema.feature_requests.id, closing.id));
+    await db.insert(schema.feature_comments).values({ request_id: closing.id, user_id: user?.id ?? null, body: note, kind: "final", created_at: new Date() });
+    await tell(closing, t("fu.mail.review"), `${t("fu.mail.reviewBody", { name: user?.name ?? "" })}\n\n${note}`);
+    setClosing(null);
+    await load();
+  }
+
+  /** The requester confirms that everything is good: the item is closed for good. */
+  async function validate(item: Item) {
+    await db.update(schema.feature_requests).set({ status: "done", done: 1, done_at: new Date() }).where(eq(schema.feature_requests.id, item.id));
+    await tell(item, t("fu.mail.validated"), t("fu.mail.validatedBody", { name: user?.name ?? "" }));
+    await load();
+  }
+
+  /** Not good: the reason goes in as a comment and the item goes back to the ones still to do. */
+  async function reject() {
+    if (!rejecting || !rejectNote.trim()) return;
+    const note = rejectNote.trim();
+    await db.insert(schema.feature_comments).values({ request_id: rejecting.id, user_id: user?.id ?? null, body: note, kind: "rejected", created_at: new Date() });
+    await db.update(schema.feature_requests).set({ status: "open", done: 0, done_at: null }).where(eq(schema.feature_requests.id, rejecting.id));
+    await tell(rejecting, t("fu.mail.rejected"), `${t("fu.mail.rejectedBody", { name: user?.name ?? "" })}\n\n${note}`);
+    setRejecting(null);
+    setRejectNote("");
+    await load();
+  }
+
+  async function postComment(item: Item) {
+    const body = draft.trim();
+    if (!body) return;
+    await db.insert(schema.feature_comments).values({ request_id: item.id, user_id: user?.id ?? null, body, kind: "comment", created_at: new Date() });
+    await tell(item, t("fu.mail.comment"), `${user?.name ?? ""}:\n\n${body}`);
+    setDraft("");
     await load();
   }
 
@@ -111,6 +178,7 @@ export function FeatureUpdatesPage() {
 
   async function remove(item: Item) {
     if (!window.confirm(t("fu.deleteConfirm"))) return;
+    await db.delete(schema.feature_comments).where(eq(schema.feature_comments.request_id, item.id));
     await db.delete(schema.feature_requests).where(eq(schema.feature_requests.id, item.id));
     await load();
   }
@@ -147,6 +215,7 @@ export function FeatureUpdatesPage() {
         {(
           [
             ["open", t("fu.open"), open.length],
+            ["review", t("fu.review"), review.length],
             ["done", t("fu.done"), done.length],
             ["all", t("sch.filter.all"), items.length],
           ] as const
@@ -171,8 +240,9 @@ export function FeatureUpdatesPage() {
             {shown.map((item) => {
               const isEditing = editing?.id === item.id;
               return (
-                <li key={item.id} className={cn("flex gap-3 px-4 py-3.5", item.done === 1 && "bg-muted/30")}>
-                  <Checkbox className="mt-1" checked={item.done === 1} onCheckedChange={() => void toggle(item)} aria-label={t("fu.done")} />
+                <li key={item.id} className={cn("px-4 py-3.5", item.status === "done" && "bg-muted/30", item.status === "review" && "bg-amber-400/10")}>
+                  <div className="flex gap-3">
+                  <Checkbox className="mt-1" checked={item.status !== "open"} onCheckedChange={() => void toggle(item)} aria-label={t("fu.done")} />
                   {isEditing && editing ? (
                     <div className="min-w-0 flex-1 space-y-3">
                       <Input correct value={editing.title} onChange={(e) => setEditing({ ...editing, title: e.target.value })} />
@@ -191,18 +261,23 @@ export function FeatureUpdatesPage() {
                     </div>
                   ) : (
                     <>
-                      <span className={cn("mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border text-sm font-bold tabular-nums", item.done === 1 ? "border-border bg-muted text-muted-foreground" : tone(item.priority))} title={t("fu.priority")}>
+                      <span className={cn("mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border text-sm font-bold tabular-nums", item.status === "done" ? "border-border bg-muted text-muted-foreground" : tone(item.priority))} title={t("fu.priority")}>
                         {item.priority}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className={cn("text-sm font-medium", item.done === 1 && "text-muted-foreground line-through")}>{item.title}</p>
+                        <p className={cn("text-sm font-medium", item.status === "done" && "text-muted-foreground line-through")}>{item.title}</p>
                         {item.notes ? <p className="mt-0.5 whitespace-pre-wrap text-sm text-muted-foreground">{item.notes}</p> : null}
                         <p className="mt-1 text-xs text-muted-foreground">
                           {formatDate(item.created_at.toISOString().slice(0, 10), locale)}
-                          {item.done === 1 && item.done_at ? ` · ${t("fu.doneOn")} ${formatDate(item.done_at.toISOString().slice(0, 10), locale)}` : ""}
+                          {item.created_by ? ` · ${t("fu.askedBy")} ${nameOf(item.created_by)}` : ""}
+                          {item.status !== "open" && item.done_at ? ` · ${t("fu.doneOn")} ${formatDate(item.done_at.toISOString().slice(0, 10), locale)}` : ""}
                         </p>
                       </div>
                       <div className="flex shrink-0 gap-0.5">
+                        <Button size="icon-sm" variant="ghost" aria-label={t("fu.comments")} title={t("fu.comments")} onClick={() => { setOpenThread(openThread === item.id ? null : item.id); setDraft(""); }}>
+                          <MessageSquare className="size-4" />
+                          {threadOf(item.id).length ? <span className="text-xs tabular-nums">{threadOf(item.id).length}</span> : null}
+                        </Button>
                         <Button size="icon-sm" variant="ghost" aria-label={t("note.edit")} title={t("note.edit")} onClick={() => setEditing({ id: item.id, title: item.title, notes: item.notes ?? "", priority: item.priority })}>
                           <Pencil className="size-4" />
                         </Button>
@@ -212,12 +287,80 @@ export function FeatureUpdatesPage() {
                       </div>
                     </>
                   )}
+                  </div>
+                  {item.status === "review" && !isEditing ? (
+                    <div className="ml-8 mt-3 space-y-2 rounded-lg border border-amber-500/40 bg-amber-400/10 p-3 text-sm">
+                      <p className="font-medium">{t("fu.awaiting", { name: nameOf(item.created_by) })}</p>
+                      {item.final_note ? <p className="whitespace-pre-wrap text-muted-foreground">{item.final_note}</p> : null}
+                      {!item.created_by || item.created_by === user?.id ? (
+                        <div className="flex flex-wrap gap-2">
+                          <Button size="sm" onClick={() => void validate(item)}>
+                            <CheckCircle2 className="size-4" />
+                            {t("fu.yes")}
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => { setRejecting(item); setRejectNote(""); }}>
+                            <X className="size-4" />
+                            {t("fu.no")}
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {openThread === item.id ? (
+                    <div className="ml-8 mt-3 space-y-2">
+                      {threadOf(item.id).map((c) => (
+                        <div key={c.id} className={cn("rounded-lg border px-3 py-2 text-sm", c.kind === "rejected" && "border-rose-500/40 bg-rose-500/5", c.kind === "final" && "border-amber-500/40 bg-amber-400/10")}>
+                          <p className="text-xs text-muted-foreground">
+                            {nameOf(c.user_id)} · {formatDate(c.created_at.toISOString().slice(0, 10), locale)}
+                            {c.kind === "final" ? ` · ${t("fu.finalNote")}` : c.kind === "rejected" ? ` · ${t("fu.notGood")}` : ""}
+                          </p>
+                          <p className="whitespace-pre-wrap">{c.body}</p>
+                        </div>
+                      ))}
+                      <div className="flex gap-2">
+                        <Textarea correct rows={2} value={draft} placeholder={t("fu.commentPh")} onChange={(e) => setDraft(e.target.value)} />
+                        <Button size="icon" aria-label={t("fu.send")} title={t("fu.send")} disabled={!draft.trim()} onClick={() => void postComment(item)}>
+                          <Send className="size-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
                 </li>
               );
             })}
           </ul>
         </Card>
       )}
+
+      <Dialog open={!!closing} onOpenChange={(o) => !o && setClosing(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("fu.closeTitle")}</DialogTitle>
+            <DialogDescription>{closing?.title}</DialogDescription>
+          </DialogHeader>
+          <Label>{t("fu.finalNote")}</Label>
+          <Textarea correct autoFocus rows={5} value={closingNote} placeholder={t("fu.finalNotePh")} onChange={(e) => setClosingNote(e.target.value)} />
+          <p className="text-xs text-muted-foreground">{t("fu.closeHint")}</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setClosing(null)}>{t("clients.cancel")}</Button>
+            <Button disabled={!closingNote.trim()} onClick={() => void confirmClose()}>{t("fu.closeConfirm")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!rejecting} onOpenChange={(o) => !o && setRejecting(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("fu.rejectTitle")}</DialogTitle>
+            <DialogDescription>{rejecting?.title}</DialogDescription>
+          </DialogHeader>
+          <Textarea correct autoFocus rows={5} value={rejectNote} placeholder={t("fu.rejectPh")} onChange={(e) => setRejectNote(e.target.value)} />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRejecting(null)}>{t("clients.cancel")}</Button>
+            <Button disabled={!rejectNote.trim()} onClick={() => void reject()}>{t("fu.rejectConfirm")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -686,4 +686,18 @@ export const feature_requests = pgTable("feature_requests", {
   done_at: timestamp("done_at"),
   created_by: integer("created_by"),
   created_at: timestamp("created_at").default(sql`now()`).notNull(),
+  // open → review (closed by an administrator with a final note, waiting for the requester) → done (requester confirmed).
+  status: text("status").notNull().default("open"),
+  final_note: text("final_note"),
+  closed_by: integer("closed_by"),
+});
+
+/** The thread under a request: any administrator can comment, the requester answers there too. */
+export const feature_comments = pgTable("feature_comments", {
+  id: serial("id").primaryKey(),
+  request_id: integer("request_id").notNull(),
+  user_id: integer("user_id"),
+  body: text("body").notNull(),
+  kind: text("kind").notNull().default("comment"),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
