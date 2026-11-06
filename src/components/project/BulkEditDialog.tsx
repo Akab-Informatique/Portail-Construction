@@ -46,7 +46,7 @@ function ordered(tasks: Task[]): Row[] {
  * The whole schedule in one table: change any cell, add a phase or a task, delete rows, move them up or down, and add a
  * note to any task. Nothing is written until "Save all changes".
  */
-export function BulkEditDialog({ open, project, tasks, onClose, onSaved }: { open: boolean; project: Project; tasks: Task[]; onClose: () => void; onSaved: () => void }) {
+export function BulkEditDialog({ open, project, tasks, scheduleId, onClose, onSaved }: { open: boolean; project: Project; tasks: Task[]; scheduleId: number | null; onClose: () => void; onSaved: () => void }) {
   const { t } = useI18n();
   const { user } = useAuth();
   const color = projectColor(project);
@@ -154,7 +154,7 @@ export function BulkEditDialog({ open, project, tasks, onClose, onSaved }: { ope
       for (const r of live.filter((x) => x.isNew && x.kind === "phase")) {
         const [row] = await db
           .insert(schema.project_tasks)
-          .values({ project_id: project.id, title: r.title.trim() || t("sch.bulkUntitled"), start_date: r.start, end_date: r.end, status: r.status, priority: "medium", kind: "phase", parent_id: null, sort_order: position(r), responsible: r.responsible, progress: r.progress, updated_on: today })
+          .values({ project_id: project.id, schedule_id: scheduleId, title: r.title.trim() || t("sch.bulkUntitled"), start_date: r.start, end_date: r.end, status: r.status, priority: "medium", kind: "phase", parent_id: null, sort_order: position(r), responsible: r.responsible, progress: r.progress, updated_on: today })
           .returning({ id: schema.project_tasks.id });
         realId.set(r.id, row.id);
       }
@@ -163,7 +163,7 @@ export function BulkEditDialog({ open, project, tasks, onClose, onSaved }: { ope
         if (r.isNew && r.kind !== "phase") {
           const [row] = await db
             .insert(schema.project_tasks)
-            .values({ project_id: project.id, title: r.title.trim() || t("sch.bulkUntitled"), start_date: r.start, end_date: r.end, status: r.status, priority: "medium", kind: "task", parent_id: parentReal, sort_order: position(r), responsible: r.responsible, progress: r.progress, updated_on: today })
+            .values({ project_id: project.id, schedule_id: scheduleId, title: r.title.trim() || t("sch.bulkUntitled"), start_date: r.start, end_date: r.end, status: r.status, priority: "medium", kind: "task", parent_id: parentReal, sort_order: position(r), responsible: r.responsible, progress: r.progress, updated_on: today })
             .returning({ id: schema.project_tasks.id });
           realId.set(r.id, row.id);
         } else if (!r.isNew) {

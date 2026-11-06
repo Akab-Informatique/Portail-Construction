@@ -4,6 +4,7 @@ import { db, schema } from "../db";
 const PROJECT_TABLES = [
   schema.project_members,
   schema.project_tasks,
+  schema.project_schedules,
   schema.budget_items,
   schema.calendar_events,
   schema.documents,

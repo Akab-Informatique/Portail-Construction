@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { asc, eq } from "drizzle-orm";
-import { CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Circle, FileUp, GanttChartSquare, Pencil, TableProperties, ListChecks, Lock, MessageSquare, Paperclip, Plus, Rows3, Search, TrendingUp } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Circle, FileUp, GanttChartSquare, Pencil, TableProperties, ListChecks, Lock, MessageSquare, Paperclip, Plus, Rows3, Search, Trash2, TrendingUp } from "lucide-react";
 import { db, schema } from "../../../db";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -10,6 +10,7 @@ import { formatDate, todayISO } from "@/lib/format";
 import { EVENT_TYPES, PRIORITIES } from "@/lib/constants";
 import { projectColor } from "@/lib/project-colors";
 import { countAttachments } from "@/lib/project-files";
+import { addSchedule, deleteSchedule, loadSchedules, renameSchedule, type Schedule } from "@/lib/schedules";
 import { logActivity } from "@/lib/activity";
 import { notifyProjectEvent } from "@/lib/notify-events";
 import { NotifyToggle } from "@/components/project/NotifyToggle";
@@ -53,7 +54,29 @@ export function ProjectSchedule({ project, people }: SectionProps) {
   const view: View = rawView === "calendar" || rawView === "gantt" || rawView === "wbs" || (rawView === "forecast" && !viewer) ? rawView : "tasks";
   const color = projectColor(project);
 
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [allTasks, setTasks] = useState<Task[]>([]);
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const activeKey = `frx.schedule.${project.id}`;
+  const [activeId, setActiveId] = useState<number | null>(() => {
+    try {
+      return Number(localStorage.getItem(activeKey)) || null;
+    } catch {
+      return null;
+    }
+  });
+  /** The name dialog: adding a schedule (id null) or renaming one. */
+  const [naming, setNaming] = useState<{ id: number | null; name: string } | null>(null);
+  const active = schedules.find((x) => x.id === activeId) ?? schedules[0] ?? null;
+  // Rows made before schedules existed (no schedule) belong to the first one.
+  const tasks = useMemo(() => (active ? allTasks.filter((x) => (x.schedule_id ?? schedules[0]?.id) === active.id) : allTasks), [allTasks, active, schedules]);
+  const pickSchedule = (id: number) => {
+    setActiveId(id);
+    try {
+      localStorage.setItem(activeKey, String(id));
+    } catch {
+      /* storage unavailable */
+    }
+  };
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [deps, setDeps] = useState<Dep[]>([]);
   // Folded groups in the task list, remembered per project.
@@ -92,6 +115,8 @@ export function ProjectSchedule({ project, people }: SectionProps) {
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    const sched = await loadSchedules(project.id, t("sch.defaultName"));
+    setSchedules(sched);
     const [taskRows, eventRows, checks, notes, files, depRows] = await Promise.all([
       db.select().from(schema.project_tasks).where(eq(schema.project_tasks.project_id, project.id)).orderBy(asc(schema.project_tasks.end_date), asc(schema.project_tasks.id)),
       db.select().from(schema.calendar_events).where(eq(schema.calendar_events.project_id, project.id)),
@@ -118,6 +143,26 @@ export function ProjectSchedule({ project, people }: SectionProps) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function saveName() {
+    if (!naming || !naming.name.trim()) return;
+    if (naming.id === null) {
+      const row = await addSchedule(project.id, naming.name, schedules);
+      pickSchedule(row.id);
+    } else {
+      await renameSchedule(naming.id, naming.name);
+    }
+    setNaming(null);
+    await load();
+  }
+
+  async function removeActive() {
+    if (!active || schedules.length < 2) return;
+    if (!window.confirm(t("sch.scheduleDeleteConfirm", { name: active.name }))) return;
+    await deleteSchedule(project.id, active.id);
+    setActiveId(null);
+    await load();
+  }
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -202,6 +247,38 @@ export function ProjectSchedule({ project, people }: SectionProps) {
 
   return (
     <div className="space-y-4">
+      {schedules.length > 1 || !viewer ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-xl border bg-muted/40 p-1">
+            {schedules.map((sc) => (
+              <button
+                key={sc.id}
+                type="button"
+                onClick={() => pickSchedule(sc.id)}
+                className={cn("flex h-9 shrink-0 items-center rounded-lg px-4 text-sm font-semibold transition-all", active?.id === sc.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+              >
+                {sc.name}
+              </button>
+            ))}
+          </div>
+          {!viewer && active ? (
+            <>
+              <Button size="icon-sm" variant="ghost" aria-label={t("sch.scheduleRename")} title={t("sch.scheduleRename")} onClick={() => setNaming({ id: active.id, name: active.name })}>
+                <Pencil className="size-4" />
+              </Button>
+              {schedules.length > 1 ? (
+                <Button size="icon-sm" variant="ghost" aria-label={t("sch.scheduleDelete")} title={t("sch.scheduleDelete")} onClick={() => void removeActive()}>
+                  <Trash2 className="size-4" />
+                </Button>
+              ) : null}
+              <Button size="sm" variant="outline" onClick={() => setNaming({ id: null, name: "" })}>
+                <Plus className="size-4" />
+                {t("sch.scheduleNew")}
+              </Button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-1 rounded-xl border bg-muted/40 p-1 max-w-full overflow-x-auto">
           {tabs.map((tab) => (
@@ -526,10 +603,26 @@ export function ProjectSchedule({ project, people }: SectionProps) {
         }}
         onNavigate={setDetailId}
       />
-      {canBulk ? <BulkEditDialog open={bulkOpen} project={project} tasks={tasks} onClose={() => setBulkOpen(false)} onSaved={() => void load()} /> : null}
+      {canBulk ? <BulkEditDialog open={bulkOpen} project={project} tasks={tasks} scheduleId={active?.id || null} onClose={() => setBulkOpen(false)} onSaved={() => void load()} /> : null}
       {viewer ? null : <TaskDrawer project={project} task={openTask} people={people} phases={phases} allTasks={tasks} deps={deps} open={openTask !== null} onClose={() => setOpenId(null)} onChanged={() => void load()} />}
 
-      {viewer ? null : <ScheduleImportDialog open={importOpen} project={project} existing={tasks.length} userId={user?.id} onClose={() => setImportOpen(false)} onDone={() => void load()} />}
+      <Dialog open={!!naming} onOpenChange={(o) => !o && setNaming(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{naming?.id === null ? t("sch.scheduleNew") : t("sch.scheduleRename")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label>{t("sch.scheduleName")}</Label>
+            <Input autoFocus value={naming?.name ?? ""} placeholder={t("sch.scheduleNamePh")} onChange={(e) => naming && setNaming({ ...naming, name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && void saveName()} />
+            {naming?.id === null ? <p className="text-xs text-muted-foreground">{t("sch.scheduleNewHint")}</p> : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNaming(null)}>{t("clients.cancel")}</Button>
+            <Button disabled={!naming?.name.trim()} onClick={() => void saveName()}>{t("settings.save")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {viewer ? null : <ScheduleImportDialog open={importOpen} project={project} existing={tasks.length} scheduleId={active?.id || null} userId={user?.id} onClose={() => setImportOpen(false)} onDone={() => void load()} />}
       <AddTaskDialog
         open={addOpen}
         people={people}
@@ -539,7 +632,7 @@ export function ProjectSchedule({ project, people }: SectionProps) {
         onSave={async (v) => {
           const sameLevel = tasks.filter((x) => (v.kind === "phase" ? x.kind === "phase" : x.parent_id === v.parent_id && x.kind !== "phase"));
           const sort_order = sameLevel.reduce((m, x) => Math.max(m, x.sort_order), -1) + 1;
-          const [row] = await db.insert(schema.project_tasks).values({ ...v, sort_order, updated_on: todayISO(), project_id: project.id }).returning();
+          const [row] = await db.insert(schema.project_tasks).values({ ...v, sort_order, updated_on: todayISO(), project_id: project.id, schedule_id: active?.id || null }).returning();
           await logActivity({ action: "added task", details: v.title, projectId: project.id, userId: user?.id });
           // With the switch on in the dialog, the project's clients are told about the new task.
           if (v.kind !== "break") {

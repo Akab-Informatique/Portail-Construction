@@ -131,6 +131,17 @@ export const project_tasks = pgTable("project_tasks", {
   progress: integer("progress"),
   /** The day anything about the task last changed (fields, checklist, notes, files), as YYYY-MM-DD. */
   updated_on: text("updated_on"),
+  /** The schedule (échéancier) the row belongs to; null = the project's first one. */
+  schedule_id: integer("schedule_id"),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
+});
+
+/** A project can have several schedules, each with its own name. */
+export const project_schedules = pgTable("project_schedules", {
+  id: serial("id").primaryKey(),
+  project_id: integer("project_id").notNull(),
+  name: text("name").notNull(),
+  sort_order: integer("sort_order").notNull().default(0),
   created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 

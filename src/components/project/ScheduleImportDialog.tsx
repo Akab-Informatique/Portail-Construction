@@ -18,6 +18,7 @@ export function ScheduleImportDialog({
   open,
   project,
   existing,
+  scheduleId,
   userId,
   onClose,
   onDone,
@@ -26,6 +27,8 @@ export function ScheduleImportDialog({
   project: Project;
   /** How many phases and tasks the project already has. */
   existing: number;
+  /** The schedule the import goes into. */
+  scheduleId?: number | null;
   userId?: number;
   onClose: () => void;
   onDone: () => void;
@@ -82,7 +85,7 @@ export function ScheduleImportDialog({
     setBusy(true);
     setError(null);
     try {
-      const made = await importSchedule(project.id, parsed, { replace, setProjectDates: setDates });
+      const made = await importSchedule(project.id, parsed, { replace, setProjectDates: setDates, scheduleId });
       await logActivity({ action: "imported schedule", details: `${file?.name ?? "PDF"} · ${made.phases} / ${made.tasks}`, projectId: project.id, userId });
       onDone();
       onClose();

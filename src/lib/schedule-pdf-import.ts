@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, dbReady, schema } from "../db";
 import { removeAttachmentsOf } from "./project-files";
 import { todayISO } from "./format";
@@ -21,8 +21,9 @@ export async function readSchedulePdf(file: File): Promise<ParsedSchedule> {
 }
 
 /** Deletes every phase and task of the project, with what hangs on them (checklists, notes, links, files). */
-async function clearSchedule(projectId: number) {
-  const rows = await db.select({ id: schema.project_tasks.id }).from(schema.project_tasks).where(eq(schema.project_tasks.project_id, projectId));
+export async function clearSchedule(projectId: number, scheduleId?: number | null) {
+  const scope = scheduleId ? and(eq(schema.project_tasks.project_id, projectId), eq(schema.project_tasks.schedule_id, scheduleId)) : eq(schema.project_tasks.project_id, projectId);
+  const rows = await db.select({ id: schema.project_tasks.id }).from(schema.project_tasks).where(scope);
   for (const { id } of rows) {
     await db.delete(schema.task_checklist).where(eq(schema.task_checklist.task_id, id));
     await db.delete(schema.task_notes).where(eq(schema.task_notes.task_id, id));
@@ -30,14 +31,14 @@ async function clearSchedule(projectId: number) {
     await db.delete(schema.task_dependencies).where(eq(schema.task_dependencies.depends_on_id, id));
     await removeAttachmentsOf(projectId, "task", id);
   }
-  await db.delete(schema.project_tasks).where(eq(schema.project_tasks.project_id, projectId));
+  await db.delete(schema.project_tasks).where(scope);
 }
 
 /** Creates the phases and tasks, in the order of the PDF. `replace` clears the current schedule first. Returns how many were made. */
-export async function importSchedule(projectId: number, schedule: ParsedSchedule, options: { replace: boolean; setProjectDates: boolean }) {
+export async function importSchedule(projectId: number, schedule: ParsedSchedule, options: { replace: boolean; setProjectDates: boolean; scheduleId?: number | null }) {
   await dbReady;
-  if (options.replace) await clearSchedule(projectId);
-  const existing = options.replace ? [] : await db.select({ sort_order: schema.project_tasks.sort_order, kind: schema.project_tasks.kind }).from(schema.project_tasks).where(eq(schema.project_tasks.project_id, projectId));
+  if (options.replace) await clearSchedule(projectId, options.scheduleId);
+  const existing = options.replace ? [] : await db.select({ sort_order: schema.project_tasks.sort_order, kind: schema.project_tasks.kind }).from(schema.project_tasks).where(options.scheduleId ? and(eq(schema.project_tasks.project_id, projectId), eq(schema.project_tasks.schedule_id, options.scheduleId)) : eq(schema.project_tasks.project_id, projectId));
   const base = existing.filter((x) => x.kind === "phase" || x.kind === "break").reduce((m, x) => Math.max(m, x.sort_order), -1) + 1;
   const today = todayISO();
   let phases = 0;
@@ -47,6 +48,7 @@ export async function importSchedule(projectId: number, schedule: ParsedSchedule
       .insert(schema.project_tasks)
       .values({
         project_id: projectId,
+        schedule_id: options.scheduleId ?? null,
         title: phase.title,
         description: phase.notes,
         start_date: phase.start,
@@ -65,6 +67,7 @@ export async function importSchedule(projectId: number, schedule: ParsedSchedule
     await db.insert(schema.project_tasks).values(
       phase.tasks.map((task, i) => ({
         project_id: projectId,
+        schedule_id: options.scheduleId ?? null,
         title: task.title,
         description: task.notes,
         start_date: task.start,

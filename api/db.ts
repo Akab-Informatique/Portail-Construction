@@ -127,6 +127,7 @@ const CLIENT_SCOPED: Record<string, string> = {
 const PROJECT_SCOPED = [
   "project_members",
   "project_tasks",
+  "project_schedules",
   "budget_items",
   "calendar_events",
   "documents",
