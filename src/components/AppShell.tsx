@@ -16,6 +16,7 @@ import {
   KeyRound,
   LayoutDashboard,
   LayoutGrid,
+  BookOpen,
   ListChecks,
   LogOut,
   Menu,
@@ -446,6 +447,21 @@ function SidebarBody({
               type="button"
               onClick={() => {
                 onNavigate?.();
+                navigate("/sops");
+              }}
+              title={collapsed ? t("nav.sops") : undefined}
+              aria-label={collapsed ? t("nav.sops") : undefined}
+              className={cn(itemClass(location.pathname.startsWith("/sops"), collapsed), "mb-0.5 w-full")}
+            >
+              <BookOpen className={cn("size-[17px] shrink-0", location.pathname.startsWith("/sops") ? "text-primary" : "opacity-75")} />
+              {!collapsed && t("nav.sops")}
+            </button>
+          ) : null}
+          {isAdmin ? (
+            <button
+              type="button"
+              onClick={() => {
+                onNavigate?.();
                 navigate("/updates");
               }}
               title={collapsed ? t("nav.updates") : undefined}
@@ -553,6 +569,7 @@ const CRUMB: Record<string, MessageKey> = {
   documents: "nav.documents",
   reports: "nav.reports",
   updates: "nav.updates",
+  sops: "nav.sops",
   admin: "nav.section.admin",
 };
 

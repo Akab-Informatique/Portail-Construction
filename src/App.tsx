@@ -25,6 +25,8 @@ const PunchPage = lazyPage(() => import("@/pages/PunchPage"), "PunchPage");
 const TimesheetsPage = lazyPage(() => import("@/pages/TimesheetsPage"), "TimesheetsPage");
 const ExpensesPage = lazyPage(() => import("@/pages/ExpensesPage"), "ExpensesPage");
 const DocumentsPage = lazyPage(() => import("@/pages/DocumentsPage"), "DocumentsPage");
+const SopsPage = lazyPage(() => import("@/pages/SopsPage"), "SopsPage");
+const SopEditorPage = lazyPage(() => import("@/pages/SopEditorPage"), "SopEditorPage");
 const FeatureUpdatesPage = lazyPage(() => import("@/pages/FeatureUpdatesPage"), "FeatureUpdatesPage");
 const ClientBillingPage = lazyPage(() => import("@/pages/ClientBillingPage"), "ClientBillingPage");
 const DocumentsProjectsPage = lazyPage(() => import("@/pages/DocumentsProjectsPage"), "DocumentsProjectsPage");
@@ -74,6 +76,8 @@ export default function App() {
           <Route path="clients" element={<RequireAdmin><ClientsPage /></RequireAdmin>} />
           <Route path="accounting/billing" element={<RequireAdmin><AccountingBillingPage /></RequireAdmin>} />
           <Route path="billing" element={<RequireClientView><RequireModule module="app_client_billing"><ClientBillingPage /></RequireModule></RequireClientView>} />
+          <Route path="sops" element={<RequireAdmin><SopsPage /></RequireAdmin>} />
+          <Route path="sops/:id" element={<RequireAdmin><SopEditorPage /></RequireAdmin>} />
           <Route path="updates" element={<RequireAdmin><FeatureUpdatesPage /></RequireAdmin>} />
           <Route path="finance/billing" element={<RequireModule module="app_billing_mgmt"><FinanceBillingPage /></RequireModule>} />
           <Route path="projects" element={<RequireModule module="app_client_projects"><ProjectsPage /></RequireModule>} />

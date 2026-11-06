@@ -692,6 +692,30 @@ export const feature_requests = pgTable("feature_requests", {
   closed_by: integer("closed_by"),
 });
 
+/** The binder of procedures (SOP): the steps, each with its screenshot, are kept as JSON; the video, when there is one, sits in sop_media. */
+export const sops = pgTable("sops", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description"),
+  category: text("category"),
+  steps: text("steps").notNull().default("[]"),
+  step_count: integer("step_count").notNull().default(0),
+  cover: text("cover"),
+  has_video: integer("has_video").notNull().default(0),
+  created_by: integer("created_by"),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
+  updated_at: timestamp("updated_at").default(sql`now()`).notNull(),
+});
+
+/** The recorded video of a procedure, in pieces of about 3 MB (base64) so no request is too big. */
+export const sop_media = pgTable("sop_media", {
+  id: serial("id").primaryKey(),
+  sop_id: integer("sop_id").notNull(),
+  idx: integer("idx").notNull(),
+  mime: text("mime").notNull().default("video/webm"),
+  data: text("data").notNull(),
+});
+
 /** The thread under a request: any administrator can comment, the requester answers there too. */
 export const feature_comments = pgTable("feature_comments", {
   id: serial("id").primaryKey(),
