@@ -76,14 +76,16 @@ export function Attachments({
 
   async function upload(list: FileList | null) {
     if (!list?.length) return;
+    const picked = Array.from(list);
     setBusy(true);
     setError(null);
     try {
-      for (const file of Array.from(list)) {
+      for (const file of picked) {
         try {
           await addAttachment(file, { projectId, owner, ownerId, userId: user?.id ?? null });
         } catch (err) {
-          setError(err instanceof Error && err.message === "tooBig" ? t("att.tooBig") : t("att.failed"));
+          console.error("attachment upload failed", err);
+          setError(err instanceof Error && err.message === "tooBig" ? t("att.tooBig") : `${t("att.failed")} (${err instanceof Error ? err.message.slice(0, 80) : "?"})`);
         }
       }
       await load();

@@ -309,8 +309,8 @@ export function ProjectQrt({ project, client, people, members }: SectionProps) {
                   <Camera className="size-4" />
                   {t("att.photo")}
                 </Button>
-                <input ref={pickFile} type="file" multiple className="sr-only" onChange={(e) => { setPending((p) => [...p, ...Array.from(e.target.files ?? [])]); e.target.value = ""; }} />
-                <input ref={pickCamera} type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => { setPending((p) => [...p, ...Array.from(e.target.files ?? [])]); e.target.value = ""; }} />
+                <input ref={pickFile} type="file" multiple className="sr-only" onChange={(e) => { const picked = Array.from(e.target.files ?? []); setPending((p) => [...p, ...picked]); e.target.value = ""; }} />
+                <input ref={pickCamera} type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => { const picked = Array.from(e.target.files ?? []); setPending((p) => [...p, ...picked]); e.target.value = ""; }} />
               </div>
               {pending.length ? (
                 <ul className="flex flex-wrap gap-2">

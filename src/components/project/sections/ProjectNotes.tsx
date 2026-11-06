@@ -200,8 +200,8 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
             <Camera className="size-4" />
             {t("att.photo")}
           </Button>
-          <input ref={pick} type="file" multiple className="sr-only" onChange={(e) => { setPending((p) => [...p, ...Array.from(e.target.files ?? [])]); e.target.value = ""; }} />
-          <input ref={camera} type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => { setPending((p) => [...p, ...Array.from(e.target.files ?? [])]); e.target.value = ""; }} />
+          <input ref={pick} type="file" multiple className="sr-only" onChange={(e) => { const picked = Array.from(e.target.files ?? []); setPending((p) => [...p, ...picked]); e.target.value = ""; }} />
+          <input ref={camera} type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => { const picked = Array.from(e.target.files ?? []); setPending((p) => [...p, ...picked]); e.target.value = ""; }} />
         </div>
         {pending.length ? (
           <ul className="flex flex-wrap gap-2">

@@ -312,7 +312,7 @@ export function ProjectSafety({ project, people }: SectionProps) {
                   <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-sm hover:bg-muted">
                     <Paperclip className="size-4" />
                     {t("att.add")}
-                    <input type="file" multiple className="sr-only" onChange={(e) => { setPending((p) => [...p, ...Array.from(e.target.files ?? [])]); e.target.value = ""; }} />
+                    <input type="file" multiple className="sr-only" onChange={(e) => { const picked = Array.from(e.target.files ?? []); setPending((p) => [...p, ...picked]); e.target.value = ""; }} />
                   </label>
                   {pending.map((f, i) => (
                     <span key={`${f.name}-${i}`} className="rounded-full bg-muted px-2.5 py-1 text-xs">{f.name}</span>
