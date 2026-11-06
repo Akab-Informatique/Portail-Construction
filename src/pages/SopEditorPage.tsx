@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Camera, ChevronDown, ChevronUp, FileDown, FileText, ImagePlus, Loader2, MonitorUp, Plus, Save, Square, Trash2, Video } from "lucide-react";
+import { ArrowLeft, Camera, ChevronDown, ChevronUp, FileDown, FileText, ImagePlus, Loader2, MonitorUp, Plus, Save, Send, Square, Trash2, Video } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
@@ -293,6 +293,10 @@ export function SopEditorPage() {
           <Button variant="outline" size="sm" disabled={steps.length === 0} onClick={() => exportSopHtml(exportInput())} title={t("sop.htmlHint")}>
             <FileText className="size-4" />
             {t("sop.shareFile")}
+          </Button>
+          <Button variant="outline" size="sm" disabled={sopId === null || dirty} title={sopId === null || dirty ? t("sop.sendNeedsSave") : t("sop.sendRequest")} onClick={() => navigate("/updates", { state: { fromSop: { id: sopId, title, description } } })}>
+            <Send className="size-4" />
+            {t("sop.sendRequest")}
           </Button>
           <Button size="sm" onClick={() => void save()} disabled={saving}>
             {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}

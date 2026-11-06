@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BookOpen, FileDown, FileText, Plus, Search, Trash2, Video } from "lucide-react";
+import { BookOpen, FileDown, FileText, Plus, Search, Send, Trash2, Video } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
@@ -147,7 +147,10 @@ export function SopsPage() {
                   <FileText className="size-4" />
                   {t("sop.shareFile")}
                 </Button>
-                <Button size="icon-sm" variant="ghost" className="ml-auto" aria-label={t("exp.delete")} title={t("exp.delete")} onClick={() => void remove(r)}>
+                <Button size="icon-sm" variant="ghost" className="ml-auto" aria-label={t("sop.sendRequest")} title={t("sop.sendRequest")} onClick={() => navigate("/updates", { state: { fromSop: { id: r.id, title: r.title, description: r.description ?? "" } } })}>
+                  <Send className="size-4" />
+                </Button>
+                <Button size="icon-sm" variant="ghost" aria-label={t("exp.delete")} title={t("exp.delete")} onClick={() => void remove(r)}>
                   <Trash2 className="size-4" />
                 </Button>
               </div>

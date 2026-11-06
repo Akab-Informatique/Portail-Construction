@@ -690,6 +690,9 @@ export const feature_requests = pgTable("feature_requests", {
   status: text("status").notNull().default("open"),
   final_note: text("final_note"),
   closed_by: integer("closed_by"),
+  // Pictures added to the request (a JSON list of small JPEGs) and the SOP it points to.
+  images: text("images"),
+  sop_id: integer("sop_id"),
 });
 
 /** The binder of procedures (SOP): the steps, each with its screenshot, are kept as JSON; the video, when there is one, sits in sop_media. */

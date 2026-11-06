@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { desc, eq } from "drizzle-orm";
-import { Check, CheckCircle2, ListChecks, Loader2, MessageSquare, Pencil, Plus, Send, Trash2, X } from "lucide-react";
+import { BookOpen, Check, CheckCircle2, ImagePlus, ListChecks, Loader2, MessageSquare, Pencil, Plus, Send, Trash2, X } from "lucide-react";
 import { db, dbReady, schema } from "../db";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
 import { sendNotification } from "@/lib/notify";
+import { imageToJpeg, listSops } from "@/lib/sop";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
@@ -29,6 +31,73 @@ function tone(priority: number) {
   if (priority >= 7) return "bg-orange-500/15 text-orange-800 border-orange-500/30 dark:text-orange-300";
   if (priority >= 4) return "bg-amber-400/20 text-amber-800 border-amber-500/30 dark:text-amber-300";
   return "bg-muted text-muted-foreground border-border";
+}
+
+const imagesOf = (json: string | null): string[] => {
+  try {
+    return json ? (JSON.parse(json) as string[]) : [];
+  } catch {
+    return [];
+  }
+};
+
+type SopOption = { id: number; title: string };
+
+/** Pictures (picked, dropped or pasted) and a link to one of the binder's SOP, for a request. */
+function Extras({ images, onImages, sopId, onSop, sops, onOpen }: { images: string[]; onImages: (v: string[]) => void; sopId: number | null; onSop: (v: number | null) => void; sops: SopOption[]; onOpen: (src: string) => void }) {
+  const { t } = useI18n();
+  const input = useRef<HTMLInputElement>(null);
+  const add = async (files: File[]) => {
+    const made: string[] = [];
+    for (const f of files.filter((x) => x.type.startsWith("image/"))) made.push(await imageToJpeg(f, 1200));
+    if (made.length) onImages([...images, ...made]);
+  };
+  return (
+    <div
+      className="space-y-3"
+      onPaste={(e) => {
+        const files = [...e.clipboardData.files].filter((f) => f.type.startsWith("image/"));
+        if (files.length) {
+          e.preventDefault();
+          void add(files);
+        }
+      }}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" size="sm" variant="outline" onClick={() => input.current?.click()}>
+          <ImagePlus className="size-4" />
+          {t("fu.addPictures")}
+        </Button>
+        <span className="text-xs text-muted-foreground">{t("fu.pasteHint")}</span>
+        <input ref={input} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { void add([...(e.target.files ?? [])]); e.target.value = ""; }} />
+      </div>
+      {images.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {images.map((src, i) => (
+            <div key={i} className="relative">
+              <button type="button" onClick={() => onOpen(src)}>
+                <img src={src} alt="" className="h-20 w-28 rounded-md border object-cover" />
+              </button>
+              <button type="button" aria-label={t("exp.delete")} onClick={() => onImages(images.filter((_, j) => j !== i))} className="absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full border bg-card shadow-sm">
+                <X className="size-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <BookOpen className="size-4 text-muted-foreground" />
+        <select value={sopId ?? ""} onChange={(e) => onSop(e.target.value ? Number(e.target.value) : null)} className="h-9 min-w-52 max-w-full rounded-md border bg-background px-2 text-sm" aria-label={t("fu.linkSop")}>
+          <option value="">{t("fu.linkSop")}</option>
+          {sops.map((x) => (
+            <option key={x.id} value={x.id}>
+              {x.title}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
 }
 
 function PriorityPicker({ value, onChange }: { value: number; onChange: (n: number) => void }) {
@@ -66,7 +135,13 @@ export function FeatureUpdatesPage() {
   const [notes, setNotes] = useState("");
   const [priority, setPriority] = useState(5);
   const [busy, setBusy] = useState(false);
-  const [editing, setEditing] = useState<{ id: number; title: string; notes: string; priority: number } | null>(null);
+  const [editing, setEditing] = useState<{ id: number; title: string; notes: string; priority: number; images: string[]; sop_id: number | null } | null>(null);
+  const [images, setImages] = useState<string[]>([]);
+  const [sopId, setSopId] = useState<number | null>(null);
+  const [sops, setSops] = useState<SopOption[]>([]);
+  const [zoom, setZoom] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
   const [comments, setComments] = useState<Comment[]>([]);
   const [names, setNames] = useState<Record<number, string>>({});
   const [openThread, setOpenThread] = useState<number | null>(null);
@@ -79,6 +154,7 @@ export function FeatureUpdatesPage() {
   const load = useCallback(async () => {
     await dbReady;
     setItems(await db.select().from(schema.feature_requests).orderBy(desc(schema.feature_requests.priority), desc(schema.feature_requests.id)));
+    setSops((await listSops().catch(() => [])).map((x) => ({ id: x.id, title: x.title })));
     setComments(await db.select().from(schema.feature_comments).orderBy(schema.feature_comments.id).catch(() => []));
     const us = await db.select({ id: schema.users.id, name: schema.users.name }).from(schema.users).catch(() => []);
     setNames(Object.fromEntries(us.map((u) => [u.id, u.name])));
@@ -86,6 +162,15 @@ export function FeatureUpdatesPage() {
   useEffect(() => {
     void load();
   }, [load]);
+  // "Send as a portal request" from a SOP: the form opens already filled with its name and link; priority is up to the person.
+  useEffect(() => {
+    const from = (location.state as { fromSop?: { id: number; title: string; description: string } } | null)?.fromSop;
+    if (!from) return;
+    setTitle(from.title);
+    setNotes(from.description);
+    setSopId(from.id);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.state, location.pathname, navigate]);
 
   const open = (items ?? []).filter((i) => i.status === "open");
   const review = (items ?? []).filter((i) => i.status === "review");
@@ -107,9 +192,11 @@ export function FeatureUpdatesPage() {
     if (!text) return;
     setBusy(true);
     try {
-      await db.insert(schema.feature_requests).values({ title: text, notes: notes.trim() || null, priority, created_by: user?.id ?? null, created_at: new Date() });
+      await db.insert(schema.feature_requests).values({ title: text, notes: notes.trim() || null, priority, created_by: user?.id ?? null, created_at: new Date(), images: images.length ? JSON.stringify(images) : null, sop_id: sopId });
       setTitle("");
       setNotes("");
+      setImages([]);
+      setSopId(null);
       await load();
     } finally {
       setBusy(false);
@@ -170,7 +257,7 @@ export function FeatureUpdatesPage() {
     if (!editing || !editing.title.trim()) return;
     await db
       .update(schema.feature_requests)
-      .set({ title: editing.title.trim(), notes: editing.notes.trim() || null, priority: editing.priority })
+      .set({ title: editing.title.trim(), notes: editing.notes.trim() || null, priority: editing.priority, images: editing.images.length ? JSON.stringify(editing.images) : null, sop_id: editing.sop_id })
       .where(eq(schema.feature_requests.id, editing.id));
     setEditing(null);
     await load();
@@ -198,6 +285,7 @@ export function FeatureUpdatesPage() {
           <Label>{t("fu.details")}</Label>
           <Textarea correct rows={2} value={notes} placeholder={t("fu.detailsPh")} onChange={(e) => setNotes(e.target.value)} />
         </div>
+        <Extras images={images} onImages={setImages} sopId={sopId} onSop={setSopId} sops={sops} onOpen={setZoom} />
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="space-y-1.5">
             <Label>{t("fu.priority")}</Label>
@@ -247,6 +335,7 @@ export function FeatureUpdatesPage() {
                     <div className="min-w-0 flex-1 space-y-3">
                       <Input correct value={editing.title} onChange={(e) => setEditing({ ...editing, title: e.target.value })} />
                       <Textarea correct rows={2} value={editing.notes} onChange={(e) => setEditing({ ...editing, notes: e.target.value })} />
+                      <Extras images={editing.images} onImages={(v) => setEditing({ ...editing, images: v })} sopId={editing.sop_id} onSop={(v) => setEditing({ ...editing, sop_id: v })} sops={sops} onOpen={setZoom} />
                       <PriorityPicker value={editing.priority} onChange={(n) => setEditing({ ...editing, priority: n })} />
                       <div className="flex gap-2">
                         <Button size="sm" onClick={() => void saveEdit()} disabled={!editing.title.trim()}>
@@ -267,6 +356,21 @@ export function FeatureUpdatesPage() {
                       <div className="min-w-0 flex-1">
                         <p className={cn("text-sm font-medium", item.status === "done" && "text-muted-foreground line-through")}>{item.title}</p>
                         {item.notes ? <p className="mt-0.5 whitespace-pre-wrap text-sm text-muted-foreground">{item.notes}</p> : null}
+                        {imagesOf(item.images).length > 0 ? (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {imagesOf(item.images).map((src, i) => (
+                              <button key={i} type="button" onClick={() => setZoom(src)}>
+                                <img src={src} alt="" className="h-16 w-24 rounded-md border object-cover" />
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                        {item.sop_id ? (
+                          <button type="button" onClick={() => navigate(`/sops/${item.sop_id}`)} className="mt-2 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium hover:bg-muted">
+                            <BookOpen className="size-3.5" />
+                            {t("fu.sopLink")} · {sops.find((x) => x.id === item.sop_id)?.title ?? "SOP"}
+                          </button>
+                        ) : null}
                         <p className="mt-1 text-xs text-muted-foreground">
                           {formatDate(item.created_at.toISOString().slice(0, 10), locale)}
                           {item.created_by ? ` · ${t("fu.askedBy")} ${nameOf(item.created_by)}` : ""}
@@ -278,7 +382,7 @@ export function FeatureUpdatesPage() {
                           <MessageSquare className="size-4" />
                           {threadOf(item.id).length ? <span className="text-xs tabular-nums">{threadOf(item.id).length}</span> : null}
                         </Button>
-                        <Button size="icon-sm" variant="ghost" aria-label={t("note.edit")} title={t("note.edit")} onClick={() => setEditing({ id: item.id, title: item.title, notes: item.notes ?? "", priority: item.priority })}>
+                        <Button size="icon-sm" variant="ghost" aria-label={t("note.edit")} title={t("note.edit")} onClick={() => setEditing({ id: item.id, title: item.title, notes: item.notes ?? "", priority: item.priority, images: imagesOf(item.images), sop_id: item.sop_id })}>
                           <Pencil className="size-4" />
                         </Button>
                         <Button size="icon-sm" variant="ghost" aria-label={t("exp.delete")} title={t("exp.delete")} onClick={() => void remove(item)}>
@@ -331,6 +435,15 @@ export function FeatureUpdatesPage() {
           </ul>
         </Card>
       )}
+
+      <Dialog open={!!zoom} onOpenChange={(o) => !o && setZoom(null)}>
+        <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>{t("fu.title")}</DialogTitle>
+          </DialogHeader>
+          {zoom ? <img src={zoom} alt="" className="max-h-[75vh] w-full object-contain" /> : null}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!closing} onOpenChange={(o) => !o && setClosing(null)}>
         <DialogContent>

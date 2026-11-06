@@ -147,6 +147,8 @@ CREATE TABLE IF NOT EXISTS feature_requests (id SERIAL PRIMARY KEY, title TEXT N
 ALTER TABLE feature_requests ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'open';
 ALTER TABLE feature_requests ADD COLUMN IF NOT EXISTS final_note TEXT;
 ALTER TABLE feature_requests ADD COLUMN IF NOT EXISTS closed_by INTEGER;
+ALTER TABLE feature_requests ADD COLUMN IF NOT EXISTS images TEXT;
+ALTER TABLE feature_requests ADD COLUMN IF NOT EXISTS sop_id INTEGER;
 UPDATE feature_requests SET status = 'done' WHERE done = 1 AND status = 'open';
 CREATE TABLE IF NOT EXISTS sops (id SERIAL PRIMARY KEY, title TEXT NOT NULL, description TEXT, category TEXT, steps TEXT NOT NULL DEFAULT '[]', step_count INTEGER NOT NULL DEFAULT 0, cover TEXT, has_video INTEGER NOT NULL DEFAULT 0, created_by INTEGER, created_at TIMESTAMP DEFAULT NOW() NOT NULL, updated_at TIMESTAMP DEFAULT NOW() NOT NULL);
 CREATE TABLE IF NOT EXISTS sop_media (id SERIAL PRIMARY KEY, sop_id INTEGER NOT NULL, idx INTEGER NOT NULL, mime TEXT NOT NULL DEFAULT 'video/webm', data TEXT NOT NULL);
