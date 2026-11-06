@@ -1,6 +1,5 @@
 import { jsPDF } from "jspdf";
 import { downloadBlob } from "./download";
-import { logoImage } from "./schedule-pdf";
 import { answerOf, photosOf, type FormData, type FormDef } from "./forms";
 import type { PdfAttachment } from "./project-files";
 
@@ -20,10 +19,34 @@ export type FormPdfItem = {
   numberLabel?: string;
 };
 
-/** The company block printed beside the logo. */
-const FRX_INFO = ["Construction FRX inc.", "102-2250, rue Antonio-Héroux", "Terrebonne (QC) J6X 4T8", "450 477-9937 · info@frxconstruction.ca", "RBQ : 5588-1809-01"];
+/** The company details printed under the banner. */
+const FRX_INFO = ["Construction FRX inc. · 102-2250, rue Antonio-Héroux, Terrebonne (QC) J6X 4T8", "450 477-9937 · info@frxconstruction.ca · RBQ : 5588-1809-01"];
 const FRX_DARK: [number, number, number] = [20, 20, 20];
 const FRX_ORANGE: [number, number, number] = [251, 170, 25];
+
+/** The FRX banner of the forms ("En première ligne"), as a picture to print across the top of the page. */
+async function headerImage(): Promise<{ data: string; w: number; h: number } | null> {
+  try {
+    const res = await fetch("/brand/frx-form-header.png");
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    const data = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+    const size = await new Promise<{ w: number; h: number }>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+      img.onerror = reject;
+      img.src = data;
+    });
+    return { data, ...size };
+  } catch {
+    return null;
+  }
+}
 
 export type FormPdfLabels = { formTitle: string; project: string; date: string; type: string; filledBy: string; exportedOn: string; page: string; of: string; empty: string; attachments: string };
 
@@ -43,38 +66,38 @@ export async function exportFormsPdf(input: { items: FormPdfItem[]; labels: Form
   const M = 40;
   const innerW = W - M * 2;
   const labelW = innerW * 0.52;
-  const logo = await logoImage();
+  const banner = await headerImage();
   const { labels } = input;
 
   input.items.forEach((item, index) => {
     if (index > 0) pdf.addPage();
     let y = 0;
 
-    // ---- header: the FRX colours (black with an orange edge), the logo and the company details, then the form's name ----
-    pdf.setFillColor(...FRX_DARK);
-    pdf.rect(0, 0, W, 84, "F");
-    pdf.setFillColor(...FRX_ORANGE);
-    pdf.rect(0, 84, W, 4, "F");
-    if (logo) {
-      const lh = 30;
-      const lw = (lh * logo.w) / logo.h;
-      pdf.setFillColor(255, 255, 255);
-      pdf.roundedRect(M, 12, lw + 16, lh + 10, 4, 4, "F");
-      pdf.addImage(logo.data, "PNG", M + 8, 17, lw, lh, undefined, "FAST");
+    // ---- header: the FRX banner across the page, the company details, then the form's name ----
+    let top = 0;
+    if (banner) {
+      top = (W * banner.h) / banner.w;
+      pdf.addImage(banner.data, "PNG", 0, 0, W, top, undefined, "FAST");
+    } else {
+      top = 70;
+      pdf.setFillColor(...FRX_DARK);
+      pdf.rect(0, 0, W, top, "F");
+      pdf.setFillColor(...FRX_ORANGE);
+      pdf.rect(0, top, W, 4, "F");
     }
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(8);
+    pdf.setTextColor(...MUTED);
+    FRX_INFO.forEach((line, i) => pdf.text(line, W / 2, top + 14 + i * 10, { align: "center" }));
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(17);
-    pdf.setTextColor(255, 255, 255);
-    pdf.text(item.templateName.toUpperCase(), M, 70);
-    FRX_INFO.forEach((line, i) => {
-      pdf.setFont("helvetica", i === 0 ? "bold" : "normal");
-      pdf.setFontSize(i === 0 ? 9.5 : 8);
-      pdf.setTextColor(...(i === 0 ? FRX_ORANGE : ([225, 225, 225] as [number, number, number])));
-      pdf.text(line, W - M, 22 + i * 11.5, { align: "right" });
-    });
+    pdf.setTextColor(...INK);
+    pdf.text(item.templateName.toUpperCase(), M, top + 54);
+    pdf.setFillColor(...FRX_ORANGE);
+    pdf.rect(M, top + 60, 54, 3, "F");
 
     // ---- who / when / what ----
-    y = 112;
+    y = top + 88;
     const head: [string, string, boolean][] = [
       [labels.project, `${item.projectName}${item.projectNumber ? ` (${item.projectNumber})` : ""}`, false],
       [labels.date, item.date, false],

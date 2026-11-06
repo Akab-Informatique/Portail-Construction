@@ -27,6 +27,8 @@ export type FillTarget = {
   def: FormDef;
   /** Set when an existing form of the binder is opened. */
   entry?: { id: number; data: string; entry_date: string; created_by: number | null };
+  /** Open the saved form ready to be changed (the pencil of the binder). */
+  edit?: boolean;
 };
 
 /**
@@ -52,6 +54,7 @@ export function FormFill({
   const [data, setData] = useState<FormData>({});
   const [date, setDate] = useState(todayISO());
   const [readOnly, setReadOnly] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
   const [problems, setProblems] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<File[]>([]);
@@ -65,7 +68,7 @@ export function FormFill({
     if (target.entry) {
       setData(parseData(target.entry.data));
       setDate(target.entry.entry_date);
-      setReadOnly(true);
+      setReadOnly(!target.edit);
     } else {
       setData(blankData(target.def, today));
       setDate(today);
@@ -74,6 +77,9 @@ export function FormFill({
     setProblems([]);
     setPending([]);
     setFileError(null);
+    // A new numbered form shows the number it will get.
+    setPreview(null);
+    if (!target.entry && NUMBERED_FORMS[target.key]) void nextFormNumber(target.key).then(setPreview);
   }, [target]);
 
   const def = target?.def;
@@ -261,8 +267,10 @@ export function FormFill({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[94vh] overflow-y-auto p-0 sm:max-w-3xl">
         <DialogHeader className="space-y-0">
-          <div className="border-b-4 border-primary bg-[#141414] px-6 py-4 text-white">
-            <DialogTitle className="font-sans text-lg font-medium normal-case tracking-normal">{target.entry ? t("frm.titleOpen") : t("frm.titleNew")}</DialogTitle>
+          <img src="/brand/frx-form-header.png" alt="FRX Construction" className="w-full" />
+          <div className="px-6 pt-4">
+            <DialogTitle className="font-display text-2xl uppercase tracking-wide">{target.name}</DialogTitle>
+            <div className="mt-1 h-[3px] w-14 bg-primary" />
           </div>
           <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 px-6 pt-4 text-sm">
             <span className="text-muted-foreground">{t("frm.projectName")}</span>
@@ -273,8 +281,8 @@ export function FormFill({
             <span className="text-right">
               {readOnly ? <span className="font-medium">{date}</span> : <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="ml-auto h-8 w-40" />}
             </span>
-            <span className="text-muted-foreground">{NUMBERED_FORMS[target.key] && numberOf(data) ? NUMBERED_FORMS[target.key][locale === "fr" ? "fr" : "en"] : t("frm.type")}</span>
-            <span className="text-right font-bold uppercase tracking-wide">{NUMBERED_FORMS[target.key] && numberOf(data) ? numberOf(data) : target.name}</span>
+            <span className="text-muted-foreground">{NUMBERED_FORMS[target.key] ? NUMBERED_FORMS[target.key][locale === "fr" ? "fr" : "en"] : t("frm.type")}</span>
+            <span className="text-right font-bold uppercase tracking-wide">{NUMBERED_FORMS[target.key] ? (numberOf(data) ?? preview ?? "…") : target.name}</span>
             {target.entry ? (
               <>
                 <span className="text-muted-foreground">{t("frm.filledBy")}</span>

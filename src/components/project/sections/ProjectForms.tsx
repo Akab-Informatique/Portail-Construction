@@ -3,9 +3,10 @@ import { desc, eq } from "drizzle-orm";
 import { BookOpenCheck, Copy, FilePlus2, FileOutput, ClipboardList, Paperclip, Pencil, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
 import { db, schema } from "../../../db";
 import { useI18n } from "@/lib/i18n";
+import { useAuth } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
 import { projectColor } from "@/lib/project-colors";
-import { builtinForms, deleteCustomTemplate, loadCustomTemplates, NUMBERED_FORMS, numberOf, parseData, parseDef, type FormTemplate } from "@/lib/forms";
+import { backfillFormNumbers, builtinForms, deleteCustomTemplate, loadCustomTemplates, NUMBERED_FORMS, numberOf, parseData, parseDef, type FormTemplate } from "@/lib/forms";
 import { exportFormsPdf } from "@/lib/forms-pdf";
 import { attachmentsForPdf, countAttachments, removeAttachmentsOf } from "@/lib/project-files";
 import { FormBuilder } from "@/components/project/FormBuilder";
@@ -26,6 +27,8 @@ type Entry = typeof schema.form_entries.$inferSelect;
 export function ProjectForms({ project, people }: SectionProps) {
   const { t, locale } = useI18n();
   const color = projectColor(project);
+  const { user } = useAuth();
+  const isAdminUser = Boolean(user?.is_admin) && user?.view_as !== "client";
   const [view, setView] = useState<"forms" | "binder">("forms");
   const [custom, setCustom] = useState<FormTemplate[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -47,7 +50,9 @@ export function ProjectForms({ project, people }: SectionProps) {
     setFileCount(counts);
   }, [project.id]);
   useEffect(() => {
-    void load();
+    // Work orders filled in before numbering existed get their number once (an administrator sees every project).
+    void (isAdminUser ? backfillFormNumbers() : Promise.resolve(0)).then(() => load());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load]);
 
   // A standard form that was edited is replaced, in place, by its edited version.
@@ -209,6 +214,14 @@ export function ProjectForms({ project, people }: SectionProps) {
                 <Search className="pointer-events-none absolute top-2.5 left-3 size-4 text-muted-foreground" />
                 <Input className="h-9 pl-9" value={query} placeholder={t("qrt.search")} onChange={(e) => setQuery(e.target.value)} />
               </div>
+              <select aria-label={t("frm.filterType")} className="h-9 rounded-md border border-input bg-transparent px-2 text-sm" value={binderKey} onChange={(e) => setBinderKey(e.target.value)}>
+                <option value="all">{t("frm.allTypes")}</option>
+                {dividers.map((d) => (
+                  <option key={d.key} value={d.key}>
+                    {d.name} ({d.n})
+                  </option>
+                ))}
+              </select>
               <Button size="sm" variant="ghost" onClick={() => setPicked(picked.length === shown.length ? [] : shown.map((e) => e.id))} disabled={shown.length === 0}>
                 {picked.length === shown.length && shown.length > 0 ? t("pdoc.clear") : t("pdoc.selectAll")}
               </Button>
@@ -237,10 +250,11 @@ export function ProjectForms({ project, people }: SectionProps) {
                         <ClipboardList className="size-4" />
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate font-medium">{numberOf(parseData(e.data)) ?? e.template_name}</span>
+                        <span className="block truncate font-medium">
+                          {numberOf(parseData(e.data)) ? `${numberOf(parseData(e.data))} · ${formatDate(e.entry_date, locale)} · ${who(e.created_by)}` : e.template_name}
+                        </span>
                         <span className="block text-xs text-muted-foreground">
-                          {numberOf(parseData(e.data)) ? `${e.template_name} · ` : ""}
-                          {formatDate(e.entry_date, locale)} · {who(e.created_by)}
+                          {numberOf(parseData(e.data)) ? e.template_name : `${formatDate(e.entry_date, locale)} · ${who(e.created_by)}`}
                           {fileCount[e.id] ? (
                             <span className="ml-2 inline-flex items-center gap-1" title={t("frm.attachCount", { n: fileCount[e.id] })}>
                               <Paperclip className="size-3" />
@@ -250,6 +264,15 @@ export function ProjectForms({ project, people }: SectionProps) {
                         </span>
                       </span>
                     </button>
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label={t("frm.b.edit")}
+                      title={t("frm.b.edit")}
+                      onClick={() => setFill({ key: e.template_key, name: e.template_name, def: parseDef(e.definition), edit: true, entry: { id: e.id, data: e.data, entry_date: e.entry_date, created_by: e.created_by } })}
+                    >
+                      <Pencil className="size-4" />
+                    </Button>
                     <Button size="icon-sm" variant="ghost" aria-label={t("wbs.export")} title={t("wbs.export")} onClick={() => void exportEntries([e])}>
                       <FileOutput className="size-4" />
                     </Button>

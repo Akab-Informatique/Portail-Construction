@@ -964,6 +964,8 @@ export const en = {
   "nu.failed": "The email could not be sent. Check Setup › Email.",
   "nu.toggle": "Email clients",
   "nu.toggleHint": "When on, the client users who can see this folder get an email each time you upload. Stays as you left it.",
+  "frm.filterType": "Filter by form type",
+  "frm.allTypes": "All form types",
   "nb.confirmDelete": "Delete this note and its files?",
   "nb.private": "Private: only you can read your notebook",
   "nb.send": "Send to the project's notes",

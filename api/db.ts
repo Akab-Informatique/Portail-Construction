@@ -1393,6 +1393,38 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
       if ("error" in result && clientIp) recordLoginFailure(`reset:${clientIp}`);
       return res.status("error" in result ? 400 : 200).json(result);
     }
+    // The next running number of a numbered form (BT-0001...): worked out over every project, whoever asks.
+    if (action === "next_form_number") {
+      if (!hasRemoteDb()) return res.status(200).json({ local: true });
+      const session = await loadSessionUser(req);
+      if (!session) {
+        res.status(401).json({ error: "err.unauthorized" });
+        return;
+      }
+      if (session.user_type === "external" && Number(session.is_admin) !== 1) {
+        res.status(403).json({ error: "err.forbidden" });
+        return;
+      }
+      await ensureSchema();
+      const key = String(req.body?.template_key ?? "");
+      const prefix = String(req.body?.prefix ?? "").replace(/[^A-Za-z]/g, "").slice(0, 6).toUpperCase();
+      if (!key || !prefix) {
+        res.status(400).json({ error: "err.badRequest" });
+        return;
+      }
+      const found = await getPool().query("SELECT data FROM form_entries WHERE template_key = $1", [key]);
+      let max = 0;
+      for (const row of found.rows as { data: string }[]) {
+        try {
+          const n = String(JSON.parse(row.data)?._meta?.[0]?.number ?? "");
+          const m = new RegExp(`^${prefix}-(\\d+)$`).exec(n);
+          if (m) max = Math.max(max, Number(m[1]));
+        } catch {
+          /* an entry without a readable number */
+        }
+      }
+      return res.status(200).json({ number: `${prefix}-${String(max + 1).padStart(4, "0")}` });
+    }
     // An administrator reads or sets another person's own settings (Outlook calendar, morning email). Those rows are private to
     // their owner for the browser, so this goes through the server.
     if (action === "get_user_prefs" || action === "set_user_prefs") {

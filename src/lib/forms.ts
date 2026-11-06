@@ -189,6 +189,14 @@ export const numberOf = (data: FormData): string | null => data._meta?.[0]?.numb
 export async function nextFormNumber(templateKey: string): Promise<string | null> {
   const rule = NUMBERED_FORMS[templateKey];
   if (!rule) return null;
+  // The server numbers over every project; without a server (local development) the browser's database does it.
+  try {
+    const res = await fetch("/api/db", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "next_form_number", template_key: templateKey, prefix: rule.prefix }) });
+    const out = (await res.json().catch(() => ({}))) as { number?: string; local?: boolean };
+    if (res.ok && out.number) return out.number;
+  } catch {
+    /* fall back to the local count */
+  }
   await dbReady;
   const rows = await db.select({ data: schema.form_entries.data }).from(schema.form_entries).where(eq(schema.form_entries.template_key, templateKey));
   let max = 0;
@@ -198,6 +206,33 @@ export async function nextFormNumber(templateKey: string): Promise<string | null
     if (m) max = Math.max(max, Number(m[1]));
   }
   return `${rule.prefix}-${String(max + 1).padStart(4, "0")}`;
+}
+
+/**
+ * Gives a number to the numbered forms filled in before numbering existed, oldest first, continuing after the highest number
+ * in use. Run by an administrator, who sees every project; nothing happens once every form has its number.
+ */
+export async function backfillFormNumbers(): Promise<number> {
+  await dbReady;
+  let done = 0;
+  for (const [key, rule] of Object.entries(NUMBERED_FORMS)) {
+    const rows = await db.select().from(schema.form_entries).where(eq(schema.form_entries.template_key, key));
+    const missing = rows.filter((r) => !numberOf(parseData(r.data))).sort((a, b) => a.id - b.id);
+    if (missing.length === 0) continue;
+    let max = 0;
+    for (const r of rows) {
+      const m = new RegExp(`^${rule.prefix}-(\\d+)$`).exec(numberOf(parseData(r.data)) ?? "");
+      if (m) max = Math.max(max, Number(m[1]));
+    }
+    for (const r of missing) {
+      max += 1;
+      const data = parseData(r.data);
+      data._meta = [{ number: `${rule.prefix}-${String(max).padStart(4, "0")}` }];
+      await db.update(schema.form_entries).set({ data: JSON.stringify(data) }).where(eq(schema.form_entries.id, r.id));
+      done += 1;
+    }
+  }
+  return done;
 }
 
 export const FIELD_TYPES: FieldType[] = ["text", "longtext", "date", "time", "number", "yesno", "select", "photo"];

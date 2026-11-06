@@ -966,6 +966,8 @@ export const fr: Record<MessageKey, string> = {
   "nu.failed": "Le courriel n’a pas pu être envoyé. Vérifiez Configuration › Courriel.",
   "nu.toggle": "Prévenir les clients",
   "nu.toggleHint": "Activé : les utilisateurs clients qui voient ce dossier reçoivent un courriel à chaque téléversement. Reste comme vous l’avez laissé.",
+  "frm.filterType": "Filtrer par type de formulaire",
+  "frm.allTypes": "Tous les types de formulaires",
   "nb.confirmDelete": "Supprimer cette note et ses fichiers?",
   "nb.private": "Privé : toi seul(e) peux lire ton bloc-notes",
   "nb.send": "Envoyer dans les notes du projet",
