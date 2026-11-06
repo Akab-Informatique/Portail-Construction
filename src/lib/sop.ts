@@ -2,6 +2,7 @@ import { desc, eq } from "drizzle-orm";
 import { jsPDF } from "jspdf";
 import { db, dbReady, schema } from "../db";
 import { downloadBlob } from "./download";
+import { FRX_INFO, headerImage } from "./forms-pdf";
 
 /** One step of a procedure: a screenshot (or none), a title and what to do. */
 export type SopStep = { id: string; title: string; text: string; image: string | null };
@@ -202,15 +203,16 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 const fileSafe = (s: string) => s.replace(/[^\p{L}\p{N}_-]+/gu, "_").replace(/^_+|_+$/g, "").slice(0, 60) || "sop";
 
 /** One self-contained page (pictures inside it): it can be e-mailed, opened anywhere and printed. */
-export function exportSopHtml(x: ExportInput) {
+export async function exportSopHtml(x: ExportInput) {
+  const banner = await headerImage();
   const steps = x.steps
     .map(
       (s, i) => `<section><h2><span>${i + 1}</span>${esc(s.title || `${x.stepLabel} ${i + 1}`)}</h2>${s.text ? `<p>${esc(s.text).replace(/\n/g, "<br>")}</p>` : ""}${s.image ? `<img src="${s.image}" alt="">` : ""}</section>`,
     )
     .join("\n");
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(x.title)}</title>
-<style>body{font-family:system-ui,Segoe UI,Arial,sans-serif;color:#141414;margin:0;background:#f4f4f2}header{background:#141414;color:#fff;padding:28px 24px;border-bottom:6px solid #fbaa19}main{max-width:860px;margin:0 auto;padding:24px}h1{margin:0;font-size:28px}.meta{opacity:.75;font-size:13px;margin-top:6px}.tag{color:#fbaa19;font-size:12px;letter-spacing:.14em;text-transform:uppercase}section{background:#fff;border:1px solid #e3e3df;border-radius:12px;padding:18px;margin:18px 0;break-inside:avoid}h2{font-size:18px;margin:0 0 8px;display:flex;gap:10px;align-items:center}h2 span{background:#fbaa19;color:#000;border-radius:999px;min-width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;font-size:14px}img{max-width:100%;border:1px solid #e3e3df;border-radius:8px;margin-top:10px}p{line-height:1.5}@media print{body{background:#fff}section{border:0;padding:0}}</style></head>
-<body><header><div class="tag">${esc(x.heading)}</div><h1>${esc(x.title)}</h1><div class="meta">${esc([x.category, x.author, x.date].filter(Boolean).join(" · "))}</div></header><main>${x.description ? `<p>${esc(x.description).replace(/\n/g, "<br>")}</p>` : ""}${steps}</main></body></html>`;
+<style>body{font-family:system-ui,Segoe UI,Arial,sans-serif;color:#141414;margin:0;background:#f4f4f2}.banner{display:block;width:100%;height:auto}.info{background:#fff;text-align:center;font-size:11px;color:#5f5f5c;padding:8px 12px;border-bottom:1px solid #e3e3df}header{max-width:860px;margin:0 auto;padding:22px 24px 0}header .tag{color:#b97a00}main{max-width:860px;margin:0 auto;padding:24px}h1{margin:0;font-size:28px}.meta{opacity:.75;font-size:13px;margin-top:6px}.tag{color:#fbaa19;font-size:12px;letter-spacing:.14em;text-transform:uppercase}section{background:#fff;border:1px solid #e3e3df;border-radius:12px;padding:18px;margin:18px 0;break-inside:avoid}h2{font-size:18px;margin:0 0 8px;display:flex;gap:10px;align-items:center}h2 span{background:#fbaa19;color:#000;border-radius:999px;min-width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;font-size:14px}img{max-width:100%;border:1px solid #e3e3df;border-radius:8px;margin-top:10px}p{line-height:1.5}@media print{body{background:#fff}section{border:0;padding:0}}</style></head>
+<body>${banner ? `<img class="banner" src="${banner.data}" alt="">` : ""}<div class="info">${FRX_INFO.map(esc).join("<br>")}</div><header><div class="tag">${esc(x.heading)}</div><h1>${esc(x.title)}</h1><div class="meta">${esc([x.category, x.author, x.date].filter(Boolean).join(" · "))}</div></header><main>${x.description ? `<p>${esc(x.description).replace(/\n/g, "<br>")}</p>` : ""}${steps}</main></body></html>`;
   downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `${fileSafe(x.title)}.html`);
 }
 
@@ -225,24 +227,38 @@ function imageSize(src: string): Promise<{ w: number; h: number }> {
 
 export async function exportSopPdf(x: ExportInput) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const banner = await headerImage();
   const W = 210;
   const H = 297;
   const M = 16;
   const cw = W - M * 2;
   const ORANGE: [number, number, number] = [251, 170, 25];
-  doc.setFillColor(20, 20, 20);
-  doc.rect(0, 0, W, 30, "F");
-  doc.setFillColor(...ORANGE);
-  doc.rect(0, 30, W, 2, "F");
-  doc.setTextColor(...ORANGE);
+  // The same header as the work order: the FRX banner across the page, the company details under it.
+  let top = 24;
+  if (banner) {
+    top = (W * banner.h) / banner.w;
+    doc.addImage(banner.data, "PNG", 0, 0, W, top, undefined, "FAST");
+  } else {
+    doc.setFillColor(20, 20, 20);
+    doc.rect(0, 0, W, top, "F");
+    doc.setFillColor(...ORANGE);
+    doc.rect(0, top, W, 1.5, "F");
+  }
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(95, 95, 92);
+  FRX_INFO.forEach((line, i) => doc.text(line, W / 2, top + 5 + i * 3.6, { align: "center" }));
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-  doc.text(x.heading.toUpperCase(), M, 12);
-  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(8.5);
+  doc.setTextColor(185, 122, 0);
+  doc.text(x.heading.toUpperCase(), M, top + 18);
   doc.setFontSize(18);
-  const titleLines = doc.splitTextToSize(x.title, cw) as string[];
-  doc.text(titleLines.slice(0, 2), M, 21);
-  let y = 40;
+  doc.setTextColor(40, 40, 38);
+  const titleLines = (doc.splitTextToSize(x.title, cw) as string[]).slice(0, 2);
+  doc.text(titleLines, M, top + 26);
+  doc.setFillColor(...ORANGE);
+  doc.rect(M, top + 26 + titleLines.length * 7, 20, 1.2, "F");
+  let y = top + 26 + titleLines.length * 7 + 8;
   doc.setTextColor(90, 90, 90);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);

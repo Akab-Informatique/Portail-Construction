@@ -20,12 +20,12 @@ export type FormPdfItem = {
 };
 
 /** The company details printed under the banner. */
-const FRX_INFO = ["Construction FRX inc. · 102-2250, rue Antonio-Héroux, Terrebonne (QC) J6X 4T8", "450 477-9937 · info@frxconstruction.ca · RBQ : 5588-1809-01"];
+export const FRX_INFO = ["Construction FRX inc. · 102-2250, rue Antonio-Héroux, Terrebonne (QC) J6X 4T8", "450 477-9937 · info@frxconstruction.ca · RBQ : 5588-1809-01"];
 const FRX_DARK: [number, number, number] = [20, 20, 20];
 const FRX_ORANGE: [number, number, number] = [251, 170, 25];
 
 /** The FRX banner of the forms ("En première ligne"), as a picture to print across the top of the page. */
-async function headerImage(): Promise<{ data: string; w: number; h: number } | null> {
+export async function headerImage(): Promise<{ data: string; w: number; h: number } | null> {
   try {
     const res = await fetch("/brand/frx-form-header.png");
     if (!res.ok) return null;
