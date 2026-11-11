@@ -4,7 +4,6 @@ import { Plus, Trash2 } from "lucide-react";
 import { db, schema } from "../../db";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
-import { useDraft } from "@/lib/use-draft";
 import type { MessageKey } from "@/lib/i18n/en";
 import { formatDateTime } from "@/lib/format";
 import { PRIORITIES, TASK_STATUSES } from "@/lib/constants";
@@ -56,7 +55,7 @@ export function TaskDrawer({
   const [check, setCheck] = useState<CheckItem[]>([]);
   const [notes, setNotes] = useState<TaskNote[]>([]);
   const [newItem, setNewItem] = useState("");
-  const [newNote, setNewNote] = useDraft(task ? `tasknote:${task.id}` : null);
+  const [newNote, setNewNote] = useState("");
   const [depPick, setDepPick] = useState("");
   const [depError, setDepError] = useState<string | null>(null);
   const [guard, setGuard] = useState<string | null>(null);

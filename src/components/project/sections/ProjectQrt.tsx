@@ -4,7 +4,6 @@ import { Camera, CheckCircle2, Clock, HelpCircle, Loader2, MessageCircleQuestion
 import { db, schema } from "../../../db";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
-import { readDraft, useDraft, useDraftMap } from "@/lib/use-draft";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { projectColor } from "@/lib/project-colors";
 import { addAttachment, countAttachments, removeAttachmentsOf } from "@/lib/project-files";
@@ -41,16 +40,14 @@ export function ProjectQrt({ project, client, people, members }: SectionProps) {
   const [filter, setFilter] = useState<"all" | "open" | "answered">("all");
   const [query, setQuery] = useState("");
   const [askOpen, setAskOpen] = useState(false);
-  const [question, setQuestion] = useDraft(`qrt:q:${user?.id ?? 0}:${project.id}`);
+  const [question, setQuestion] = useState("");
   const [pending, setPending] = useState<File[]>([]);
   const pickFile = useRef<HTMLInputElement>(null);
   const pickCamera = useRef<HTMLInputElement>(null);
   const [fromClient, setFromClient] = useState(false);
   const [notify, setNotify] = useState<NotifyChoice>({ userIds: [], channels: ["email", "sms"] });
   const [answering, setAnswering] = useState<Entry | null>(null);
-  const [answerOf, setAnswerOf] = useDraftMap(`qrt:a:${user?.id ?? 0}`);
-  const answerText = answering ? answerOf(answering.id) : "";
-  const setAnswerText = (v: string) => answering && setAnswerOf(answering.id, v);
+  const [answerText, setAnswerText] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   // A client account asks questions and reads the answers; it cannot answer, edit or delete.
@@ -173,7 +170,6 @@ export function ProjectQrt({ project, client, people, members }: SectionProps) {
         text: `${answering.question}\n\n${text.slice(0, 500)}\n\n${window.location.origin}/projects/${project.id}/qrt`,
       });
     }
-    setAnswerOf(answering.id, "");
     setAnswering(null);
     await load();
   }
@@ -265,8 +261,7 @@ export function ProjectQrt({ project, client, people, members }: SectionProps) {
                       variant={open ? "default" : "outline"}
                       onClick={() => {
                         setAnswering(e);
-                        // an answer started earlier comes back; otherwise the saved one
-                        if (!readDraft(`qrt:a:${user?.id ?? 0}:${e.id}`)) setAnswerOf(e.id, e.answer ?? "");
+                        setAnswerText(e.answer ?? "");
                       }}
                     >
                       {open ? <Send className="size-4" /> : <Pencil className="size-4" />}
@@ -358,7 +353,7 @@ export function ProjectQrt({ project, client, people, members }: SectionProps) {
           <Textarea autoFocus rows={6} value={answerText} placeholder={t("qrt.answerPlaceholder")} onChange={(e) => setAnswerText(e.target.value)} />
           <NotifyToggle kind="qrt_answer" who="clients" />
           <DialogFooter>
-            <Button variant="outline" onClick={() => { if (answering) setAnswerOf(answering.id, ""); setAnswering(null); }}>{t("clients.cancel")}</Button>
+            <Button variant="outline" onClick={() => setAnswering(null)}>{t("clients.cancel")}</Button>
             <Button onClick={() => void saveAnswer()}>{t("settings.save")}</Button>
           </DialogFooter>
         </DialogContent>
