@@ -5,6 +5,7 @@ import { syncAutoNotes } from "@/lib/task-activity";
 import { db, schema } from "../../../db";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
+import { readDraft, useDraft, useDraftMap, writeDraft } from "@/lib/use-draft";
 import { formatDateTime } from "@/lib/format";
 import { projectColor } from "@/lib/project-colors";
 import { addAttachment, countAttachments } from "@/lib/project-files";
@@ -35,7 +36,8 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
   const color = projectColor(project);
   const [notes, setNotes] = useState<Note[]>([]);
   const [fileCount, setFileCount] = useState<Record<number, number>>({});
-  const [body, setBody] = useState("");
+  // What is typed is kept in the browser until it is sent (window closed, refresh...).
+  const [body, setBody] = useDraft(`note:${user?.id ?? 0}:${project.id}`);
   const [visibility, setVisibility] = useState<Visibility>("internal");
   const [pending, setPending] = useState<File[]>([]);
   const [notify, setNotify] = useState<NotifyChoice>({ userIds: [], channels: ["email"] });
@@ -52,7 +54,7 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
   const canComment = useCanAct("notes", "create");
   const [clientUserIds, setClientUserIds] = useState<number[]>([]);
   const [comments, setComments] = useState<Record<number, Comment[]>>({});
-  const [drafts, setDrafts] = useState<Record<number, string>>({});
+  const [draftOf, setDraftOf] = useDraftMap(`notecomment:${user?.id ?? 0}`);
   const [sendingComment, setSendingComment] = useState<number | null>(null);
   /** The note being edited here, with its new text and who it is for. */
   const [editing, setEditing] = useState<{ id: number; body: string; visibility: string } | null>(null);
@@ -101,12 +103,12 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
   const isAdmin = Boolean(user?.is_admin);
 
   async function comment(note: Note) {
-    const text = (drafts[note.id] ?? "").trim();
+    const text = draftOf(note.id).trim();
     if (!text || !user) return;
     setSendingComment(note.id);
     try {
       const [row] = await db.insert(schema.note_comments).values({ note_id: note.id, project_id: project.id, user_id: user.id, body: text, created_on: new Date().toISOString() }).returning();
-      setDrafts((d) => ({ ...d, [note.id]: "" }));
+      setDraftOf(note.id, "");
       await load();
       // the person who wrote the note hears about it
       if (row) void notifyEvent("note_comment", row.id);
@@ -157,6 +159,7 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
     try {
       await updateProjectNote(editing.id, { body: editing.body.trim(), visibility: editing.visibility });
       await logActivity({ action: "edited note", details: editing.body.trim().slice(0, 80), projectId: project.id, userId: user?.id });
+      writeDraft(`noteedit:${editing.id}`, "");
       setEditing(null);
       await load();
     } finally {
@@ -264,7 +267,7 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
                         {n.visibility === "admin" ? t("note.vis.admin") : t(`note.vis.${n.visibility === "everyone" ? "everyone" : "internal"}`)}
                       </span>
                       {!viewer && (mine || isAdmin) && n.auto === 0 ? (
-                        <Button size="icon-sm" variant="ghost" aria-label={t("note.edit")} title={t("note.edit")} onClick={() => setEditing({ id: n.id, body: n.body, visibility: n.visibility })}>
+                        <Button size="icon-sm" variant="ghost" aria-label={t("note.edit")} title={t("note.edit")} onClick={() => setEditing({ id: n.id, body: readDraft(`noteedit:${n.id}`) || n.body, visibility: n.visibility })}>
                           <Pencil className="size-4" />
                         </Button>
                       ) : null}
@@ -285,7 +288,7 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
                     </div>
                     {editing?.id === n.id ? (
                       <div className="space-y-2">
-                        <Textarea rows={5} value={editing.body} onChange={(e) => setEditing({ ...editing, body: e.target.value })} />
+                        <Textarea rows={5} value={editing.body} onChange={(e) => { setEditing({ ...editing, body: e.target.value }); writeDraft(`noteedit:${editing.id}`, e.target.value); }} />
                         <div className="flex flex-wrap items-center gap-2">
                           {n.visibility !== "admin" ? (
                             <div className="flex gap-1 rounded-lg border bg-muted/40 p-0.5">
@@ -300,7 +303,7 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
                             {saving ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
                             {t("settings.save")}
                           </Button>
-                          <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(null)}>
+                          <Button type="button" size="sm" variant="ghost" onClick={() => { writeDraft(`noteedit:${editing.id}`, ""); setEditing(null); }}>
                             {t("clients.cancel")}
                           </Button>
                         </div>
@@ -320,8 +323,8 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
                         </div>
                       ))}
                       <div className={cn("flex items-end gap-2", !canComment && "hidden")}>
-                        <Textarea rows={1} className="min-h-10" value={drafts[n.id] ?? ""} placeholder={t("note.commentPh")} onChange={(e) => setDrafts((d) => ({ ...d, [n.id]: e.target.value }))} />
-                        <Button type="button" size="sm" variant="outline" disabled={sendingComment === n.id || !(drafts[n.id] ?? "").trim()} onClick={() => void comment(n)}>
+                        <Textarea rows={1} className="min-h-10" value={draftOf(n.id)} placeholder={t("note.commentPh")} onChange={(e) => setDraftOf(n.id, e.target.value)} />
+                        <Button type="button" size="sm" variant="outline" disabled={sendingComment === n.id || !draftOf(n.id).trim()} onClick={() => void comment(n)}>
                           {sendingComment === n.id ? <Loader2 className="size-4 animate-spin" /> : <MessageSquare className="size-4" />}
                           {t("note.comment")}
                         </Button>

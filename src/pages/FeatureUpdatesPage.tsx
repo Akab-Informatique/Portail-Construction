@@ -5,6 +5,7 @@ import { BookOpen, Check, CheckCircle2, ImagePlus, ListChecks, Loader2, MessageS
 import { db, dbReady, schema } from "../db";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
+import { useDraft, useDraftMap } from "@/lib/use-draft";
 import { formatDate } from "@/lib/format";
 import { sendNotification } from "@/lib/notify";
 import { imageToJpeg, listSops } from "@/lib/sop";
@@ -131,8 +132,8 @@ export function FeatureUpdatesPage() {
   const { user } = useAuth();
   const [items, setItems] = useState<Item[] | null>(null);
   const [filter, setFilter] = useState<Filter>("open");
-  const [title, setTitle] = useState("");
-  const [notes, setNotes] = useState("");
+  const [title, setTitle] = useDraft(`fu:title:${user?.id ?? 0}`);
+  const [notes, setNotes] = useDraft(`fu:notes:${user?.id ?? 0}`);
   const [priority, setPriority] = useState(5);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<{ id: number; title: string; notes: string; priority: number; images: string[]; sop_id: number | null } | null>(null);
@@ -145,7 +146,9 @@ export function FeatureUpdatesPage() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [names, setNames] = useState<Record<number, string>>({});
   const [openThread, setOpenThread] = useState<number | null>(null);
-  const [draft, setDraft] = useState("");
+  const [threadDrafts, setThreadDrafts] = useDraftMap(`fu:comment:${user?.id ?? 0}`);
+  const draft = openThread ? threadDrafts(openThread) : "";
+  const setDraft = (v: string) => { if (openThread) setThreadDrafts(openThread, v); };
   const [closing, setClosing] = useState<Item | null>(null);
   const [closingNote, setClosingNote] = useState("");
   const [rejecting, setRejecting] = useState<Item | null>(null);
@@ -378,7 +381,7 @@ export function FeatureUpdatesPage() {
                         </p>
                       </div>
                       <div className="flex shrink-0 gap-0.5">
-                        <Button size="icon-sm" variant="ghost" aria-label={t("fu.comments")} title={t("fu.comments")} onClick={() => { setOpenThread(openThread === item.id ? null : item.id); setDraft(""); }}>
+                        <Button size="icon-sm" variant="ghost" aria-label={t("fu.comments")} title={t("fu.comments")} onClick={() => { setOpenThread(openThread === item.id ? null : item.id); }}>
                           <MessageSquare className="size-4" />
                           {threadOf(item.id).length ? <span className="text-xs tabular-nums">{threadOf(item.id).length}</span> : null}
                         </Button>
