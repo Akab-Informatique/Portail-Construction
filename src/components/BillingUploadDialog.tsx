@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   ACCEPTED_TYPES,
+  BILLING_AI_ENABLED,
   MAX_UPLOAD_BYTES,
   deleteBillingFile,
   saveFileDetails,
@@ -163,7 +164,9 @@ export function BillingUploadDialog({
       setTotal(r.amount ? String(r.amount) : "");
       setTm(false);
       setStatus("sent");
-      if (result.extracted) {
+      if (!BILLING_AI_ENABLED) {
+        setAiMessage(null);
+      } else if (result.extracted) {
         const conf = result.extracted.confidence ?? "low";
         setAiMessage({
           tone: conf === "high" ? "ok" : "warn",
@@ -271,7 +274,7 @@ export function BillingUploadDialog({
             <FileUp className="size-4" />
             {title0}
           </DialogTitle>
-          <DialogDescription className="sr-only">{t("billing.upload.desc")}</DialogDescription>
+          <DialogDescription className="sr-only">{BILLING_AI_ENABLED ? t("billing.upload.desc") : t("billing.upload.descManual")}</DialogDescription>
         </DialogHeader>
 
         {phase !== "review" ? (
@@ -457,8 +460,8 @@ export function BillingUploadDialog({
             </>
           ) : (
             <Button type="button" onClick={() => void analyze()} disabled={phase === "analyzing" || !file || !clientId || projectId === NONE}>
-              {phase === "analyzing" ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-              {phase === "analyzing" ? t("billing.upload.analyzing") : t("billing.upload.analyze")}
+              {phase === "analyzing" ? <Loader2 className="size-4 animate-spin" /> : BILLING_AI_ENABLED ? <Sparkles className="size-4" /> : <FileUp className="size-4" />}
+              {phase === "analyzing" ? t("billing.upload.analyzing") : BILLING_AI_ENABLED ? t("billing.upload.analyze") : t("billing.upload.deposit")}
             </Button>
           )}
         </DialogFooter>

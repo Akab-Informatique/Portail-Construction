@@ -267,7 +267,8 @@ export default async function handler(req: Req, res: Res) {
     ).rows[0] as { id: number };
     await serverQuery("INSERT INTO billing_file_blobs (file_id, data) VALUES ($1, $2)", [inserted.id, bytes.toString("base64")]);
 
-    const result = await runAnalysis(kind, mime, bytes.toString("base64"));
+    // `skip_ai`: the file is only stored; the amounts are typed by staff.
+    const result: { extracted?: any; error?: string } = body.skip_ai === true ? { error: "ai.notConfigured" } : await runAnalysis(kind, mime, bytes.toString("base64"));
     const x = result.extracted;
     if (x) {
       await serverQuery(

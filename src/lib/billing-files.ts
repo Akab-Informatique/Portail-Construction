@@ -172,6 +172,9 @@ export type UploadInput = {
   userId: number;
 };
 
+/** The AI is not used for now: a document is simply deposited and the figures are typed. Set to true to read documents again. */
+export const BILLING_AI_ENABLED = false;
+
 export type UploadResult = {
   record: BillingFile;
   extracted: ExtractedDocument | null;
@@ -213,6 +216,7 @@ export async function uploadBillingFile(input: UploadInput): Promise<UploadResul
       parent_id: input.parentId ?? null,
       request_id: input.requestId ?? null,
       addon: Boolean(input.addon),
+      skip_ai: !BILLING_AI_ENABLED,
       file_name: input.file.name,
       data,
     });
@@ -247,6 +251,7 @@ export async function uploadBillingFile(input: UploadInput): Promise<UploadResul
   let extracted: ExtractedDocument | null = null;
   let aiError: string | null = null;
   try {
+    if (!BILLING_AI_ENABLED) throw new Error("skip");
     const ai = await getSetting(AI_KEY).then((raw) => (raw ? JSON.parse(raw) : undefined)).catch(() => undefined);
     const { data: payload } = await postFiles({ action: "analyze_data", kind: input.kind, data, ai });
     extracted = (payload.extracted as ExtractedDocument | undefined) ?? null;

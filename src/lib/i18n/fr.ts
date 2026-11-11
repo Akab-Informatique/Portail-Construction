@@ -2021,6 +2021,8 @@ export const fr: Record<MessageKey, string> = {
   "billing.upload.badFile": "Ce type de fichier n’est pas pris en charge. Utilisez un PDF, PNG ou JPG.",
   "billing.upload.tooBig": "Ce fichier est trop volumineux (8 Mo maximum).",
   "billing.upload.failed": "Le dépôt a échoué. Veuillez réessayer.",
+  "billing.upload.deposit": "Déposer le document",
+  "billing.upload.descManual": "Déposez le fichier ici, puis saisissez son numéro et ses montants. Le client ne voit rien avant la publication.",
   "billing.upload.analyze": "Lire avec l’IA",
   "billing.upload.analyzing": "Lecture du document…",
   "billing.upload.answers": "Répond à la demande du client",

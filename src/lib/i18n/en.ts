@@ -2020,6 +2020,8 @@ export const en = {
   "billing.upload.badFile": "This file type is not supported. Use a PDF, PNG or JPG.",
   "billing.upload.tooBig": "This file is too large (8 MB maximum).",
   "billing.upload.failed": "The upload failed. Please try again.",
+  "billing.upload.deposit": "Upload the document",
+  "billing.upload.descManual": "Drop the file here, then type its number and amounts. The client sees nothing until you publish.",
   "billing.upload.analyze": "Read with AI",
   "billing.upload.analyzing": "Reading the document…",
   "billing.upload.answers": "Answers the client request",
