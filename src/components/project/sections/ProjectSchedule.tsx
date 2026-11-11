@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { asc, eq } from "drizzle-orm";
-import { CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Circle, FileUp, GanttChartSquare, Pencil, TableProperties, ListChecks, Lock, MessageSquare, Paperclip, Plus, Rows3, Search, Trash2, TrendingUp } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Bookmark, Circle, Copy, FileUp, GanttChartSquare, Pencil, TableProperties, ListChecks, Lock, MessageSquare, Paperclip, Plus, Rows3, Search, Trash2, TrendingUp } from "lucide-react";
 import { db, schema } from "../../../db";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -10,7 +10,7 @@ import { formatDate, todayISO } from "@/lib/format";
 import { EVENT_TYPES, PRIORITIES } from "@/lib/constants";
 import { projectColor } from "@/lib/project-colors";
 import { countAttachments } from "@/lib/project-files";
-import { addSchedule, deleteSchedule, loadSchedules, renameSchedule, type Schedule } from "@/lib/schedules";
+import { addSchedule, applyTemplate, cloneSchedule, deleteSchedule, deleteTemplate, listTemplates, loadSchedules, renameSchedule, saveTemplate, type Schedule, type ScheduleTemplate } from "@/lib/schedules";
 import { logActivity } from "@/lib/activity";
 import { notifyProjectEvent } from "@/lib/notify-events";
 import { NotifyToggle } from "@/components/project/NotifyToggle";
@@ -65,7 +65,14 @@ export function ProjectSchedule({ project, people }: SectionProps) {
     }
   });
   /** The name dialog: adding a schedule (id null) or renaming one. */
-  const [naming, setNaming] = useState<{ id: number | null; name: string } | null>(null);
+  const [naming, setNaming] = useState<{ id: number | null; name: string; source: string; start: string; reset: boolean } | null>(null);
+  const [templates, setTemplates] = useState<ScheduleTemplate[]>([]);
+  /** The dialog that keeps the open schedule as a template. */
+  const [tplName, setTplName] = useState<{ name: string; description: string } | null>(null);
+  const openNew = (source = "blank") => {
+    const base = schedules.find((x) => x.id === active?.id);
+    setNaming({ id: null, name: source.startsWith("clone") && base ? t("sch.cloneName", { name: base.name }) : "", source, start: project.start_date ?? todayISO(), reset: true });
+  };
   const active = schedules.find((x) => x.id === activeId) ?? schedules[0] ?? null;
   // Rows made before schedules existed (no schedule) belong to the first one.
   const tasks = useMemo(() => (active ? allTasks.filter((x) => (x.schedule_id ?? schedules[0]?.id) === active.id) : allTasks), [allTasks, active, schedules]);
@@ -117,6 +124,7 @@ export function ProjectSchedule({ project, people }: SectionProps) {
   const load = useCallback(async () => {
     const sched = await loadSchedules(project.id, t("sch.defaultName"));
     setSchedules(sched);
+    if (!viewer) setTemplates(await listTemplates().catch(() => []));
     const [taskRows, eventRows, checks, notes, files, depRows] = await Promise.all([
       db.select().from(schema.project_tasks).where(eq(schema.project_tasks.project_id, project.id)).orderBy(asc(schema.project_tasks.end_date), asc(schema.project_tasks.id)),
       db.select().from(schema.calendar_events).where(eq(schema.calendar_events.project_id, project.id)),
@@ -147,12 +155,32 @@ export function ProjectSchedule({ project, people }: SectionProps) {
   async function saveName() {
     if (!naming || !naming.name.trim()) return;
     if (naming.id === null) {
-      const row = await addSchedule(project.id, naming.name, schedules);
+      let row: Schedule;
+      if (naming.source.startsWith("clone")) row = await cloneSchedule(project.id, naming.name, tasks, schedules, naming.reset);
+      else if (naming.source.startsWith("tpl:")) {
+        const tpl = templates.find((x) => x.id === Number(naming.source.slice(4)));
+        row = tpl ? await applyTemplate(project.id, naming.name, tpl, naming.start || todayISO(), schedules) : await addSchedule(project.id, naming.name, schedules);
+      } else row = await addSchedule(project.id, naming.name, schedules);
       pickSchedule(row.id);
     } else {
       await renameSchedule(naming.id, naming.name);
     }
     setNaming(null);
+    await load();
+  }
+
+  async function keepTemplate() {
+    if (!tplName || !tplName.name.trim()) return;
+    await saveTemplate(tplName.name, tplName.description, tasks, user?.id ?? null);
+    setTplName(null);
+    setNotice(t("sch.templateSaved"));
+    await load();
+  }
+
+  async function removeTemplate(id: number) {
+    if (!window.confirm(t("sch.templateDeleteConfirm"))) return;
+    await deleteTemplate(id);
+    setNaming((n) => (n ? { ...n, source: "blank" } : n));
     await load();
   }
 
@@ -255,9 +283,17 @@ export function ProjectSchedule({ project, people }: SectionProps) {
             <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">{t("sch.schedulesLabel")}</h2>
             {!viewer && active ? (
               <div className="ml-auto flex items-center gap-1">
-                <Button size="sm" variant="ghost" onClick={() => setNaming({ id: active.id, name: active.name })}>
+                <Button size="sm" variant="ghost" onClick={() => setNaming({ id: active.id, name: active.name, source: "blank", start: "", reset: true })}>
                   <Pencil className="size-4" />
                   {t("sch.scheduleRename")}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => openNew("clone")}>
+                  <Copy className="size-4" />
+                  {t("sch.clone")}
+                </Button>
+                <Button size="sm" variant="ghost" disabled={tasks.length === 0} onClick={() => setTplName({ name: active.name, description: "" })}>
+                  <Bookmark className="size-4" />
+                  {t("sch.saveTemplate")}
                 </Button>
                 {schedules.length > 1 ? (
                   <Button size="icon-sm" variant="ghost" aria-label={t("sch.scheduleDelete")} title={t("sch.scheduleDelete")} onClick={() => void removeActive()}>
@@ -291,7 +327,7 @@ export function ProjectSchedule({ project, people }: SectionProps) {
               );
             })}
             {!viewer ? (
-              <button type="button" onClick={() => setNaming({ id: null, name: "" })} className="flex min-h-[76px] items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-3 text-sm font-medium text-muted-foreground transition-colors hover:border-primary hover:text-foreground">
+              <button type="button" onClick={() => openNew("blank")} className="flex min-h-[76px] items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-3 text-sm font-medium text-muted-foreground transition-colors hover:border-primary hover:text-foreground">
                 <Plus className="size-4" />
                 {t("sch.scheduleNew")}
               </button>
@@ -664,16 +700,76 @@ export function ProjectSchedule({ project, people }: SectionProps) {
       <Dialog open={!!naming} onOpenChange={(o) => !o && setNaming(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{naming?.id === null ? t("sch.scheduleNew") : t("sch.scheduleRename")}</DialogTitle>
+            <DialogTitle>{naming?.id === null ? (naming.source === "clone" ? t("sch.clone") : t("sch.scheduleNew")) : t("sch.scheduleRename")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-1.5">
             <Label>{t("sch.scheduleName")}</Label>
             <Input autoFocus value={naming?.name ?? ""} placeholder={t("sch.scheduleNamePh")} onChange={(e) => naming && setNaming({ ...naming, name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && void saveName()} />
-            {naming?.id === null ? <p className="text-xs text-muted-foreground">{t("sch.scheduleNewHint")}</p> : null}
           </div>
+          {naming?.id === null ? (
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label>{t("sch.startFrom")}</Label>
+                <select value={naming.source} onChange={(e) => setNaming({ ...naming, source: e.target.value })} className="h-9 w-full rounded-md border bg-background px-2 text-sm">
+                  <option value="blank">{t("sch.fromBlank")}</option>
+                  {active ? <option value="clone">{t("sch.fromClone", { name: active.name })}</option> : null}
+                  {templates.length ? (
+                    <optgroup label={t("sch.templates")}>
+                      {templates.map((tp) => (
+                        <option key={tp.id} value={`tpl:${tp.id}`}>
+                          {tp.name} ({tp.item_count})
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
+                </select>
+              </div>
+              {naming.source === "clone" ? (
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input type="checkbox" checked={naming.reset} onChange={(e) => setNaming({ ...naming, reset: e.target.checked })} />
+                  {t("sch.cloneReset")}
+                </label>
+              ) : null}
+              {naming.source.startsWith("tpl:") ? (
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="space-y-1.5">
+                    <Label>{t("sch.templateStart")}</Label>
+                    <Input type="date" value={naming.start} onChange={(e) => setNaming({ ...naming, start: e.target.value })} />
+                  </div>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => void removeTemplate(Number(naming.source.slice(4)))}>
+                    <Trash2 className="size-4" />
+                    {t("sch.templateDelete")}
+                  </Button>
+                </div>
+              ) : null}
+              <p className="text-xs text-muted-foreground">{naming.source === "blank" ? t("sch.scheduleNewHint") : naming.source === "clone" ? t("sch.cloneHint") : t("sch.templateHint")}</p>
+            </div>
+          ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => setNaming(null)}>{t("clients.cancel")}</Button>
             <Button disabled={!naming?.name.trim()} onClick={() => void saveName()}>{t("settings.save")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!tplName} onOpenChange={(o) => !o && setTplName(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("sch.saveTemplate")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>{t("sch.templateName")}</Label>
+              <Input autoFocus value={tplName?.name ?? ""} onChange={(e) => tplName && setTplName({ ...tplName, name: e.target.value })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("sch.description")}</Label>
+              <Textarea rows={2} value={tplName?.description ?? ""} onChange={(e) => tplName && setTplName({ ...tplName, description: e.target.value })} />
+            </div>
+            <p className="text-xs text-muted-foreground">{t("sch.templateSaveHint")}</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTplName(null)}>{t("clients.cancel")}</Button>
+            <Button disabled={!tplName?.name.trim()} onClick={() => void keepTemplate()}>{t("settings.save")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

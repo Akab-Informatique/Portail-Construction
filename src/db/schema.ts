@@ -145,6 +145,17 @@ export const project_schedules = pgTable("project_schedules", {
   created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
+/** Schedule templates (phases, tasks, breaks with dates as offsets) kept to start a new schedule in any project. */
+export const schedule_templates = pgTable("schedule_templates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  data: text("data").notNull().default("[]"),
+  item_count: integer("item_count").notNull().default(0),
+  created_by: integer("created_by"),
+  created_at: timestamp("created_at").default(sql`now()`).notNull(),
+});
+
 export const budget_items = pgTable("budget_items", {
   id: serial("id").primaryKey(),
   project_id: integer("project_id").notNull(),
