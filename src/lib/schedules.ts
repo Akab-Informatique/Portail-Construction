@@ -23,19 +23,23 @@ export async function loadSchedules(projectId: number, defaultName: string): Pro
   } catch {
     /* a client account cannot write: it reads the stand-in below */
   }
-  return rows.length ? rows : [{ id: 0, project_id: projectId, name: defaultName, sort_order: 0, created_at: new Date() }];
+  return rows.length ? rows : [{ id: 0, project_id: projectId, name: defaultName, status: "active", sort_order: 0, created_at: new Date() }];
 }
 
-export async function addSchedule(projectId: number, name: string, after: Schedule[]): Promise<Schedule> {
+export const SCHEDULE_STATUSES = ["draft", "active", "done"] as const;
+export type ScheduleStatus = (typeof SCHEDULE_STATUSES)[number];
+const cleanStatus = (v: string | undefined): ScheduleStatus => ((SCHEDULE_STATUSES as readonly string[]).includes(v ?? "") ? (v as ScheduleStatus) : "active");
+
+export async function addSchedule(projectId: number, name: string, after: Schedule[], status?: string): Promise<Schedule> {
   await dbReady;
   const sort_order = after.reduce((m, s) => Math.max(m, s.sort_order), -1) + 1;
-  const [row] = await db.insert(schema.project_schedules).values({ project_id: projectId, name: name.trim(), sort_order, created_at: new Date() }).returning();
+  const [row] = await db.insert(schema.project_schedules).values({ project_id: projectId, name: name.trim(), status: cleanStatus(status), sort_order, created_at: new Date() }).returning();
   return row;
 }
 
-export async function renameSchedule(id: number, name: string) {
+export async function renameSchedule(id: number, name: string, status?: string) {
   await dbReady;
-  await db.update(schema.project_schedules).set({ name: name.trim() }).where(eq(schema.project_schedules.id, id));
+  await db.update(schema.project_schedules).set({ name: name.trim(), ...(status ? { status: cleanStatus(status) } : {}) }).where(eq(schema.project_schedules.id, id));
 }
 
 /** Removes one task with its checklist, notes, dependency links (both ways) and files. */
@@ -149,9 +153,9 @@ async function itemsOf(tasks: Task[]): Promise<{ items: TemplateItem[]; base: nu
 }
 
 /** A new schedule that is a copy of `source`: the same phases, tasks and breaks, dates, checklists and links. `reset` starts every task over. */
-export async function cloneSchedule(projectId: number, name: string, tasks: Task[], schedules: Schedule[], reset: boolean): Promise<Schedule> {
+export async function cloneSchedule(projectId: number, name: string, tasks: Task[], schedules: Schedule[], reset: boolean, status?: string): Promise<Schedule> {
   await dbReady;
-  const created = await addSchedule(projectId, name, schedules);
+  const created = await addSchedule(projectId, name, schedules, status);
   const { items, base } = await itemsOf(tasks);
   const byRef = new Map(tasks.map((t) => [t.id, t]));
   await writeRows(
@@ -188,10 +192,10 @@ export async function deleteTemplate(id: number) {
 }
 
 /** A new schedule built from a template, its first day being `startDate`. */
-export async function applyTemplate(projectId: number, name: string, tpl: ScheduleTemplate, startDate: string, schedules: Schedule[]): Promise<Schedule> {
+export async function applyTemplate(projectId: number, name: string, tpl: ScheduleTemplate, startDate: string, schedules: Schedule[], status?: string): Promise<Schedule> {
   await dbReady;
   const items = JSON.parse(tpl.data) as TemplateItem[];
-  const created = await addSchedule(projectId, name, schedules);
+  const created = await addSchedule(projectId, name, schedules, status);
   const start = dayNumber(startDate);
   const at = (o: number | null) => (o === null ? null : isoOf(start + o));
   await writeRows(projectId, created.id, items, (i) => ({ start: at(i.startOffset), end: at(i.endOffset) }), () => ({ status: "not_started", progress: null }));

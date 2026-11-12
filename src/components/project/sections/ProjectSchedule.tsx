@@ -10,7 +10,7 @@ import { formatDate, todayISO } from "@/lib/format";
 import { EVENT_TYPES, PRIORITIES } from "@/lib/constants";
 import { projectColor } from "@/lib/project-colors";
 import { countAttachments } from "@/lib/project-files";
-import { addSchedule, applyTemplate, cloneSchedule, deleteSchedule, deleteTask, deleteTemplate, listTemplates, loadSchedules, renameSchedule, saveTemplate, type Schedule, type ScheduleTemplate } from "@/lib/schedules";
+import { SCHEDULE_STATUSES, addSchedule, applyTemplate, cloneSchedule, deleteSchedule, deleteTask, deleteTemplate, listTemplates, loadSchedules, renameSchedule, saveTemplate, type Schedule, type ScheduleTemplate } from "@/lib/schedules";
 import { dayCount, endAfter, wholeDays } from "@/lib/schedule-days";
 import { settlePhases } from "@/lib/schedule-phases";
 import { logActivity } from "@/lib/activity";
@@ -67,13 +67,13 @@ export function ProjectSchedule({ project, people }: SectionProps) {
     }
   });
   /** The name dialog: adding a schedule (id null) or renaming one. */
-  const [naming, setNaming] = useState<{ id: number | null; name: string; source: string; start: string; reset: boolean } | null>(null);
+  const [naming, setNaming] = useState<{ id: number | null; name: string; source: string; start: string; reset: boolean; status: string } | null>(null);
   const [templates, setTemplates] = useState<ScheduleTemplate[]>([]);
   /** The dialog that keeps the open schedule as a template. */
   const [tplName, setTplName] = useState<{ name: string; description: string } | null>(null);
   const openNew = (source = "blank") => {
     const base = schedules.find((x) => x.id === active?.id);
-    setNaming({ id: null, name: source.startsWith("clone") && base ? t("sch.cloneName", { name: base.name }) : "", source, start: project.start_date ?? todayISO(), reset: true });
+    setNaming({ id: null, name: source.startsWith("clone") && base ? t("sch.cloneName", { name: base.name }) : "", source, start: project.start_date ?? todayISO(), reset: true, status: "draft" });
   };
   const active = schedules.find((x) => x.id === activeId) ?? schedules[0] ?? null;
   // Rows made before schedules existed (no schedule) belong to the first one.
@@ -125,7 +125,7 @@ export function ProjectSchedule({ project, people }: SectionProps) {
 
   const load = useCallback(async () => {
     const sched = await loadSchedules(project.id, t("sch.defaultName"));
-    setSchedules(sched);
+    setSchedules(viewer ? sched.filter((x) => x.status !== "draft") : sched);
     if (!viewer) setTemplates(await listTemplates().catch(() => []));
     const [taskRows, eventRows, checks, notes, files, depRows] = await Promise.all([
       db.select().from(schema.project_tasks).where(eq(schema.project_tasks.project_id, project.id)).orderBy(asc(schema.project_tasks.end_date), asc(schema.project_tasks.id)),
@@ -159,14 +159,14 @@ export function ProjectSchedule({ project, people }: SectionProps) {
     if (!naming || !naming.name.trim()) return;
     if (naming.id === null) {
       let row: Schedule;
-      if (naming.source.startsWith("clone")) row = await cloneSchedule(project.id, naming.name, tasks, schedules, naming.reset);
+      if (naming.source.startsWith("clone")) row = await cloneSchedule(project.id, naming.name, tasks, schedules, naming.reset, naming.status);
       else if (naming.source.startsWith("tpl:")) {
         const tpl = templates.find((x) => x.id === Number(naming.source.slice(4)));
-        row = tpl ? await applyTemplate(project.id, naming.name, tpl, naming.start || todayISO(), schedules) : await addSchedule(project.id, naming.name, schedules);
-      } else row = await addSchedule(project.id, naming.name, schedules);
+        row = tpl ? await applyTemplate(project.id, naming.name, tpl, naming.start || todayISO(), schedules, naming.status) : await addSchedule(project.id, naming.name, schedules, naming.status);
+      } else row = await addSchedule(project.id, naming.name, schedules, naming.status);
       pickSchedule(row.id);
     } else {
-      await renameSchedule(naming.id, naming.name);
+      await renameSchedule(naming.id, naming.name, naming.status);
     }
     setNaming(null);
     await load();
@@ -197,6 +197,13 @@ export function ProjectSchedule({ project, people }: SectionProps) {
     if (!window.confirm(t("sch.templateDeleteConfirm"))) return;
     await deleteTemplate(id);
     setNaming((n) => (n ? { ...n, source: "blank" } : n));
+    await load();
+  }
+
+  /** The status is set straight from the schedule tab; a draft disappears for clients at once. */
+  async function setStatus(sc: Schedule, status: string) {
+    await renameSchedule(sc.id, sc.name, status);
+    setNotice(t(status === "draft" ? "sch.status.nowDraft" : "sch.status.nowVisible", { name: sc.name }));
     await load();
   }
 
@@ -308,7 +315,7 @@ export function ProjectSchedule({ project, people }: SectionProps) {
             <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">{t("sch.schedulesLabel")}</h2>
             {!viewer && active ? (
               <div className="ml-auto flex items-center gap-1">
-                <Button size="sm" variant="ghost" onClick={() => setNaming({ id: active.id, name: active.name, source: "blank", start: "", reset: true })}>
+                <Button size="sm" variant="ghost" onClick={() => setNaming({ id: active.id, name: active.name, source: "blank", start: "", reset: true, status: active.status })}>
                   <Pencil className="size-4" />
                   {t("sch.scheduleRename")}
                 </Button>
@@ -339,20 +346,43 @@ export function ProjectSchedule({ project, people }: SectionProps) {
               const pct = nTasks.length ? Math.round((nTasks.filter((x) => x.status === "completed").length / nTasks.length) * 100) : 0;
               const on = active?.id === sc.id;
               return (
-                <button
+                <div
                   key={sc.id}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   aria-pressed={on}
                   onClick={() => pickSchedule(sc.id)}
-                  className={cn("flex min-w-0 flex-col gap-1.5 rounded-xl border px-4 py-3 text-left transition-all", on ? "shadow-md" : "bg-card hover:bg-muted/50")}
+                  onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && e.target === e.currentTarget && pickSchedule(sc.id)}
+                  className={cn("flex min-w-0 cursor-pointer flex-col gap-1.5 rounded-xl border px-4 py-3 text-left transition-all", on ? "shadow-md" : "bg-card hover:bg-muted/50")}
                   style={on ? { background: `color-mix(in srgb, ${color} 14%, var(--card))`, borderColor: color, boxShadow: `inset 0 3px 0 ${color}` } : undefined}
                 >
-                  <span className="truncate text-base font-semibold">{sc.name}</span>
+                  <span className="flex items-center gap-2">
+                    <span className="truncate text-base font-semibold">{sc.name}</span>
+                    {viewer ? (
+                      sc.status !== "active" ? <span className="shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-700 dark:text-emerald-400">{t(`sch.status.${sc.status}` as "sch.status.draft")}</span> : null
+                    ) : (
+                      <select
+                        value={sc.status}
+                        aria-label={t("sch.scheduleStatus")}
+                        title={t("sch.scheduleStatus")}
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                        onChange={(e) => void setStatus(sc, e.target.value)}
+                        className={cn("ml-auto shrink-0 cursor-pointer rounded-full border-0 px-2 py-0.5 text-[10px] font-semibold uppercase outline-none", sc.status === "draft" ? "bg-amber-500/20 text-amber-700 dark:text-amber-400" : sc.status === "done" ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-400" : "bg-primary/15 text-primary")}
+                      >
+                        {SCHEDULE_STATUSES.map((st) => (
+                          <option key={st} value={st}>
+                            {t(`sch.status.${st}` as "sch.status.draft")}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </span>
                   <span className="text-xs text-muted-foreground">{t("sch.scheduleStats", { p: mine.filter((x) => x.kind === "phase").length, n: nTasks.length, pct })}</span>
                   <span className="h-1 overflow-hidden rounded-full" style={{ background: `color-mix(in srgb, ${color} 18%, transparent)` }}>
                     <span className="block h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
                   </span>
-                </button>
+                </div>
               );
             })}
             {!viewer ? (
@@ -752,6 +782,17 @@ export function ProjectSchedule({ project, people }: SectionProps) {
             <Label>{t("sch.scheduleName")}</Label>
             <Input autoFocus value={naming?.name ?? ""} placeholder={t("sch.scheduleNamePh")} onChange={(e) => naming && setNaming({ ...naming, name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && void saveName()} />
           </div>
+          <div className="space-y-1.5">
+            <Label>{t("sch.scheduleStatus")}</Label>
+            <select value={naming?.status ?? "draft"} onChange={(e) => naming && setNaming({ ...naming, status: e.target.value })} className="h-9 w-full rounded-md border bg-background px-2 text-sm">
+              {SCHEDULE_STATUSES.map((st) => (
+                <option key={st} value={st}>
+                  {t(`sch.status.${st}` as "sch.status.draft")}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">{naming?.status === "draft" ? t("sch.status.draftHint") : t("sch.status.visibleHint")}</p>
+          </div>
           {naming?.id === null ? (
             <div className="space-y-3">
               <div className="space-y-1.5">
@@ -825,6 +866,7 @@ export function ProjectSchedule({ project, people }: SectionProps) {
         people={people}
         phases={phases}
         preset={addPreset}
+        draft={active?.status === "draft"}
         onClose={() => setAddOpen(false)}
         onSave={async (input) => {
           let v = input;
@@ -841,7 +883,8 @@ export function ProjectSchedule({ project, people }: SectionProps) {
           const [row] = await db.insert(schema.project_tasks).values({ ...stripNewPhase(v), sort_order, updated_on: todayISO(), project_id: project.id, schedule_id: active?.id || null }).returning();
           await logActivity({ action: "added task", details: v.title, projectId: project.id, userId: user?.id });
           // With the switch on in the dialog, the project's clients are told about the new task.
-          if (v.kind !== "break") {
+          // A draft schedule is not visible to clients, so nobody is told about it.
+          if (v.kind !== "break" && active?.status !== "draft") {
             void notifyProjectEvent({
               kind: "task",
               projectId: project.id,
@@ -953,12 +996,15 @@ function AddTaskDialog({
   people,
   phases,
   preset,
+  draft,
   onClose,
   onSave,
 }: {
   open: boolean;
   people: SectionProps["people"];
   phases: Task[];
+  /** The schedule is a draft: clients cannot see it, so there is nobody to notify. */
+  draft?: boolean;
   preset: { kind: "task" | "phase" | "break"; parentId: number | null };
   onClose: () => void;
   onSave: (v: {
@@ -1066,7 +1112,7 @@ function AddTaskDialog({
             <Textarea rows={3} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} />
           </div>
         </div>
-        <NotifyToggle kind="task" who="clients" />
+        {draft ? null : <NotifyToggle kind="task" who="clients" />}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>{t("clients.cancel")}</Button>
           <Button

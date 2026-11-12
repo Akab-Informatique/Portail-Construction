@@ -141,6 +141,8 @@ export const project_schedules = pgTable("project_schedules", {
   id: serial("id").primaryKey(),
   project_id: integer("project_id").notNull(),
   name: text("name").notNull(),
+  /** draft (staff only), active or done: a client sees the schedules that are not drafts. */
+  status: text("status").notNull().default("active"),
   sort_order: integer("sort_order").notNull().default(0),
   created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });

@@ -307,6 +307,12 @@ async function ensureApiRoles() {
       "frx_client_request",
       `FOR INSERT TO ${ROLE_CLIENT} WITH CHECK (status = 'open' AND requested_by = ${ME} AND ${scopes.billing_requests})`,
     ),
+    // A draft schedule is for staff: a client never reads it, nor its tasks, checklists, notes or links, whatever SQL is sent.
+    ...policy("project_schedules", "frx_client_not_draft", `AS RESTRICTIVE FOR SELECT TO ${ROLE_CLIENT} USING (status <> 'draft')`),
+    ...policy("project_tasks", "frx_client_not_draft", `AS RESTRICTIVE FOR SELECT TO ${ROLE_CLIENT} USING (schedule_id IS NULL OR EXISTS (SELECT 1 FROM project_schedules s WHERE s.id = project_tasks.schedule_id AND s.status <> 'draft'))`),
+    ...["task_notes", "task_checklist", "task_dependencies"].flatMap((tb) =>
+      policy(tb, "frx_client_not_draft", `AS RESTRICTIVE FOR SELECT TO ${ROLE_CLIENT} USING (EXISTS (SELECT 1 FROM project_tasks t WHERE t.id = ${tb}.task_id))`),
+    ),
     ...policy("project_notes", "frx_client_shared", `AS RESTRICTIVE FOR SELECT TO ${ROLE_CLIENT} USING (visibility = 'everyone' AND auto = 0)`),
     ...policy(
       "project_attachments",
