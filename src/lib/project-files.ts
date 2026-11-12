@@ -1,4 +1,4 @@
-import { and, desc, eq, like } from "drizzle-orm";
+import { and, asc, desc, eq, like } from "drizzle-orm";
 import { db, dbReady, schema } from "../db";
 
 export type AttachmentOwner = "task" | "note" | "sst" | "qrt" | "form" | "pnote";
@@ -62,7 +62,16 @@ export async function listAttachments(projectId: number, owner: AttachmentOwner,
     .select(cols)
     .from(schema.project_attachments)
     .where(and(eq(schema.project_attachments.project_id, projectId), eq(schema.project_attachments.owner_type, owner), eq(schema.project_attachments.owner_id, ownerId)))
-    .orderBy(desc(schema.project_attachments.id))) as Attachment[];
+    // The order people chose first; files never ordered (sort_order empty) keep the newest-first order they always had.
+    .orderBy(asc(schema.project_attachments.sort_order), desc(schema.project_attachments.id))) as Attachment[];
+}
+
+/** Saves the order the files of one owner are shown in: the first id gets sort_order 1, the next 2, and so on. */
+export async function saveAttachmentOrder(ids: number[]) {
+  await dbReady;
+  for (const [i, id] of ids.entries()) {
+    await db.update(schema.project_attachments).set({ sort_order: i + 1 }).where(eq(schema.project_attachments.id, id));
+  }
 }
 
 /** How many files hang on each owner, for badges in lists. */
@@ -163,7 +172,7 @@ export async function attachmentsForPdf(projectId: number, owner: AttachmentOwne
     .select({ file_name: schema.project_attachments.file_name, file_type: schema.project_attachments.file_type, file_size: schema.project_attachments.file_size, data: schema.project_attachments.data })
     .from(schema.project_attachments)
     .where(and(eq(schema.project_attachments.project_id, projectId), eq(schema.project_attachments.owner_type, owner), eq(schema.project_attachments.owner_id, ownerId)))
-    .orderBy(schema.project_attachments.id);
+    .orderBy(asc(schema.project_attachments.sort_order), asc(schema.project_attachments.id));
   return rows.map((r) => ({
     name: r.file_name,
     size: r.file_size,

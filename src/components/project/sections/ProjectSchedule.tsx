@@ -10,7 +10,9 @@ import { formatDate, todayISO } from "@/lib/format";
 import { EVENT_TYPES, PRIORITIES } from "@/lib/constants";
 import { projectColor } from "@/lib/project-colors";
 import { countAttachments } from "@/lib/project-files";
-import { addSchedule, applyTemplate, cloneSchedule, deleteSchedule, deleteTemplate, listTemplates, loadSchedules, renameSchedule, saveTemplate, type Schedule, type ScheduleTemplate } from "@/lib/schedules";
+import { addSchedule, applyTemplate, cloneSchedule, deleteSchedule, deleteTask, deleteTemplate, listTemplates, loadSchedules, renameSchedule, saveTemplate, type Schedule, type ScheduleTemplate } from "@/lib/schedules";
+import { dayCount, endAfter, wholeDays } from "@/lib/schedule-days";
+import { settlePhases } from "@/lib/schedule-phases";
 import { logActivity } from "@/lib/activity";
 import { notifyProjectEvent } from "@/lib/notify-events";
 import { NotifyToggle } from "@/components/project/NotifyToggle";
@@ -134,7 +136,8 @@ export function ProjectSchedule({ project, people }: SectionProps) {
       viewer ? Promise.resolve([]) : db.select({ task_id: schema.task_dependencies.task_id, depends_on_id: schema.task_dependencies.depends_on_id }).from(schema.task_dependencies).where(eq(schema.task_dependencies.project_id, project.id)),
     ]);
     setDeps(depRows);
-    setTasks(taskRows);
+    // Phases take their dates and status from their tasks; a read-only account sees the same figures without saving them.
+    setTasks(await settlePhases(taskRows, !viewer));
     setEvents(eventRows);
     const cc: Record<number, { done: number; total: number }> = {};
     for (const c of checks) {
@@ -189,6 +192,15 @@ export function ProjectSchedule({ project, people }: SectionProps) {
     if (!window.confirm(t("sch.scheduleDeleteConfirm", { name: active.name }))) return;
     await deleteSchedule(project.id, active.id);
     setActiveId(null);
+    await load();
+  }
+
+  /** The trash at the end of a row: the task goes with its checklist, notes and files, and its phase is worked out again. */
+  async function removeTask(task: Task) {
+    if (!window.confirm(t("sch.deleteConfirm"))) return;
+    await deleteTask(project.id, task.id);
+    if (openId === task.id) setOpenId(null);
+    if (detailId === task.id) setDetailId(null);
     await load();
   }
 
@@ -605,6 +617,23 @@ export function ProjectSchedule({ project, people }: SectionProps) {
                                         <Pencil className="size-4" />
                                       </button>
                                     )}
+                                    {viewer ? null : (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon-sm"
+                                        aria-label={t("sch.delete")}
+                                        title={t("sch.delete")}
+                                        className="shrink-0 text-muted-foreground hover:text-destructive"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          void removeTask(task);
+                                        }}
+                                        onKeyDown={(e) => e.stopPropagation()}
+                                      >
+                                        <Trash2 className="size-4" />
+                                      </Button>
+                                    )}
                                   </div>
                                   {relOpen.has(task.id) ? (
                                     <div className="mt-1 ml-6 space-y-1 border-l-2 pl-4" style={{ borderColor: `color-mix(in srgb, ${color} 40%, transparent)` }}>
@@ -890,6 +919,12 @@ function TaskGantt({ tasks, color, checkCount, onOpen }: { tasks: Task[]; color:
   );
 }
 
+/** The end date for a start date and a duration typed in days; the end stays as it is while the duration is not a whole number. */
+function endForDays(start: string, rawDays: string, end: string) {
+  const n = wholeDays(rawDays);
+  return n !== null && start ? endAfter(start, n) : end;
+}
+
 function stripNewPhase<T extends { newPhase?: string }>(v: T): Omit<T, "newPhase"> {
   const { newPhase: _drop, ...rest } = v;
   void _drop;
@@ -924,7 +959,7 @@ function AddTaskDialog({
   }) => Promise<void>;
 }) {
   const { t } = useI18n();
-  const blank = { title: "", description: "", start_date: todayISO(), end_date: "", priority: "medium", assigned_to: "none", kind: "task", parent: "none", newPhase: "" };
+  const blank = { title: "", description: "", start_date: todayISO(), end_date: "", days: "", priority: "medium", assigned_to: "none", kind: "task", parent: "none", newPhase: "" };
   const [f, setF] = useState(blank);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -974,11 +1009,16 @@ function AddTaskDialog({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label>{t("sch.start")}</Label>
-              <Input type="date" value={f.start_date} onChange={(e) => setF({ ...f, start_date: e.target.value })} />
+              <Input type="date" value={f.start_date} onChange={(e) => setF((cur) => ({ ...cur, start_date: e.target.value, end_date: endForDays(e.target.value, cur.days, cur.end_date) }))} />
             </div>
             <div className="space-y-1.5">
               <Label>{t("sch.end")}</Label>
-              <Input type="date" value={f.end_date} onChange={(e) => setF({ ...f, end_date: e.target.value })} />
+              <Input type="date" value={f.end_date} onChange={(e) => setF((cur) => ({ ...cur, end_date: e.target.value, days: dayCount(cur.start_date, e.target.value)?.toString() ?? "" }))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("sch.durationDays")}</Label>
+              <Input type="number" min={1} step={1} inputMode="numeric" value={f.days} onChange={(e) => setF((cur) => ({ ...cur, days: e.target.value, end_date: endForDays(cur.start_date, e.target.value, cur.end_date) }))} />
+              <p className="text-[11px] text-muted-foreground">{t("sch.durationHint")}</p>
             </div>
             <div className="space-y-1.5">
               <Label>{t("sch.priority")}</Label>

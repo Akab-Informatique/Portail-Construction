@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Camera, Download, FileText, Loader2, Paperclip, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
+import { Camera, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, FileText, GripVertical, Loader2, Paperclip, Trash2, X } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { downloadBlob } from "@/lib/download";
@@ -8,6 +8,7 @@ import {
   attachmentBlob,
   listAttachments,
   removeAttachment,
+  saveAttachmentOrder,
   type Attachment,
   type AttachmentOwner,
 } from "@/lib/project-files";
@@ -16,6 +17,26 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 
 const kb = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 const isImage = (a: Attachment) => (a.file_type ?? "").startsWith("image/");
+type Kind = "photo" | "file";
+const kindOf = (a: Attachment): Kind => (isImage(a) ? "photo" : "file");
+
+/**
+ * Moves one file to position `to` among the files of its own kind: photos stay among photos, other files among files.
+ * The order of the other kind is kept in place.
+ */
+function reorderWithin(all: Attachment[], id: number, to: number): Attachment[] {
+  const item = all.find((f) => f.id === id);
+  if (!item) return all;
+  const kind = kindOf(item);
+  const slots = all.flatMap((f, i) => (kindOf(f) === kind ? [i] : []));
+  const without = slots.map((i) => all[i]).filter((f) => f.id !== id);
+  without.splice(Math.max(0, Math.min(to, without.length)), 0, item);
+  const out = [...all];
+  slots.forEach((pos, k) => {
+    out[pos] = without[k];
+  });
+  return out;
+}
 
 export function Thumb({ file, onOpen }: { file: Attachment; onOpen: () => void }) {
   const [src, setSrc] = useState<string | null>(null);
@@ -42,6 +63,7 @@ export function Thumb({ file, onOpen }: { file: Attachment; onOpen: () => void }
 /**
  * Files and photos on a task, note, SST incident or QRT entry. Photos show as thumbnails you can open large;
  * other files show as rows you can download. Phones get a camera button.
+ * Whoever may edit can change the order: drag an item, or use the arrow buttons (keyboard). The order is saved.
  */
 export function Attachments({
   projectId,
@@ -64,6 +86,8 @@ export function Attachments({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ url: string; name: string } | null>(null);
+  const [drag, setDrag] = useState<{ id: number; kind: Kind } | null>(null);
+  const [overId, setOverId] = useState<number | null>(null);
   const pick = useRef<HTMLInputElement>(null);
   const camera = useRef<HTMLInputElement>(null);
 
@@ -102,8 +126,72 @@ export function Attachments({
     else downloadBlob(blob, file.file_name);
   }
 
+  /** Saves a new order (the list as shown, first to last). The screen follows at once; a failure brings back the saved order. */
+  async function commitOrder(next: Attachment[]) {
+    if (next.every((f, i) => f.id === files[i]?.id)) return;
+    setFiles(next);
+    setError(null);
+    try {
+      await saveAttachmentOrder(next.map((f) => f.id));
+      onChange?.();
+    } catch (err) {
+      console.error("attachment order failed", err);
+      setError(t("att.orderFailed"));
+      await load();
+    }
+  }
+
+  function moveBy(id: number, delta: number) {
+    const item = files.find((f) => f.id === id);
+    if (!item) return;
+    const sameKind = files.filter((f) => kindOf(f) === kindOf(item));
+    const at = sameKind.findIndex((f) => f.id === id);
+    const to = at + delta;
+    if (to < 0 || to >= sameKind.length) return;
+    void commitOrder(reorderWithin(files, id, to));
+  }
+
+  function dropOn(targetId: number) {
+    if (!drag || drag.id === targetId) return;
+    const sameKind = files.filter((f) => kindOf(f) === drag.kind);
+    const to = sameKind.findIndex((f) => f.id === targetId);
+    if (to >= 0) void commitOrder(reorderWithin(files, drag.id, to));
+  }
+
+  /** Drag handlers for one item; an item can only be dropped among items of its own kind. */
+  function dragProps(file: Attachment) {
+    if (!canEdit) return {};
+    const kind = kindOf(file);
+    return {
+      draggable: true,
+      title: t("att.dragHint"),
+      onDragStart: (e: DragEvent<HTMLElement>) => {
+        setDrag({ id: file.id, kind });
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", String(file.id));
+      },
+      onDragOver: (e: DragEvent<HTMLElement>) => {
+        if (!drag || drag.kind !== kind) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        setOverId(file.id);
+      },
+      onDrop: (e: DragEvent<HTMLElement>) => {
+        e.preventDefault();
+        dropOn(file.id);
+        setDrag(null);
+        setOverId(null);
+      },
+      onDragEnd: () => {
+        setDrag(null);
+        setOverId(null);
+      },
+    };
+  }
+
   const photos = files.filter(isImage);
   const others = files.filter((f) => !isImage(f));
+  const dropping = (f: Attachment) => overId === f.id && drag?.kind === kindOf(f) && drag.id !== f.id;
 
   return (
     <div className="space-y-3">
@@ -126,8 +214,19 @@ export function Attachments({
       {photos.length > 0 ? (
         <div className="flex flex-wrap gap-2">
           {photos.map((p) => (
-            <div key={p.id} className="relative">
+            <div key={p.id} className={`relative flex flex-col items-center gap-1 rounded-lg transition-shadow ${dropping(p) ? "ring-2 ring-primary" : ""}`} {...dragProps(p)}>
               <Thumb file={p} onOpen={() => void open(p)} />
+              {canEdit && photos.length > 1 ? (
+                <div className="flex items-center gap-0.5">
+                  <Button type="button" size="icon-sm" variant="ghost" aria-label={t("att.moveEarlier")} title={t("att.moveEarlier")} disabled={photos[0].id === p.id} onClick={() => moveBy(p.id, -1)}>
+                    <ChevronLeft className="size-4" />
+                  </Button>
+                  <GripVertical className="size-3.5 text-muted-foreground" aria-hidden />
+                  <Button type="button" size="icon-sm" variant="ghost" aria-label={t("att.moveLater")} title={t("att.moveLater")} disabled={photos[photos.length - 1].id === p.id} onClick={() => moveBy(p.id, 1)}>
+                    <ChevronRight className="size-4" />
+                  </Button>
+                </div>
+              ) : null}
               {canEdit && !compact ? (
                 <button
                   type="button"
@@ -150,10 +249,21 @@ export function Attachments({
       {others.length > 0 ? (
         <ul className="divide-y rounded-lg border">
           {others.map((f) => (
-            <li key={f.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+            <li key={f.id} className={`flex items-center gap-3 px-3 py-2 text-sm ${dropping(f) ? "bg-primary/10" : ""}`} {...dragProps(f)}>
+              {canEdit ? <GripVertical className="size-4 shrink-0 cursor-grab text-muted-foreground" aria-hidden /> : null}
               <FileText className="size-4 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate">{f.file_name}</span>
               <span className="text-xs text-muted-foreground">{kb(f.file_size)}</span>
+              {canEdit && others.length > 1 ? (
+                <>
+                  <Button size="icon-sm" variant="ghost" aria-label={t("att.moveEarlier")} title={t("att.moveEarlier")} disabled={others[0].id === f.id} onClick={() => moveBy(f.id, -1)}>
+                    <ChevronUp className="size-4" />
+                  </Button>
+                  <Button size="icon-sm" variant="ghost" aria-label={t("att.moveLater")} title={t("att.moveLater")} disabled={others[others.length - 1].id === f.id} onClick={() => moveBy(f.id, 1)}>
+                    <ChevronDown className="size-4" />
+                  </Button>
+                </>
+              ) : null}
               <Button size="icon-sm" variant="ghost" aria-label={t("pdoc.download")} onClick={() => void open(f)}>
                 <Download className="size-4" />
               </Button>

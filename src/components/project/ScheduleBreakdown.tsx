@@ -5,7 +5,7 @@ import { db, schema } from "../../db";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
 import { projectColor } from "@/lib/project-colors";
-import { buildBreakdown, durationLabel, periodLabel, shortDate, type BreakdownRow, type Task } from "@/lib/schedule-tree";
+import { buildBreakdown, durationLabel, periodLabel, scheduleSpan, shortDate, type BreakdownRow, type Task } from "@/lib/schedule-tree";
 import { exportSchedulePdf } from "@/lib/schedule-pdf";
 import type { Project, User } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -52,6 +52,8 @@ export function ScheduleBreakdown({
   const fr = locale === "fr";
   const color = projectColor(project);
   const rows = useMemo(() => buildBreakdown(tasks, check, project.start_date), [tasks, check, project.start_date]);
+  /** The whole schedule's duration, period and weeks, worked out from its first and last dates. */
+  const span = useMemo(() => scheduleSpan(rows), [rows]);
   const [exportOpen, setExportOpen] = useState(false);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -173,10 +175,17 @@ export function ScheduleBreakdown({
             <tbody>
               <tr className="border-b">
                 <td className="border-r px-2 text-[10px] text-muted-foreground">1</td>
-                <td colSpan={11} className="px-3 py-2 font-display text-2xl tracking-wide" style={{ color: "#ed7d1e" }}>
+                <td className="border-r border-border/50 px-3 py-2 font-display text-2xl tracking-wide" style={{ color: "#ed7d1e" }}>
                   {project.name}
                   <span className="ml-3 text-foreground/80">· {scheduleName}</span>
                 </td>
+                <td className="border-r border-border/50 px-2 whitespace-nowrap font-semibold">{span ? durationLabel(span, fr) : ""}</td>
+                <td className="border-r border-border/50 px-2 whitespace-nowrap font-semibold">{span ? periodLabel(span, fr) : ""}</td>
+                <td className="border-r border-border/50 px-2 whitespace-nowrap font-semibold tabular-nums">{shortDate(span?.start ?? null)}</td>
+                <td className="border-r border-border/50 px-2 whitespace-nowrap font-semibold tabular-nums">{shortDate(span?.end ?? null)}</td>
+                <td className="border-r border-border/50 px-2 whitespace-nowrap font-semibold tabular-nums">{span?.weekStart ?? ""}</td>
+                <td className="border-r border-border/50 px-2 whitespace-nowrap font-semibold tabular-nums">{span?.weekEnd ?? ""}</td>
+                <td colSpan={4} />
                 <td />
               </tr>
               {rows.map((row) => {

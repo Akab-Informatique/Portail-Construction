@@ -7,7 +7,7 @@ import { useI18n } from "@/lib/i18n";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { projectColor } from "@/lib/project-colors";
 import { addAttachment, countAttachments, removeAttachmentsOf } from "@/lib/project-files";
-import { notifyEvent, notifySummary, sendNotification } from "@/lib/notify";
+import { notifyStaffFromClient, notifySummary, sendNotification } from "@/lib/notify";
 import { notifyProjectEvent } from "@/lib/notify-events";
 import { NotifyToggle } from "@/components/project/NotifyToggle";
 import { Attachments } from "@/components/project/Attachments";
@@ -133,8 +133,8 @@ export function ProjectQrt({ project, client, people, members }: SectionProps) {
         }
       }
       if (failedFiles) setMessage(t("att.someFailed", { n: failedFiles }));
-      // a client's question tells the people on the project (and the administrators) by email
-      if (viewer && created) void notifyEvent("qrt", created.id);
+      // a client's question tells the project's staff (administrators and project members) by email, automatically
+      if (viewer && created) void notifyStaffFromClient(project.id, "qrt", text);
       if (!viewer && notify.userIds.length && notify.channels.length) {
         const result = await sendNotification({
           userIds: notify.userIds,

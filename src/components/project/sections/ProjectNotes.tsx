@@ -9,7 +9,7 @@ import { formatDateTime } from "@/lib/format";
 import { projectColor } from "@/lib/project-colors";
 import { addAttachment, countAttachments } from "@/lib/project-files";
 import { NOTES_EVENT, deleteProjectNote, notifyNotesChanged, updateProjectNote } from "@/lib/notes-sync";
-import { notifyEvent, notifySummary, sendNotification } from "@/lib/notify";
+import { notifyEvent, notifyStaffFromClient, notifySummary, sendNotification } from "@/lib/notify";
 import { logActivity } from "@/lib/activity";
 import { Attachments } from "@/components/project/Attachments";
 import { NotifyPicker, type NotifyChoice } from "@/components/project/NotifyPicker";
@@ -108,8 +108,11 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
       const [row] = await db.insert(schema.note_comments).values({ note_id: note.id, project_id: project.id, user_id: user.id, body: text, created_on: new Date().toISOString() }).returning();
       setDrafts((d) => ({ ...d, [note.id]: "" }));
       await load();
-      // the person who wrote the note hears about it
-      if (row) void notifyEvent("note_comment", row.id);
+      if (row) {
+        // A client's comment is reported to the project's staff automatically; a staff comment tells the note's author.
+        if (viewer) void notifyStaffFromClient(project.id, "note_comment", text);
+        else void notifyEvent("note_comment", row.id);
+      }
     } finally {
       setSendingComment(null);
     }
@@ -122,6 +125,13 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
     setMessage(null);
     try {
       const [row] = await db.insert(schema.project_notes).values({ project_id: project.id, user_id: user?.id ?? null, body: text, visibility, created_at: new Date() }).returning();
+      // Telling people comes right after the note is saved, so a failed file or activity line cannot stop it.
+      const sent = await sendNotification({
+        userIds: notify.userIds,
+        channels: notify.channels,
+        subject: `${project.project_number} · ${project.name}`,
+        text: `${user?.name ?? ""}:\n${text.slice(0, 500)}\n\n${window.location.origin}/projects/${project.id}/notes`,
+      });
       let failedFiles = 0;
       for (const file of pending) {
         try {
@@ -131,21 +141,15 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
           console.error("note attachment failed", err);
         }
       }
-      await logActivity({ action: "added note", details: text.slice(0, 80), projectId: project.id, userId: user?.id });
-      if (notify.userIds.length && notify.channels.length) {
-        const result = await sendNotification({
-          userIds: notify.userIds,
-          channels: notify.channels,
-          subject: `${project.project_number} · ${project.name}`,
-          text: `${user?.name ?? ""}:\n${text.slice(0, 500)}\n\n${window.location.origin}/projects/${project.id}/notes`,
-        });
-        setMessage(notifySummary(result, t as never));
-      }
-      if (failedFiles) setMessage((m) => [m, t("att.someFailedNote", { n: failedFiles })].filter(Boolean).join(" · "));
+      await logActivity({ action: "added note", details: text.slice(0, 80), projectId: project.id, userId: user?.id }).catch((err) => console.error("activity log failed", err));
+      setMessage([notifySummary(sent, t as never), failedFiles ? t("att.someFailedNote", { n: failedFiles }) : null].filter(Boolean).join(" · "));
       setBody("");
       setPending([]);
       await load();
       notifyNotesChanged();
+    } catch (err) {
+      console.error("note save failed", err);
+      setMessage(t("note.saveFailed"));
     } finally {
       setBusy(false);
     }
@@ -216,7 +220,7 @@ export function ProjectNotes({ project, people, members }: SectionProps) {
           </ul>
         ) : null}
 
-        <NotifyPicker people={visibility === "everyone" ? [...staff, ...clientPeople] : staff} value={notify} onChange={setNotify} preselect={inCharge} />
+        <NotifyPicker people={visibility === "everyone" ? [...staff, ...clientPeople] : staff} value={notify} onChange={setNotify} preselect={inCharge.filter((id) => id !== user?.id)} />
 
         <Button onClick={() => void post()} disabled={busy || !body.trim()}>
           {busy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}

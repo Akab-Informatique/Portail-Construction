@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { asc, desc, eq } from "drizzle-orm";
-import { CalendarClock, CheckCircle2, ChevronRight, Image as ImageIcon, RefreshCw, Sparkles, Users } from "lucide-react";
+import { CalendarClock, CheckCircle2, ChevronRight, Image as ImageIcon, Mail, Phone, RefreshCw, Sparkles, Users } from "lucide-react";
 import { db, schema } from "../../../db";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
@@ -9,6 +9,7 @@ import { formatDate, todayISO } from "@/lib/format";
 import { PROJECT_PHASES } from "@/lib/constants";
 import { projectColor } from "@/lib/project-colors";
 import { projectAchievement, scheduleElapsed } from "@/lib/project-progress";
+import { projectTeam, type TeamEntry } from "@/lib/project-team";
 import { latestPhotos, type Attachment } from "@/lib/project-files";
 import { fetchAiSummary } from "@/lib/daily-summary";
 import { projectSectionPath } from "@/lib/project-nav";
@@ -35,6 +36,60 @@ function Ring({ percent, color }: { percent: number; color: string }) {
       <circle cx="64" cy="64" r={r} fill="none" strokeWidth="12" stroke={`color-mix(in srgb, ${color} 16%, transparent)`} />
       <circle cx="64" cy="64" r={r} fill="none" strokeWidth="12" strokeLinecap="round" stroke={color} strokeDasharray={c} strokeDashoffset={c * (1 - percent / 100)} style={{ transition: "stroke-dashoffset 900ms cubic-bezier(0.22,1,0.36,1)", filter: `drop-shadow(0 0 6px ${color})` }} />
     </svg>
+  );
+}
+
+/** Who works on the project, read-only: name, role and work contact details. Administrators can also manage the team from here. */
+function TeamCard({ team, color, isAdmin, onManage }: { team: TeamEntry[]; color: string; isAdmin: boolean; onManage: () => void }) {
+  const { t } = useI18n();
+  return (
+    <Card className="gap-4 p-5">
+      <div className="flex items-center gap-2">
+        <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          <Users className="size-4" style={{ color }} />
+          {t("ov2.team")}
+        </h3>
+        {isAdmin ? (
+          <button type="button" className="ml-auto rounded px-1.5 text-[11px] font-semibold text-foreground/70 underline-offset-2 hover:text-foreground hover:underline" onClick={onManage}>
+            {t("team.manage")}
+          </button>
+        ) : null}
+      </div>
+      {team.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t("ov2.teamNone")}</p>
+      ) : (
+        <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {team.map((m) => (
+            <li key={m.id} className="flex min-w-0 items-start gap-3 rounded-lg border bg-muted/30 p-3">
+              <UserAvatar name={m.name} size="sm" />
+              <div className="min-w-0 flex-1 space-y-0.5">
+                <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+                  <span className="truncate">{m.name}</span>
+                  {m.lead ? (
+                    <span className="shrink-0 rounded-full px-1.5 text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color, background: `color-mix(in srgb, ${color} 14%, transparent)` }}>
+                      {t("ov2.teamLead")}
+                    </span>
+                  ) : null}
+                </p>
+                {m.role ? <p className="truncate text-xs text-muted-foreground">{m.role}</p> : null}
+                {m.email ? (
+                  <a href={`mailto:${m.email}`} className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+                    <Mail className="size-3 shrink-0" />
+                    <span className="truncate">{m.email}</span>
+                  </a>
+                ) : null}
+                {m.phone ? (
+                  <a href={`tel:${m.phone}`} className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+                    <Phone className="size-3 shrink-0" />
+                    <span className="truncate">{m.phone}</span>
+                  </a>
+                ) : null}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   );
 }
 
@@ -78,7 +133,7 @@ export function ProjectOverview({ project, client, people, members, reload }: Se
   const recentDone = [...done].sort((x, y) => (y.end_date ?? "").localeCompare(x.end_date ?? "")).slice(0, 4);
   const next = tasks.filter((x) => x.status !== "completed" && (!x.end_date || x.end_date >= today)).slice(0, 4);
   const now = tasks.filter((x) => x.status === "in_progress").slice(0, 3);
-  const team = members.map((m) => ({ ...m, person: people.find((p) => p.id === m.user_id) })).filter((m) => m.person);
+  const team = projectTeam(members, people);
 
   // Only good news goes to the writer: what is done, what is under way, what comes next.
   const facts = {
@@ -178,7 +233,7 @@ export function ProjectOverview({ project, client, people, members, reload }: Se
         </Card>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <Card className="gap-3 p-5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{t("gantt.phase")}</p>
           <PhaseBar project={project} color={color} />
@@ -201,28 +256,9 @@ export function ProjectOverview({ project, client, people, members, reload }: Se
           </p>
           <p className="text-xs text-muted-foreground">{t("ov2.doneHint")}</p>
         </Card>
-        <Card className="gap-3 p-5">
-          <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            <Users className="size-3.5" />
-            {t("ov2.team")}
-            {isAdmin ? (
-              <button type="button" className="ml-auto rounded px-1.5 text-[10px] font-semibold normal-case tracking-normal text-foreground/70 underline-offset-2 hover:text-foreground hover:underline" onClick={() => setTeamOpen(true)}>
-                {t("team.manage")}
-              </button>
-            ) : null}
-          </p>
-          <ul className="space-y-1.5">
-            {team.slice(0, 4).map((m) => (
-              <li key={m.user_id} className="flex items-center gap-2 text-sm">
-                <UserAvatar name={m.person!.name} size="sm" />
-                <span className="min-w-0 flex-1 truncate">{m.person!.name}</span>
-                <span className="text-xs text-muted-foreground">{m.role}</span>
-              </li>
-            ))}
-            {team.length === 0 ? <li className="text-sm text-muted-foreground">—</li> : null}
-          </ul>
-        </Card>
       </div>
+
+      <TeamCard team={team} color={color} isAdmin={isAdmin} onManage={() => setTeamOpen(true)} />
 
       <ProjectTeamDialog open={teamOpen} project={project} client={client} people={people} members={members} onClose={() => setTeamOpen(false)} onSaved={() => void reload()} />
 

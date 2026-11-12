@@ -48,8 +48,15 @@ export function ProjectTeamDialog({
       .then((rows) => setClientUserIds(rows.map((r) => r.user_id)));
   }, [open, members, project.client_id]);
 
-  const staff = useMemo(() => people.filter((p) => p.user_type === "internal" && p.is_active === 1).sort((a, b) => a.name.localeCompare(b.name)), [people]);
+  // An inactive person who is already on the team stays listed, so they can be unchecked (otherwise they stay assigned silently).
+  const staff = useMemo(
+    () => people.filter((p) => p.user_type === "internal" && (p.is_active === 1 || members.some((m) => m.user_id === p.id))).sort((a, b) => a.name.localeCompare(b.name)),
+    [people, members],
+  );
   const clientUsers = useMemo(() => people.filter((p) => clientUserIds.includes(p.id) && p.is_active === 1).sort((a, b) => a.name.localeCompare(b.name)), [people, clientUserIds]);
+
+  // A client user reaches the project only while it is on the team, so taking it off ends that access.
+  const losingClient = clientUserIds.some((id) => members.some((m) => m.user_id === id) && !picked.includes(id));
 
   const toggle = (id: number, on: boolean) => setPicked((prev) => (on ? [...new Set([...prev, id])] : prev.filter((x) => x !== id)));
 
@@ -105,6 +112,7 @@ export function ProjectTeamDialog({
         <div className="grid gap-5">
           {group(t("team.staff"), staff)}
           {group(client ? `${t("team.clientUsers")} · ${client.company_name}` : t("team.clientUsers"), clientUsers)}
+          {losingClient ? <p className="text-sm text-amber-700 dark:text-amber-400">{t("team.clientLosesAccess")}</p> : null}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>

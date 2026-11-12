@@ -176,6 +176,7 @@ INSERT INTO sharepoint_shares (folder_id, client_id, item_id, user_id, can_view,
 DELETE FROM sharepoint_shares WHERE client_id > 0 AND user_id IS NULL AND group_id IS NULL;
 CREATE INDEX IF NOT EXISTS form_entries_project_idx ON form_entries (project_id, entry_date DESC);
 CREATE INDEX IF NOT EXISTS project_attachments_owner_idx ON project_attachments (project_id, owner_type, owner_id);
+ALTER TABLE project_attachments ADD COLUMN IF NOT EXISTS sort_order INTEGER;
 CREATE INDEX IF NOT EXISTS expenses_user_idx ON expenses (user_id, expense_date DESC);
 CREATE INDEX IF NOT EXISTS time_punches_user_time_idx ON time_punches (user_id, punched_at DESC);
 CREATE INDEX IF NOT EXISTS time_punches_project_idx ON time_punches (project_id);

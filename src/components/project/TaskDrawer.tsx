@@ -8,8 +8,10 @@ import type { MessageKey } from "@/lib/i18n/en";
 import { formatDateTime } from "@/lib/format";
 import { PRIORITIES, TASK_STATUSES } from "@/lib/constants";
 import { projectColor } from "@/lib/project-colors";
-import { removeAttachmentsOf } from "@/lib/project-files";
 import { wouldCycle, type Dep } from "@/lib/schedule-forecast";
+import { dayCount, endAfter, wholeDays } from "@/lib/schedule-days";
+import { phaseHasDatedKids, phaseHasTaskKids } from "@/lib/schedule-phases";
+import { deleteTask } from "@/lib/schedules";
 import { touchTask } from "@/lib/task-activity";
 import { todayISO } from "@/lib/format";
 import type { Project, User } from "@/lib/types";
@@ -86,6 +88,27 @@ export function TaskDrawer({
         .filter((x): x is Task => Boolean(x) && x!.status !== "completed")
     : [];
 
+  /** A phase takes its dates and its status from the tasks under it, so those fields are shown, not typed. */
+  const autoDates = task.kind === "phase" && phaseHasDatedKids(task, allTasks);
+  const autoStatus = task.kind === "phase" && phaseHasTaskKids(task, allTasks);
+  const autoTag = <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium normal-case tracking-normal text-muted-foreground">{t("wbs.auto")}</span>;
+
+  /** Moving the start keeps the duration: the end moves with it. */
+  async function moveStart(raw: string) {
+    if (!task) return;
+    const start = raw || null;
+    const days = dayCount(task.start_date, task.end_date);
+    await patch({ start_date: start, end_date: start && days !== null ? endAfter(start, days) : task.end_date });
+  }
+
+  /** A duration typed in days: the end falls that many days after the start, the start day counting as the first. */
+  async function setDuration(raw: string) {
+    const n = wholeDays(raw);
+    if (!task || n === null || !task.start_date) return;
+    const end = endAfter(task.start_date, n);
+    if (end !== task.end_date) await patch({ end_date: end });
+  }
+
   async function patch(values: Partial<Task>) {
     if (!task) return;
     // Cannot be closed while something it waits for is still open.
@@ -139,12 +162,7 @@ export function TaskDrawer({
 
   async function remove() {
     if (!task || !window.confirm(t("sch.deleteConfirm"))) return;
-    await db.delete(schema.task_checklist).where(eq(schema.task_checklist.task_id, task.id));
-    await db.delete(schema.task_notes).where(eq(schema.task_notes.task_id, task.id));
-    await db.delete(schema.task_dependencies).where(eq(schema.task_dependencies.task_id, task.id));
-    await db.delete(schema.task_dependencies).where(eq(schema.task_dependencies.depends_on_id, task.id));
-    await removeAttachmentsOf(project.id, "task", task.id);
-    await db.delete(schema.project_tasks).where(eq(schema.project_tasks.id, task.id));
+    await deleteTask(project.id, task.id);
     onClose();
     onChanged();
   }
@@ -172,8 +190,11 @@ export function TaskDrawer({
           ) : null}
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label>{t("project.status")}</Label>
-              <Select value={task.status} onValueChange={(v) => void patch({ status: v })}>
+              <Label className="flex items-center gap-2">
+                {t("project.status")}
+                {autoStatus ? autoTag : null}
+              </Label>
+              <Select value={task.status} disabled={autoStatus} onValueChange={(v) => void patch({ status: v })}>
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {TASK_STATUSES.map((s) => (
@@ -194,12 +215,20 @@ export function TaskDrawer({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>{t("sch.start")}</Label>
-              <Input type="date" defaultValue={task.start_date ?? ""} key={`s-${task.id}-${task.start_date}`} onBlur={(e) => e.target.value !== (task.start_date ?? "") && void patch({ start_date: e.target.value || null })} />
+              <Label className="flex items-center gap-2">
+                {t("sch.start")}
+                {autoDates ? autoTag : null}
+              </Label>
+              <Input type="date" disabled={autoDates} defaultValue={task.start_date ?? ""} key={`s-${task.id}-${task.start_date}`} onBlur={(e) => e.target.value !== (task.start_date ?? "") && void moveStart(e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label>{t("sch.end")}</Label>
-              <Input type="date" defaultValue={task.end_date ?? ""} key={`e-${task.id}-${task.end_date}`} onBlur={(e) => e.target.value !== (task.end_date ?? "") && void patch({ end_date: e.target.value || null })} />
+              <Input type="date" disabled={autoDates} defaultValue={task.end_date ?? ""} key={`e-${task.id}-${task.end_date}`} onBlur={(e) => e.target.value !== (task.end_date ?? "") && void patch({ end_date: e.target.value || null })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("sch.durationDays")}</Label>
+              <Input type="number" min={1} step={1} inputMode="numeric" disabled={autoDates} defaultValue={dayCount(task.start_date, task.end_date) ?? ""} key={`dd-${task.id}-${task.start_date}-${task.end_date}`} onBlur={(e) => void setDuration(e.target.value)} />
+              <p className="text-[11px] text-muted-foreground">{t("sch.durationHint")}</p>
             </div>
             {task.kind !== "phase" ? (
               <div className="space-y-1.5 sm:col-span-2">
@@ -248,6 +277,7 @@ export function TaskDrawer({
               </Select>
             </div>
           </div>
+          {autoDates || autoStatus ? <p className="-mt-3 text-xs text-muted-foreground">{t("sch.autoPhaseHint")}</p> : null}
 
           <div className="space-y-1.5">
             <Label>{t("sch.description")}</Label>

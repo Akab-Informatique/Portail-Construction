@@ -616,6 +616,8 @@ export const project_attachments = pgTable("project_attachments", {
   file_size: integer("file_size").notNull(),
   data: text("data").notNull(),
   uploaded_by: integer("uploaded_by"),
+  /** The order chosen for the files of one owner (1, 2, 3...); empty until someone reorders them. */
+  sort_order: integer("sort_order"),
   created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 

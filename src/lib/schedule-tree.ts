@@ -95,12 +95,33 @@ export function buildBreakdown(tasks: Task[], check: Record<number, { done: numb
 /** 2026-10-05 → 26-10-05, the way the sheet prints dates. */
 export const shortDate = (iso: string | null) => (iso ? iso.slice(2) : "");
 
-export function periodLabel(row: BreakdownRow, fr: boolean) {
+export function periodLabel(row: Pick<BreakdownRow, "weekStart" | "weekEnd">, fr: boolean) {
   if (row.weekStart === null || row.weekEnd === null) return "";
   if (row.weekStart === row.weekEnd) return fr ? `Sem. ${row.weekStart}` : `Wk ${row.weekStart}`;
   return fr ? `Sem. ${row.weekStart} à ${row.weekEnd}` : `Wk ${row.weekStart}–${row.weekEnd}`;
 }
 
-export function durationLabel(row: BreakdownRow, fr: boolean) {
+export function durationLabel(row: Pick<BreakdownRow, "durationWeeks">, fr: boolean) {
   return row.durationWeeks === null ? "" : fr ? `${row.durationWeeks} sem.` : `${row.durationWeeks} wk`;
+}
+
+/**
+ * The whole schedule on one line, for the schedule-level figures: its first and last day, and its first and last week
+ * (counted as the rows are). Null when nothing in it is dated.
+ */
+export function scheduleSpan(rows: BreakdownRow[]) {
+  const starts = rows.map((r) => r.start).filter((d): d is string => !!d);
+  const ends = rows.map((r) => r.end).filter((d): d is string => !!d);
+  const firstWeeks = rows.map((r) => r.weekStart).filter((w): w is number => w !== null);
+  const lastWeeks = rows.map((r) => r.weekEnd).filter((w): w is number => w !== null);
+  if (!firstWeeks.length || !lastWeeks.length) return null;
+  const weekStart = Math.min(...firstWeeks);
+  const weekEnd = Math.max(...lastWeeks);
+  return {
+    start: starts.length ? starts.reduce((m, d) => (d < m ? d : m)) : null,
+    end: ends.length ? ends.reduce((m, d) => (d > m ? d : m)) : null,
+    weekStart,
+    weekEnd,
+    durationWeeks: weekEnd - weekStart + 1,
+  };
 }

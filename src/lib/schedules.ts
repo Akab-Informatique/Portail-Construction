@@ -1,5 +1,6 @@
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db, dbReady, schema } from "../db";
+import { removeAttachmentsOf } from "./project-files";
 import { clearSchedule } from "./schedule-pdf-import";
 
 export type Schedule = typeof schema.project_schedules.$inferSelect;
@@ -35,6 +36,17 @@ export async function addSchedule(projectId: number, name: string, after: Schedu
 export async function renameSchedule(id: number, name: string) {
   await dbReady;
   await db.update(schema.project_schedules).set({ name: name.trim() }).where(eq(schema.project_schedules.id, id));
+}
+
+/** Removes one task with its checklist, notes, dependency links (both ways) and files. */
+export async function deleteTask(projectId: number, taskId: number) {
+  await dbReady;
+  await db.delete(schema.task_checklist).where(eq(schema.task_checklist.task_id, taskId));
+  await db.delete(schema.task_notes).where(eq(schema.task_notes.task_id, taskId));
+  await db.delete(schema.task_dependencies).where(eq(schema.task_dependencies.task_id, taskId));
+  await db.delete(schema.task_dependencies).where(eq(schema.task_dependencies.depends_on_id, taskId));
+  await removeAttachmentsOf(projectId, "task", taskId);
+  await db.delete(schema.project_tasks).where(eq(schema.project_tasks.id, taskId));
 }
 
 /** Removes a schedule with all its phases and tasks (and what hangs on them). */

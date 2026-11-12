@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { QuoteSignDialog } from "@/components/QuoteSignDialog";
 import { logActivity } from "@/lib/activity";
+import { notifyStaffFromClient } from "@/lib/notify";
 import { formatDate, moneyExact } from "@/lib/format";
 import { emptyLine, lineAmount, totalsFromLines } from "@/lib/invoice";
 import { useI18n } from "@/lib/i18n";
@@ -192,6 +193,8 @@ export function QuoteChangesSection({
         onClose={() => setRequestOpen(false)}
         onSubmit={async (input) => {
           await createClientRequest({ quote, title: input.title, description: input.description, userId });
+          // The client's change request tells the project's staff automatically.
+          if (quote.project_id) void notifyStaffFromClient(quote.project_id, "quote_change", `${quote.number}: ${input.title}`);
           await logActivity({
             action: "requested quote change",
             details: `${quote.number}: ${input.title}`,

@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { QuoteSignDialog } from "@/components/QuoteSignDialog";
 import { RequestDialog } from "@/components/QuoteChanges";
 import { logActivity } from "@/lib/activity";
+import { notifyStaffFromClient } from "@/lib/notify";
 import {
   addonsOf,
   chainOf,
@@ -407,6 +408,8 @@ export function BillingFileDialog({
         onClose={() => setRequestOpen(false)}
         onSubmit={async (input) => {
           await createBillingRequest({ file: current, title: input.title, description: input.description, userId });
+          // A client's request tells the project's staff automatically (the request button only exists in client mode).
+          if (mode === "client" && current.project_id) void notifyStaffFromClient(current.project_id, "billing_request", `${current.number || current.id}: ${input.title}`);
           await logActivity({
             action: finalOne ? "requested quote add-on" : "requested quote change",
             details: `${current.number || current.id}: ${input.title}`,
