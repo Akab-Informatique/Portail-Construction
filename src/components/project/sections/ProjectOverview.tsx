@@ -276,8 +276,6 @@ export function ProjectOverview({ project, client, people, members, reload }: Se
         </Card>
       </div>
 
-      <TeamCard team={team} color={color} isAdmin={isAdmin} onManage={() => setTeamOpen(true)} />
-
       <ProjectTeamDialog open={teamOpen} project={project} client={client} people={people} members={members} onClose={() => setTeamOpen(false)} onSaved={() => void reload()} />
 
       <div className="grid gap-5 lg:grid-cols-3">
@@ -339,6 +337,8 @@ export function ProjectOverview({ project, client, people, members, reload }: Se
           </ul>
         </Card>
       </div>
+
+      <TeamCard team={team} color={color} isAdmin={isAdmin} onManage={() => setTeamOpen(true)} />
     </div>
   );
 }
