@@ -18,6 +18,22 @@ export type BreakdownRow = {
 };
 
 const DAY = 86400000;
+
+/**
+ * Any way a date was typed or imported (2026-10-05, 2026-10-05T00:00:00Z, 26-10-05, 2026/10/05, 05/10/2026) as yyyy-mm-dd,
+ * so the weeks, durations and periods never depend on the format. Null when it is not a date.
+ */
+export function isoDate(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const v = String(raw).trim();
+  let m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/.exec(v);
+  let y: string, mo: string, d: string;
+  if (m) [, y, mo, d] = m;
+  else if ((m = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/.exec(v))) [, d, mo, y] = m;
+  else if ((m = /^(\d{2})-(\d{2})-(\d{2})$/.exec(v))) [, y, mo, d] = [m[0], `20${m[1]}`, m[2], m[3]];
+  else return null;
+  return `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
+}
 const at = (iso: string) => new Date(`${iso}T00:00:00`).getTime();
 const days = (a: string, b: string) => Math.round((at(b) - at(a)) / DAY);
 
@@ -43,7 +59,9 @@ export function taskProgress(task: Task, check?: { done: number; total: number }
  * The schedule as the preliminary-schedule sheet shows it: phases as headings, their tasks indented under them, every
  * row numbered. Phases without their own dates take them from their tasks; weeks count from the first week of work.
  */
-export function buildBreakdown(tasks: Task[], check: Record<number, { done: number; total: number }>, fallbackStart: string | null): BreakdownRow[] {
+export function buildBreakdown(rawTasks: Task[], check: Record<number, { done: number; total: number }>, fallbackStart: string | null): BreakdownRow[] {
+  // Dates are read whatever their format, so the weeks never come out empty because of how a date was written.
+  const tasks = rawTasks.map((t) => ({ ...t, start_date: isoDate(t.start_date), end_date: isoDate(t.end_date) }));
   const phases = tasks.filter((t) => t.kind === "phase").sort(bySort);
   const phaseIds = new Set(phases.map((p) => p.id));
   const childrenOf = (id: number) => tasks.filter((t) => t.parent_id === id && t.kind !== "phase").sort(bySort);
@@ -93,7 +111,7 @@ export function buildBreakdown(tasks: Task[], check: Record<number, { done: numb
 }
 
 /** 2026-10-05 → 26-10-05, the way the sheet prints dates. */
-export const shortDate = (iso: string | null) => (iso ? iso.slice(2) : "");
+export const shortDate = (iso: string | null) => (iso ? (isoDate(iso) ?? iso).slice(2) : "");
 
 export function periodLabel(row: Pick<BreakdownRow, "weekStart" | "weekEnd">, fr: boolean) {
   if (row.weekStart === null || row.weekEnd === null) return "";
