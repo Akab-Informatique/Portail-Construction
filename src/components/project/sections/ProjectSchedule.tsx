@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { asc, eq } from "drizzle-orm";
-import { CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Bookmark, Circle, Copy, FileUp, GanttChartSquare, Pencil, TableProperties, ListChecks, Lock, MessageSquare, Paperclip, Plus, Rows3, Search, Trash2, TrendingUp } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Bookmark, Circle, Copy, FileUp, GanttChartSquare, Pencil, TableProperties, ListChecks, Lock, MessageSquare, Paperclip, Plus, RefreshCw, Rows3, Search, Trash2, TrendingUp } from "lucide-react";
 import { db, schema } from "../../../db";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -172,6 +172,19 @@ export function ProjectSchedule({ project, people }: SectionProps) {
     await load();
   }
 
+  /** Brings every phase of every schedule of the project up to date with its tasks (dates, status), and says how many changed. */
+  async function resync() {
+    const rows = await db.select().from(schema.project_tasks).where(eq(schema.project_tasks.project_id, project.id));
+    const settled = await settlePhases(rows, true);
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const changed = settled.filter((r) => {
+      const o = byId.get(r.id);
+      return o && (o.start_date !== r.start_date || o.end_date !== r.end_date || o.status !== r.status);
+    }).length;
+    setNotice(t("sch.resynced", { n: changed }));
+    await load();
+  }
+
   async function keepTemplate() {
     if (!tplName || !tplName.name.trim()) return;
     await saveTemplate(tplName.name, tplName.description, tasks, user?.id ?? null);
@@ -298,6 +311,10 @@ export function ProjectSchedule({ project, people }: SectionProps) {
                 <Button size="sm" variant="ghost" onClick={() => setNaming({ id: active.id, name: active.name, source: "blank", start: "", reset: true })}>
                   <Pencil className="size-4" />
                   {t("sch.scheduleRename")}
+                </Button>
+                <Button size="sm" variant="ghost" title={t("sch.resyncHint")} onClick={() => void resync()}>
+                  <RefreshCw className="size-4" />
+                  {t("sch.resync")}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => openNew("clone")}>
                   <Copy className="size-4" />
