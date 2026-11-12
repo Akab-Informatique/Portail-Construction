@@ -161,7 +161,7 @@ function rowScopes(): Record<string, string> {
   scopes.activities = `(${ALL_CLIENTS} OR ((client_id IS NOT NULL OR project_id IS NOT NULL)
     AND (client_id IS NULL OR frx_client_ok(client_id))
     AND (project_id IS NULL OR frx_project_ok(project_id))))`;
-  scopes.users = `(${ALL_CLIENTS} OR user_type = 'internal' OR id = ${ME}
+  scopes.users = `(${ALL_CLIENTS} OR user_type = 'internal' OR is_admin = 1 OR id = ${ME}
     OR EXISTS (SELECT 1 FROM client_users cu WHERE cu.user_id = users.id AND frx_client_ok(cu.client_id)))`;
   for (const t of OWN_ROWS) scopes[t] = `(${ALL_CLIENTS} OR user_id = ${ME})`;
   // Punches are created only by the server's punch action; staff read their own.

@@ -50,8 +50,8 @@ export function ProjectTeamDialog({
 
   // An inactive person who is already on the team stays listed, so they can be unchecked (otherwise they stay assigned silently).
   const staff = useMemo(
-    () => people.filter((p) => p.user_type === "internal" && (p.is_active === 1 || members.some((m) => m.user_id === p.id))).sort((a, b) => a.name.localeCompare(b.name)),
-    [people, members],
+    () => people.filter((p) => (p.user_type === "internal" || p.is_admin === 1) && !clientUserIds.includes(p.id) && (p.is_active === 1 || members.some((m) => m.user_id === p.id))).sort((a, b) => a.name.localeCompare(b.name)),
+    [people, members, clientUserIds],
   );
   const clientUsers = useMemo(() => people.filter((p) => clientUserIds.includes(p.id) && p.is_active === 1).sort((a, b) => a.name.localeCompare(b.name)), [people, clientUserIds]);
 
