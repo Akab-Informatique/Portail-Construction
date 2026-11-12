@@ -15,6 +15,7 @@ import { dayCount, endAfter, wholeDays } from "@/lib/schedule-days";
 import { settlePhases } from "@/lib/schedule-phases";
 import { logActivity } from "@/lib/activity";
 import { notifyProjectEvent } from "@/lib/notify-events";
+import { notifySummary } from "@/lib/notify";
 import { NotifyToggle } from "@/components/project/NotifyToggle";
 import { PortfolioCalendar, marksFromPortfolio } from "@/components/PortfolioCalendar";
 import { TaskDrawer, type Task } from "@/components/project/TaskDrawer";
@@ -69,6 +70,8 @@ export function ProjectSchedule({ project, people }: SectionProps) {
   /** The name dialog: adding a schedule (id null) or renaming one. */
   const [naming, setNaming] = useState<{ id: number | null; name: string; source: string; start: string; reset: boolean; status: string } | null>(null);
   const [templates, setTemplates] = useState<ScheduleTemplate[]>([]);
+  /** A draft about to become visible to clients: the dialog that offers to tell them. */
+  const [publishing, setPublishing] = useState<{ sc: Schedule; status: string } | null>(null);
   /** The dialog that keeps the open schedule as a template. */
   const [tplName, setTplName] = useState<{ name: string; description: string } | null>(null);
   const openNew = (source = "blank") => {
@@ -166,7 +169,11 @@ export function ProjectSchedule({ project, people }: SectionProps) {
       } else row = await addSchedule(project.id, naming.name, schedules, naming.status);
       pickSchedule(row.id);
     } else {
-      await renameSchedule(naming.id, naming.name, naming.status);
+      const before = schedules.find((x) => x.id === naming.id);
+      if (before && before.status === "draft" && naming.status !== "draft") {
+        await renameSchedule(naming.id, naming.name, "draft");
+        setPublishing({ sc: { ...before, name: naming.name.trim() }, status: naming.status });
+      } else await renameSchedule(naming.id, naming.name, naming.status);
     }
     setNaming(null);
     await load();
@@ -202,8 +209,29 @@ export function ProjectSchedule({ project, people }: SectionProps) {
 
   /** The status is set straight from the schedule tab; a draft disappears for clients at once. */
   async function setStatus(sc: Schedule, status: string) {
+    if (sc.status === "draft" && status !== "draft") {
+      setPublishing({ sc, status });
+      return;
+    }
     await renameSchedule(sc.id, sc.name, status);
     setNotice(t(status === "draft" ? "sch.status.nowDraft" : "sch.status.nowVisible", { name: sc.name }));
+    await load();
+  }
+
+  /** Makes a draft visible to clients and, when the switch is on, tells them. */
+  async function publish() {
+    if (!publishing) return;
+    const { sc, status } = publishing;
+    setPublishing(null);
+    await renameSchedule(sc.id, sc.name, status);
+    const result = await notifyProjectEvent({
+      kind: "schedule",
+      projectId: project.id,
+      audience: "clients",
+      subject: `${t("nt.subject.schedule")} · ${project.project_number} ${project.name}`,
+      text: `${sc.name}\n\n${window.location.origin}/projects/${project.id}/tasks`,
+    }).catch(() => null);
+    setNotice([t("sch.status.nowVisible", { name: sc.name }), result ? notifySummary(result, t as never) : ""].filter(Boolean).join(" · "));
     await load();
   }
 
@@ -835,6 +863,19 @@ export function ProjectSchedule({ project, people }: SectionProps) {
           <DialogFooter>
             <Button variant="outline" onClick={() => setNaming(null)}>{t("clients.cancel")}</Button>
             <Button disabled={!naming?.name.trim()} onClick={() => void saveName()}>{t("settings.save")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!publishing} onOpenChange={(o) => !o && setPublishing(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("sch.publish.title", { name: publishing?.sc.name ?? "" })}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">{t("sch.publish.hint")}</p>
+          <NotifyToggle kind="schedule" who="clients" />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPublishing(null)}>{t("clients.cancel")}</Button>
+            <Button onClick={() => void publish()}>{t("sch.publish.confirm")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

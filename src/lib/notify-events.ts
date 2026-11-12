@@ -1,7 +1,7 @@
 import { postNotify, type NotifyChannel, type NotifyResult } from "./notify";
 
 /** What can be told to the people of a project, each remembered on its own: a switch and the way (email, text message). */
-export type EventKind = "task" | "billing" | "qrt_answer" | "document";
+export type EventKind = "task" | "billing" | "qrt_answer" | "document" | "schedule";
 export type EventPref = { on: boolean; email: boolean; sms: boolean };
 const key = (kind: EventKind) => `frx.notify.${kind}`;
 
