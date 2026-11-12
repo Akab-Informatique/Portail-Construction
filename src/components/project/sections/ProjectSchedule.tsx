@@ -410,6 +410,15 @@ export function ProjectSchedule({ project, people }: SectionProps) {
         </div>
       </div>
 
+      {notice ? (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-sm" role="status">
+          <Lock className="mt-0.5 size-4 shrink-0 text-amber-600" />
+          <span className="flex-1">{notice}</span>
+          <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setNotice(null)}>
+            ×
+          </button>
+        </div>
+      ) : null}
       {view === "tasks" ? (
         <>
           <div className="flex flex-wrap items-center gap-3">
@@ -430,15 +439,6 @@ export function ProjectSchedule({ project, people }: SectionProps) {
             <Card className="p-10 text-center text-sm text-muted-foreground">{t("sch.empty")}</Card>
           ) : (
             <>
-              {notice ? (
-                <div className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-sm" role="alert">
-                  <Lock className="mt-0.5 size-4 shrink-0 text-amber-600" />
-                  <span className="flex-1">{notice}</span>
-                  <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setNotice(null)}>
-                    ×
-                  </button>
-                </div>
-              ) : null}
               <div className="flex justify-end gap-1">
                 <Button size="sm" variant="ghost" onClick={() => setFoldedSaved(new Set())}>
                   <ChevronsUpDown className="size-4" />

@@ -32,7 +32,11 @@ export function isoDate(raw: string | null | undefined): string | null {
   else if ((m = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/.exec(v))) [, d, mo, y] = m;
   else if ((m = /^(\d{2})-(\d{2})-(\d{2})$/.exec(v))) [, y, mo, d] = [m[0], `20${m[1]}`, m[2], m[3]];
   else return null;
-  return `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  const iso = `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  // One impossible date (2026-13-40, year 0001...) must not break the weeks of the whole schedule.
+  const t = new Date(`${iso}T00:00:00`);
+  const real = !Number.isNaN(t.getTime()) && t.getFullYear() === Number(y) && t.getMonth() + 1 === Number(mo) && t.getDate() === Number(d) && Number(y) >= 2000 && Number(y) <= 2100;
+  return real ? iso : null;
 }
 const at = (iso: string) => new Date(`${iso}T00:00:00`).getTime();
 const days = (a: string, b: string) => Math.round((at(b) - at(a)) / DAY);
