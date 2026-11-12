@@ -53,9 +53,8 @@ export function buildBreakdown(tasks: Task[], check: Record<number, { done: numb
   const topLevel = [...phases, ...loose.filter((t) => t.kind === "break")].sort(bySort);
   const looseTasks = loose.filter((t) => t.kind !== "break");
 
-  // Week 1 is the first week of the phased schedule; loose tasks only count when there are no phases.
-  const sheetTasks = phases.length ? tasks.filter((t) => t.kind === "phase" || (t.parent_id !== null && phaseIds.has(t.parent_id))) : tasks;
-  const dated = sheetTasks.flatMap((t) => [t.start_date, t.end_date]).filter(Boolean) as string[];
+  // Week 1 is the week of the earliest date anywhere in the schedule, so every dated row gets its weeks.
+  const dated = tasks.flatMap((t) => [t.start_date, t.end_date]).filter(Boolean) as string[];
   const first = dated.length ? dated.reduce((m, d) => (d < m ? d : m)) : fallbackStart;
   const base = first ? mondayOf(first) : null;
   const week = (iso: string | null) => {
@@ -67,8 +66,9 @@ export function buildBreakdown(tasks: Task[], check: Record<number, { done: numb
   const out: BreakdownRow[] = [];
   let n = 2;
   const push = (task: Task, kind: BreakdownRow["kind"], depth: 0 | 1, start: string | null, end: string | null, progress: number) => {
-    let ws = week(start);
-    let we = week(end);
+    // A row with only one date counts as that day: its weeks and duration are still worked out.
+    let ws = week(start ?? end);
+    let we = week(end ?? start);
     if (ws !== null && we !== null && we < ws) [ws, we] = [we, ws];
     out.push({ n: n++, task, kind, depth, start, end, weekStart: ws, weekEnd: we, durationWeeks: ws !== null && we !== null ? we - ws + 1 : null, progress });
   };
