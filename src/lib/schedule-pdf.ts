@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import { downloadBlob } from "./download";
-import { durationLabel, periodLabel, shortDate, type BreakdownRow } from "./schedule-tree";
+import { durationLabel, periodLabel, scheduleSpan, shortDate, type BreakdownRow } from "./schedule-tree";
 
 export type SchedulePdfLabels = {
   title: string;
@@ -139,6 +139,22 @@ export async function exportSchedulePdf(input: {
   pdf.setFontSize(15);
   pdf.setTextColor(...ORANGE);
   pdf.text(`${input.projectName}  ·  ${input.scheduleName || labels.title}`, xs[1] + 4, y + 18);
+  // The totals of the whole schedule on that first line, as on screen: duration, period, first and last day, first and last week.
+  const span = scheduleSpan(rows);
+  if (span) {
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(7.5);
+    pdf.setTextColor(...INK);
+    const totals: [number, string][] = [
+      [2, durationLabel(span, fr)],
+      [3, periodLabel(span, fr)],
+      [4, shortDate(span.start)],
+      [5, shortDate(span.end)],
+      [6, String(span.weekStart)],
+      [7, String(span.weekEnd)],
+    ];
+    for (const [col, text] of totals) if (text) pdf.text(text, xs[col] + 3, y + 17, { maxWidth: widths[col] - 5 });
+  }
   rule(y, titleH);
   y += titleH;
 
