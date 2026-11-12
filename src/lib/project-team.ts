@@ -10,6 +10,8 @@ export type TeamEntry = {
   email: string | null;
   phone: string | null;
   lead: boolean;
+  /** FRX staff (employees and administrators) or a user of the client company. */
+  group: "staff" | "client";
 };
 
 /** A project lead is recognised from the role given on the team, for example "Project Manager" or "Chargé de projet". */
@@ -37,6 +39,7 @@ export function projectTeam(members: TeamMember[], people: User[]): TeamEntry[] 
       email: email || null,
       phone: person.phone?.trim() || null,
       lead: LEAD_ROLE.test(role),
+      group: person.user_type === "internal" || person.is_admin === 1 ? "staff" : "client",
     });
   }
   return team.sort((a, b) => Number(b.lead) - Number(a.lead) || a.name.localeCompare(b.name));

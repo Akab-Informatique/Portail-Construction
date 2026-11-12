@@ -500,6 +500,8 @@ export const fr: Record<MessageKey, string> = {
   "ov2.done": "Tâches terminées",
   "ov2.doneHint": "Le chantier avance de façon régulière.",
   "ov2.team": "Votre équipe",
+  "ov2.teamFrx": "Équipe FRX",
+  "ov2.teamClient": "Utilisateurs du client",
   "ov2.teamNone": "Aucune personne n’est encore assignée à ce projet.",
   "ov2.teamLead": "Chargé de projet",
   "ov2.recent": "Récemment terminé",

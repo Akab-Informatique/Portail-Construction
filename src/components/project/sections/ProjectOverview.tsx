@@ -58,8 +58,22 @@ function TeamCard({ team, color, isAdmin, onManage }: { team: TeamEntry[]; color
       {team.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("ov2.teamNone")}</p>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {team.map((m) => (
+        <div className="space-y-4">
+          {(
+            [
+              ["staff", t("ov2.teamFrx")],
+              ["client", t("ov2.teamClient")],
+            ] as const
+          ).map(([group, heading]) => {
+            const members = team.filter((m) => m.group === group);
+            if (!members.length) return null;
+            return (
+              <div key={group} className="space-y-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  {heading} · {members.length}
+                </p>
+                <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {members.map((m) => (
             <li key={m.id} className="flex min-w-0 items-start gap-3 rounded-lg border bg-muted/30 p-3">
               <UserAvatar name={m.name} size="sm" />
               <div className="min-w-0 flex-1 space-y-0.5">
@@ -87,7 +101,11 @@ function TeamCard({ team, color, isAdmin, onManage }: { team: TeamEntry[]; color
               </div>
             </li>
           ))}
-        </ul>
+                </ul>
+              </div>
+            );
+          })}
+        </div>
       )}
     </Card>
   );

@@ -498,6 +498,8 @@ export const en = {
   "ov2.done": "Tasks completed",
   "ov2.doneHint": "Steady progress on the job.",
   "ov2.team": "Your team",
+  "ov2.teamFrx": "FRX team",
+  "ov2.teamClient": "Client users",
   "ov2.teamNone": "No one is assigned to this project yet.",
   "ov2.teamLead": "Project lead",
   "ov2.recent": "Recently completed",
