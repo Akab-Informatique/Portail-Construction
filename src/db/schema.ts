@@ -31,6 +31,14 @@ export const users = pgTable("users", {
   created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 
+/** When each account was activated (the person chose their own password or signed in) and when they last signed in. Administrators only. */
+export const user_logins = pgTable("user_logins", {
+  user_id: integer("user_id").primaryKey(),
+  activated_at: timestamp("activated_at"),
+  last_login_at: timestamp("last_login_at"),
+  login_count: integer("login_count").notNull().default(0),
+});
+
 export const clients = pgTable("clients", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),

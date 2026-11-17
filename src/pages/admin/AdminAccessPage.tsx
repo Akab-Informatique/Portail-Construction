@@ -39,6 +39,7 @@ import { UserAvatar } from "@/components/UserAvatar";
 import { AccessSummary } from "@/components/admin/AccessSummary";
 import { CompanyDialog } from "@/components/admin/CompanyDialog";
 import { StaffCreateDialog } from "@/components/admin/StaffCreateDialog";
+import { AccountStatus } from "@/components/admin/AccountStatus";
 import { StaffProfile } from "@/components/admin/StaffProfile";
 import { PermMatrix } from "@/components/admin/PermMatrix";
 import { CLIENT_MARKER, CLIENT_PROJECT_MODULES, CLIENT_SECTIONS } from "@/lib/client-rights";
@@ -399,7 +400,7 @@ export function AdminAccessPage({ audience, embedded = false, view = "users" }: 
                         <span className="block truncate text-sm font-medium">{p.name}</span>
                         <span className="block truncate text-[11px] text-muted-foreground">{p.is_admin ? t("adm.fullAccessShort") : p.title || p.email}</span>
                       </span>
-                      {!p.is_active ? <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">{t("cu.inactive")}</span> : null}
+                      <AccountStatus user={p} compact />
                     </button>
                   </li>
                 );
@@ -467,7 +468,7 @@ export function AdminAccessPage({ audience, embedded = false, view = "users" }: 
                                     <span className={cn("block truncate", onUser && "font-medium")}>{u.name}</span>
                                     <span className="block truncate text-[10px] text-muted-foreground">{u.email}</span>
                                   </span>
-                                  {!u.is_active ? <span className="rounded-full bg-muted px-1.5 text-[9px] font-semibold text-muted-foreground">{t("cu.inactive")}</span> : null}
+                                  <AccountStatus user={u} compact />
                                 </button>
                                 <button
                                   type="button"
@@ -822,6 +823,7 @@ function PersonEditor({
             {person.name}
           </span>
         </Heading>
+        <AccountStatus user={person} />
         {!staff && companyIds.length ? (
           <p className="text-xs text-muted-foreground">{t("adm.memberOf", { names: data.clients.filter((c) => companyIds.includes(c.id)).map((c) => c.company_name).join(", ") })}</p>
         ) : null}

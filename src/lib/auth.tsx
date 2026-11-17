@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { eq } from "drizzle-orm";
+import { recordLocalLogin, markLocalActivated } from "@/lib/user-logins";
 import { db, dbReady, schema } from "../db";
 import { hashPassword, verifyPassword } from "./password";
 import { SESSION_KEY, TUTORIAL_KEY, VIEW_AS_KEY } from "./constants";
@@ -243,6 +244,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (import.meta.env.PROD) localStorage.removeItem(SESSION_KEY);
       else localStorage.setItem(SESSION_KEY, String(match.id));
       await loadPermissions(match.id, "admin", Boolean(session.is_admin));
+      void recordLocalLogin(match.id, Number(match.must_change_password) === 1);
       return null;
     } catch (err) {
       console.error("login failed", err);
@@ -359,7 +361,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               .set({ password: await hashPassword(next), must_change_password: 0 })
               .where(eq(schema.users.id, realUser.id));
           }
-          setRealUser({ ...realUser, must_change_password: 0 });
+          void markLocalActivated(realUser.id);
+          void markLocalActivated(realUser.id);
+        setRealUser({ ...realUser, must_change_password: 0 });
           await finish();
           return null;
         }
@@ -379,6 +383,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return "profile.passwordWrong";
           }
         }
+        void markLocalActivated(realUser.id);
         setRealUser({ ...realUser, must_change_password: 0 });
         await finish();
         return null;

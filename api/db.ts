@@ -46,6 +46,7 @@ const ADMIN_TABLES = [
   "sharepoint_shares",
   "feature_requests",
   "feature_comments",
+  "user_logins",
   "sops",
   "sop_media",
   // The link between a project and its SharePoint folder decides which folder the document rights apply to.
@@ -227,7 +228,7 @@ async function ensureApiRoles() {
        END LOOP;
      END $$`,
     // Project money is for administrators: budgets and costs are read by nobody else, whatever SQL is sent.
-    `REVOKE ALL ON project_finance, project_costs, budget_items, feature_requests, feature_comments, sops, sop_media FROM ${ROLE_USER}, ${ROLE_CLIENT}`,
+    `REVOKE ALL ON project_finance, project_costs, budget_items, feature_requests, feature_comments, user_logins, sops, sop_media FROM ${ROLE_USER}, ${ROLE_CLIENT}`,
     // A client account reads the notes shared with it, the QRT and the files on them; it may comment and ask questions.
     `GRANT SELECT ON project_notes, project_attachments, project_qrt TO ${ROLE_CLIENT}`,
     `GRANT INSERT ON note_comments, project_qrt TO ${ROLE_CLIENT}`,
@@ -1215,6 +1216,15 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
         loginFailures.delete(throttleKey);
         const token = await createDbSession(Number(result.user.id));
         res.setHeader?.("Set-Cookie", sessionCookie(token));
+        // When this person last signed in, and whether the account is activated (they no longer have a temporary password).
+        await getPool()
+          .query(
+            `INSERT INTO user_logins (user_id, last_login_at, login_count, activated_at) VALUES ($1, now(), 1, CASE WHEN $2 = 0 THEN now() END)
+             ON CONFLICT (user_id) DO UPDATE SET last_login_at = now(), login_count = user_logins.login_count + 1,
+               activated_at = COALESCE(user_logins.activated_at, CASE WHEN $2 = 0 THEN now() END)`,
+            [Number(result.user.id), Number(result.user.must_change_password ?? 0)],
+          )
+          .catch((err) => console.error("recording the sign-in failed", err));
       } else {
         recordLoginFailure(throttleKey);
         if (ipKey) recordLoginFailure(ipKey);
@@ -1556,6 +1566,10 @@ export async function handleDbRequest(req: { method?: string; body?: any; header
         session.id,
         hashPassword(next),
       ]);
+      // Choosing their own password is what activates an invited account.
+      await getPool()
+        .query(`INSERT INTO user_logins (user_id, activated_at) VALUES ($1, now()) ON CONFLICT (user_id) DO UPDATE SET activated_at = COALESCE(user_logins.activated_at, now())`, [session.id])
+        .catch((err) => console.error("recording the activation failed", err));
       const currentToken = tokenFromCookieHeader(cookieHeaderOf(req));
       await getPool().query("DELETE FROM sessions WHERE user_id = $1 AND token <> $2", [session.id, currentToken ?? ""]);
       return res.status(200).json({ ok: true });
