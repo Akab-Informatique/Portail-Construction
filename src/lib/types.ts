@@ -236,7 +236,7 @@ export type AiSettings = {
   model: string;
 };
 
-export type EmailTemplateKey = "send_invoice" | "send_quote" | "follow_up" | "password_reset";
+export type EmailTemplateKey = "send_invoice" | "send_quote" | "follow_up" | "password_reset" | "project_access";
 
 export type EmailTemplate = {
   key: EmailTemplateKey;

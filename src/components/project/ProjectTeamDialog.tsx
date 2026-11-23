@@ -4,6 +4,8 @@ import { Loader2, Save } from "lucide-react";
 import { db, schema } from "../../db";
 import { useI18n } from "@/lib/i18n";
 import { logActivity } from "@/lib/activity";
+import { notifySummary, sendNotification } from "@/lib/notify";
+import { applyEmailTemplate, getCompanyProfile, getEmailTemplates } from "@/lib/settings";
 import { useAuth } from "@/lib/auth";
 import type { Client, Project, User } from "@/lib/types";
 import { UserAvatar } from "@/components/UserAvatar";
@@ -34,12 +36,14 @@ export function ProjectTeamDialog({
 }) {
   const { t } = useI18n();
   const { user } = useAuth();
+  const [warning, setWarning] = useState("");
   const [clientUserIds, setClientUserIds] = useState<number[]>([]);
   const [picked, setPicked] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+    setWarning("");
     setPicked(members.map((m) => m.user_id));
     void db
       .select({ user_id: schema.client_users.user_id })
@@ -66,14 +70,38 @@ export function ProjectTeamDialog({
       const had = new Set(members.map((m) => m.user_id));
       const want = new Set(picked);
       for (const id of had) if (!want.has(id)) await db.delete(schema.project_members).where(and(eq(schema.project_members.project_id, project.id), eq(schema.project_members.user_id, id)));
+      const added: number[] = [];
       for (const id of want) {
         if (had.has(id)) continue;
         const person = people.find((p) => p.id === id);
         await db.insert(schema.project_members).values({ project_id: project.id, user_id: id, role: person?.title || (person?.user_type === "internal" ? "Staff" : "Client") });
+        added.push(id);
       }
       await logActivity({ action: "changed project team", details: `${picked.length}`, projectId: project.id, userId: user?.id });
+      // Tell each newly added person by email. A client of an unpublished project has nothing to open yet, so they are told once it is published.
+      const toTell = added.filter((id) => id !== user?.id && (project.published === 1 || clientUserIds.includes(id) === false));
+      let problem = "";
+      if (toTell.length) {
+        // The wording is the "Ajouté à un projet" template of the settings, filled in for each person.
+        const [templates, company] = await Promise.all([getEmailTemplates(), getCompanyProfile().catch(() => null)]);
+        const link = `${window.location.origin}/projects/${project.id}`;
+        const results = await Promise.all(
+          toTell.map(async (id) => {
+            const mail = applyEmailTemplate(templates.project_access, {
+              name: people.find((p) => p.id === id)?.name ?? "",
+              project: `${project.project_number} ${project.name}`,
+              link,
+              company: company?.legal_name || "FRX",
+            });
+            return sendNotification({ userIds: [id], channels: ["email"], subject: mail.subject, text: mail.body }).catch(() => null);
+          }),
+        );
+        const bad = results.find((r) => !r || r.error || r.dev || r.failed.length || r.skipped.length);
+        if (bad) problem = notifySummary(bad, t as never);
+      }
       onSaved();
-      onClose();
+      if (problem) setWarning(problem);
+      else onClose();
     } finally {
       setBusy(false);
     }
@@ -112,13 +140,14 @@ export function ProjectTeamDialog({
         <div className="grid gap-5">
           {group(t("team.staff"), staff)}
           {group(client ? `${t("team.clientUsers")} · ${client.company_name}` : t("team.clientUsers"), clientUsers)}
+          {warning ? <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">{warning}</p> : null}
           {losingClient ? <p className="text-sm text-amber-700 dark:text-amber-400">{t("team.clientLosesAccess")}</p> : null}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
             {t("clients.cancel")}
           </Button>
-          <Button onClick={() => void save()} disabled={busy}>
+          <Button onClick={() => void save()} disabled={busy || Boolean(warning)}>
             {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
             {t("settings.save")}
           </Button>

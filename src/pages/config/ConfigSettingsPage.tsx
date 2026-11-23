@@ -77,6 +77,7 @@ const TEMPLATE_KEYS: { key: EmailTemplateKey; label: MessageKey; hint?: MessageK
   { key: "send_quote", label: "settings.templates.quote" },
   { key: "follow_up", label: "settings.templates.followUp", hint: "settings.templates.followUpHint" },
   { key: "password_reset", label: "settings.templates.passwordReset", hint: "settings.templates.passwordResetHint" },
+  { key: "project_access", label: "settings.templates.projectAccess", hint: "settings.templates.projectAccessHint" },
 ];
 
 export function ConfigSettingsPage() {

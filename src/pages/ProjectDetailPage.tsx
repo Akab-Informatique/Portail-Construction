@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { eq } from "drizzle-orm";
-import { FolderKanban, Pencil, Trash2 } from "lucide-react";
+import { FolderKanban, Pencil, Trash2, Users } from "lucide-react";
 import { deleteProjectCascade } from "@/lib/delete-client";
+import { ProjectTeamDialog } from "@/components/project/ProjectTeamDialog";
 import { db, dbReady, schema } from "../db";
 import { useAuth } from "@/lib/auth";
 import { getAccessibleProjectIds } from "@/lib/access";
@@ -59,6 +60,7 @@ export function ProjectDetailPage() {
   const [editForm, setEditForm] = useState<ProjectFormValues | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const [ruleOpen, setRuleOpen] = useState(false);
+  const [teamOpen, setTeamOpen] = useState(false);
   const editFolders = useSharePointFolders(editOpen, id);
 
   const load = useCallback(async () => {
@@ -185,6 +187,7 @@ export function ProjectDetailPage() {
         </DialogContent>
       </Dialog>
 
+      <ProjectTeamDialog open={teamOpen} project={project} client={client} people={people} members={members} onClose={() => setTeamOpen(false)} onSaved={() => void load()} />
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
@@ -246,6 +249,18 @@ export function ProjectDetailPage() {
                 onFolderName={editFolders.setFolderName}
                 assignedName={editFolders.assignedName}
               />
+              {isAdmin ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+                  <div className="min-w-0 text-sm">
+                    <p className="font-medium">{t("team.manage")}</p>
+                    <p className="text-xs text-muted-foreground">{t("team.editHint", { n: members.length })}</p>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setTeamOpen(true)}>
+                    <Users className="size-4" />
+                    {t("team.manage")}
+                  </Button>
+                </div>
+              ) : null}
               <DialogFooter className="sm:justify-between">
                 {isAdmin ? (
                   <Button

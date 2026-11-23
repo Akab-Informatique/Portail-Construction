@@ -65,6 +65,11 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplates = {
     subject: "Reset your {company} password",
     body: "Hello {name},\n\nWe received a request to reset your password. Use the link below within 1 hour:\n\n{link}\n\nIf you did not ask for this, you can ignore this email.\n\n{company}",
   },
+  project_access: {
+    key: "project_access",
+    subject: "Vous avez maintenant accès au projet {project} — {company}",
+    body: "Bonjour {name},\n\nVous avez été ajouté(e) au projet {project} et y avez maintenant accès.\n\nOuvrir le projet : {link}\n\nMerci,\n{company}",
+  },
 };
 
 /**
@@ -221,6 +226,7 @@ export async function getEmailTemplates(): Promise<EmailTemplates> {
       send_quote: { ...DEFAULT_EMAIL_TEMPLATES.send_quote, ...parsed.send_quote, key: "send_quote" },
       follow_up: { ...DEFAULT_EMAIL_TEMPLATES.follow_up, ...parsed.follow_up, key: "follow_up" },
       password_reset: { ...DEFAULT_EMAIL_TEMPLATES.password_reset, ...parsed.password_reset, key: "password_reset" },
+      project_access: { ...DEFAULT_EMAIL_TEMPLATES.project_access, ...parsed.project_access, key: "project_access" },
     };
   } catch {
     return structuredClone(DEFAULT_EMAIL_TEMPLATES);
