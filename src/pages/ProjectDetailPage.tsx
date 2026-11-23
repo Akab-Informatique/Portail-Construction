@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { eq } from "drizzle-orm";
-import { FolderKanban, Pencil } from "lucide-react";
+import { FolderKanban, Pencil, Trash2 } from "lucide-react";
+import { deleteProjectCascade } from "@/lib/delete-client";
 import { db, dbReady, schema } from "../db";
 import { useAuth } from "@/lib/auth";
 import { getAccessibleProjectIds } from "@/lib/access";
@@ -243,13 +244,43 @@ export function ProjectDetailPage() {
                 onFolderName={editFolders.setFolderName}
                 assignedName={editFolders.assignedName}
               />
-              <DialogFooter>
+              <DialogFooter className="sm:justify-between">
+                {isAdmin ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="text-destructive hover:text-destructive"
+                    disabled={editSaving}
+                    onClick={() => {
+                      if (!window.confirm(t("projects.deleteConfirm", { name: project.name }))) return;
+                      void (async () => {
+                        setEditSaving(true);
+                        try {
+                          await deleteProjectCascade(project.id);
+                          setEditOpen(false);
+                          navigate("/documents/projects");
+                        } catch {
+                          window.alert(t("projects.deleteFailed"));
+                        } finally {
+                          setEditSaving(false);
+                        }
+                      })();
+                    }}
+                  >
+                    <Trash2 className="size-4" />
+                    {t("projects.delete")}
+                  </Button>
+                ) : (
+                  <span />
+                )}
+                <div className="flex flex-col-reverse gap-2 sm:flex-row">
                 <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>
                   {t("clients.cancel")}
                 </Button>
                 <Button type="submit" disabled={editSaving || !editForm.name.trim()}>
                   {editSaving ? t("clients.saving") : t("projects.save")}
                 </Button>
+                </div>
               </DialogFooter>
             </form>
           ) : null}

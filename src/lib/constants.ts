@@ -57,6 +57,7 @@ export const PROJECT_STATUSES = [
 ] as const;
 
 export const PROJECT_PHASES = [
+  { value: "planning", label: "Planning" },
   { value: "preconstruction", label: "Preconstruction" },
   { value: "foundation", label: "Foundation" },
   { value: "structure", label: "Structure" },

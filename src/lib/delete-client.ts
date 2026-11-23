@@ -1,5 +1,7 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db, schema } from "../db";
+import { deleteBillingFile } from "@/lib/billing-files";
+import type { BillingFile } from "@/lib/types";
 
 const PROJECT_TABLES = [
   schema.project_members,
@@ -87,4 +89,58 @@ export async function deleteClientCascade(clientId: number) {
   }
 
   await db.delete(schema.clients).where(eq(schema.clients.id, clientId));
+}
+
+/** Every table that holds rows of a single project (the same list the database uses for its project-level access rules). */
+const PROJECT_ROW_TABLES = [
+  "task_notes",
+  "task_checklist",
+  "task_dependencies",
+  "note_comments",
+  "project_attachments",
+  "project_notes",
+  "project_qrt",
+  "form_entries",
+  "project_members",
+  "project_tasks",
+  "project_schedules",
+  "budget_items",
+  "calendar_events",
+  "documents",
+  "rfis",
+  "change_orders",
+  "daily_logs",
+  "punch_items",
+  "safety_incidents",
+  "project_reports",
+  "time_punches",
+  "project_finance",
+  "project_costs",
+] as const;
+
+/** Deletes one project and everything inside it: quotes and invoices (with their files), notes, tasks, schedules and the rest. */
+export async function deleteProjectCascade(projectId: number) {
+  const files = await db.select().from(schema.billing_files).where(eq(schema.billing_files.project_id, projectId));
+  for (const f of files.filter((x) => !x.parent_id)) await deleteBillingFile(f as BillingFile);
+  // Anything left (annexes of a document that was already gone)
+  const left = await db.select({ id: schema.billing_files.id }).from(schema.billing_files).where(eq(schema.billing_files.project_id, projectId));
+  if (left.length) {
+    const ids = left.map((f) => f.id);
+    await db.delete(schema.billing_file_blobs).where(inArray(schema.billing_file_blobs.file_id, ids));
+    await db.delete(schema.billing_requests).where(inArray(schema.billing_requests.file_id, ids));
+    await db.delete(schema.billing_files).where(inArray(schema.billing_files.id, ids));
+  }
+  const folders = await db.select({ id: schema.sharepoint_folders.id }).from(schema.sharepoint_folders).where(eq(schema.sharepoint_folders.project_id, projectId));
+  const folderIds = folders.map((f) => f.id);
+  if (folderIds.length) await db.delete(schema.sharepoint_shares).where(inArray(schema.sharepoint_shares.folder_id, folderIds));
+  await db.delete(schema.sharepoint_folders).where(eq(schema.sharepoint_folders.project_id, projectId));
+  for (const name of PROJECT_ROW_TABLES) {
+    const table = (schema as unknown as Record<string, { project_id: never }>)[name];
+    if (table) await db.delete(table as never).where(eq(table.project_id, projectId as never));
+  }
+  await db.delete(schema.group_projects).where(eq(schema.group_projects.project_id, projectId));
+  await db.delete(schema.user_permissions).where(and(eq(schema.user_permissions.scope_type, "project"), eq(schema.user_permissions.scope_id, projectId)));
+  await db.delete(schema.billing_documents).where(eq(schema.billing_documents.project_id, projectId));
+  await db.delete(schema.activities).where(eq(schema.activities.project_id, projectId));
+  await db.delete(schema.projects).where(eq(schema.projects.id, projectId));
 }

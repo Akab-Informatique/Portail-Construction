@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { ExternalLink, FileUp, MessageSquarePlus, PenLine, Printer, Stamp, X } from "lucide-react";
+import { ExternalLink, FileUp, MessageSquarePlus, PenLine, Printer, Stamp, Trash2, X } from "lucide-react";
+import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { QuoteSignDialog } from "@/components/QuoteSignDialog";
@@ -11,6 +12,7 @@ import {
   chainOf,
   createBillingRequest,
   currentRevision,
+  deleteBillingFile,
   decideFile,
   fileViewUrl,
   priceLabel,
@@ -90,6 +92,8 @@ export function BillingFileDialog({
   onAddDocument?: (quote: BillingFile, addon: boolean) => void;
 }) {
   const { t, locale } = useI18n();
+  const { user: authUser } = useAuth();
+  const isAdmin = Boolean(authUser?.is_admin) && authUser?.view_as !== "client";
   const [viewingId, setViewingId] = useState<number | null>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
@@ -185,6 +189,22 @@ export function BillingFileDialog({
     }
   }
 
+  /** An administrator removes a document (a version or an add-on) with its file; removing the first one closes the dialog. */
+  async function removeDoc(doc: BillingFile) {
+    if (!window.confirm(t("billing.delete.confirm", { number: doc.number || String(doc.id) }))) return;
+    setBusy(true);
+    try {
+      await deleteBillingFile(doc);
+      onChanged();
+      if (!root || doc.id === root.id || doc.id === file?.id) onClose();
+      else setViewingId(null);
+    } catch {
+      setFlash(t("billing.delete.failed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function row(doc: BillingFile, kind: "version" | "addon") {
     const status = revisionStatus(doc, allFiles);
     const isCurrent = kind === "version" && doc.id === current!.id && versions.length > 1;
@@ -232,6 +252,11 @@ export function BillingFileDialog({
           {mode === "staff" && canManage && kind === "version" && status === "final" ? (
             <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => void toggleFinal(doc, false)}>
               {t("billing.final.unmark")}
+            </Button>
+          ) : null}
+          {mode === "staff" && isAdmin ? (
+            <Button type="button" size="sm" variant="ghost" disabled={busy} title={t("billing.delete.title")} aria-label={t("billing.delete.title")} onClick={() => void removeDoc(doc)}>
+              <Trash2 className="size-3.5 text-destructive" />
             </Button>
           ) : null}
           {pending ? (
