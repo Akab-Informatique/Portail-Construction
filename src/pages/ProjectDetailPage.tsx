@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth";
 import { getAccessibleProjectIds } from "@/lib/access";
 import { withProjectMoney } from "@/lib/project-money";
 import { visibleProjectModules } from "@/lib/permissions";
+import { useProjectOpen } from "@/lib/project-open";
 import { isProjectSection, projectSectionPath } from "@/lib/project-nav";
 import { useI18n } from "@/lib/i18n";
 import { syncAutoNotes } from "@/lib/task-activity";
@@ -98,7 +99,8 @@ export function ProjectDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project?.id, isAdminUser]);
 
-  const allowed = useMemo(() => visibleProjectModules(user, permissions, id), [user, permissions, id]);
+  const open = useProjectOpen(project);
+  const allowed = useMemo(() => visibleProjectModules(user, permissions, id, open), [user, permissions, id, open]);
   useEffect(() => {
     if (allowed.length && !allowed.includes(section)) navigate(projectSectionPath(id, allowed[0]), { replace: true });
   }, [allowed, section, id, navigate]);
