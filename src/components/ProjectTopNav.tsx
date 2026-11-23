@@ -7,7 +7,6 @@ import { ArrowLeft } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { visibleProjectModules } from "@/lib/permissions";
-import { useProjectOpen } from "@/lib/project-open";
 import { PROJECT_NAV_GROUPS, projectSectionPath } from "@/lib/project-nav";
 import { projectColor } from "@/lib/project-colors";
 import { cn } from "@/lib/utils";
@@ -34,7 +33,7 @@ export function ProjectTopNav({ project, backLabel }: { project: Project; backLa
     window.addEventListener(AUTO_NOTES_EVENT, countAuto);
     return () => window.removeEventListener(AUTO_NOTES_EVENT, countAuto);
   }, [countAuto]);
-  const allowed = visibleProjectModules(user, permissions, project.id, useProjectOpen(project));
+  const allowed = visibleProjectModules(user, permissions, project.id);
   const groups = PROJECT_NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((n) => allowed.includes(n.id)) })).filter((g) => g.items.length > 0);
 
   return (

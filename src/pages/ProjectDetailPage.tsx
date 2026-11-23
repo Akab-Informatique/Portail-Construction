@@ -8,7 +8,6 @@ import { useAuth } from "@/lib/auth";
 import { getAccessibleProjectIds } from "@/lib/access";
 import { withProjectMoney } from "@/lib/project-money";
 import { visibleProjectModules } from "@/lib/permissions";
-import { useProjectOpen } from "@/lib/project-open";
 import { isProjectSection, projectSectionPath } from "@/lib/project-nav";
 import { useI18n } from "@/lib/i18n";
 import { syncAutoNotes } from "@/lib/task-activity";
@@ -68,7 +67,9 @@ export function ProjectDetailPage() {
       await dbReady;
       const rows = await db.select().from(schema.projects).where(eq(schema.projects.id, id));
       const reach = await getAccessibleProjectIds(user);
-      if (!rows[0] || (reach && !reach.includes(id))) {
+      // A client (or an administrator previewing as one) only gets a project that has been published to them.
+      const asClient = user?.user_type === "external" || user?.view_as === "client";
+      if (!rows[0] || (reach && !reach.includes(id)) || (asClient && rows[0].published !== 1)) {
         setProject(null);
         return;
       }
@@ -99,8 +100,7 @@ export function ProjectDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project?.id, isAdminUser]);
 
-  const open = useProjectOpen(project);
-  const allowed = useMemo(() => visibleProjectModules(user, permissions, id, open), [user, permissions, id, open]);
+  const allowed = useMemo(() => visibleProjectModules(user, permissions, id), [user, permissions, id]);
   useEffect(() => {
     if (allowed.length && !allowed.includes(section)) navigate(projectSectionPath(id, allowed[0]), { replace: true });
   }, [allowed, section, id, navigate]);

@@ -44,11 +44,9 @@ export function visibleProjectModules(
   user: SessionUser | null,
   permissions: Permission[],
   projectId: number,
-  /** False for a client while the project is still closed (nothing accepted, not published): only quotes and invoices show. */
-  open = true,
 ) {
   const ids: ModuleId[] = ["dashboard", "documents", "tasks", "notes", "forms", "safety", "qrt", "project_billing"];
   // A client sees what it was given among the overview, documentation, schedule, shared notes, QRT and quotes/invoices (never forms or SST).
-  if (user?.user_type === "external" || user?.view_as === "client") return ids.filter((id) => (open || id === "project_billing") && id !== "forms" && id !== "safety" && clientCan((m, a) => can(user, permissions, m, a, { projectId }), id, "view"));
+  if (user?.user_type === "external" || user?.view_as === "client") return ids.filter((id) => id !== "forms" && id !== "safety" && clientCan((m, a) => can(user, permissions, m, a, { projectId }), id, "view"));
   return ids.filter((id) => can(user, permissions, id, "view", { projectId }));
 }
