@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db, dbReady, schema } from "../db";
 import { DEFAULT_COMPANY } from "./invoice";
-import type { AiSettings, SmsSettings, CompanyProfile, EmailTemplateKey, EmailTemplates, QuickBooksSettings, SharePointSettings, SmtpSettings } from "./types";
+import type { AiSettings, SmsSettings, CompanyProfile, EmailTemplate, EmailTemplateKey, EmailTemplates, QuickBooksSettings, SharePointSettings, SmtpSettings } from "./types";
 
 export const SMTP_KEY = "smtp";
 export const COMPANY_KEY = "company";
@@ -69,6 +69,8 @@ export const DEFAULT_EMAIL_TEMPLATES: EmailTemplates = {
     key: "project_access",
     subject: "Vous avez maintenant accès au projet {project} — {company}",
     body: "Bonjour {name},\n\nVous avez été ajouté(e) au projet {project} et y avez maintenant accès.\n\nOuvrir le projet : {link}\n\nMerci,\n{company}",
+    subject_en: "You now have access to the project {project} — {company}",
+    body_en: "Hello {name},\n\nYou have been added to the project {project} and now have access to it.\n\nOpen the project: {link}\n\nThank you,\n{company}",
   },
 };
 
@@ -231,6 +233,14 @@ export async function getEmailTemplates(): Promise<EmailTemplates> {
   } catch {
     return structuredClone(DEFAULT_EMAIL_TEMPLATES);
   }
+}
+
+/** The wording of a template in a person's own language (French unless they chose English). */
+export function templateIn(template: EmailTemplate, locale: string | null | undefined) {
+  if (locale === "en" && (template.subject_en || template.body_en)) {
+    return { subject: template.subject_en || template.subject, body: template.body_en || template.body };
+  }
+  return { subject: template.subject, body: template.body };
 }
 
 export function templateKeyForKind(kind: "invoice" | "quote"): EmailTemplateKey {

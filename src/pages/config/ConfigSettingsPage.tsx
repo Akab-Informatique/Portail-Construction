@@ -99,6 +99,7 @@ export function ConfigSettingsPage() {
   const [ai, setAi] = useState<AiSettings>(EMPTY_AI);
   const [sms, setSms] = useState<SmsSettings>(EMPTY_SMS);
   const [templates, setTemplates] = useState<EmailTemplates>(DEFAULT_EMAIL_TEMPLATES);
+  const [tplLang, setTplLang] = useState<"fr" | "en">("fr");
   const [spTest, setSpTest] = useState<string | null>(null);
   const [numbering, setNumbering] = useState<NumberingConfig>({});
 
@@ -451,37 +452,45 @@ export function ConfigSettingsPage() {
                 <p className="text-sm font-medium">{t("settings.templates.title")}</p>
               </div>
               <div className="grid gap-6 lg:grid-cols-2">
-                {TEMPLATE_KEYS.map(({ key, label, hint }) => (
-                  <div key={key} className="space-y-3 rounded-lg border p-4">
-                    <div>
-                      <p className="text-sm font-medium">{t(label)}</p>
-                      {hint ? <p className="mt-0.5 text-xs text-muted-foreground">{t(hint)}</p> : null}
+                {TEMPLATE_KEYS.map(({ key, label, hint }) => {
+                  // Some templates exist in French and English: the person who receives the email gets the one in their own language.
+                  const bilingual = key === "project_access";
+                  const en = bilingual && tplLang === "en";
+                  const subjectField = en ? "subject_en" : "subject";
+                  const bodyField = en ? "body_en" : "body";
+                  return (
+                    <div key={key} className="space-y-3 rounded-lg border p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium">{t(label)}</p>
+                          {hint ? <p className="mt-0.5 text-xs text-muted-foreground">{t(hint)}</p> : null}
+                        </div>
+                        {bilingual ? (
+                          <div className="flex shrink-0 overflow-hidden rounded-md border text-xs font-semibold">
+                            {(["fr", "en"] as const).map((l) => (
+                              <button key={l} type="button" onClick={() => setTplLang(l)} className={tplLang === l ? "bg-primary px-2.5 py-1 text-primary-foreground" : "px-2.5 py-1 text-muted-foreground hover:bg-muted"}>
+                                {l.toUpperCase()}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                      <Field label={t("settings.templates.subject")}>
+                        <Input
+                          value={templates[key][subjectField] ?? ""}
+                          onChange={(e) => setTemplates({ ...templates, [key]: { ...templates[key], [subjectField]: e.target.value } })}
+                        />
+                      </Field>
+                      <Field label={t("settings.templates.body")}>
+                        <Textarea correct={false}
+                          rows={7}
+                          value={templates[key][bodyField] ?? ""}
+                          onChange={(e) => setTemplates({ ...templates, [key]: { ...templates[key], [bodyField]: e.target.value } })}
+                        />
+                      </Field>
                     </div>
-                    <Field label={t("settings.templates.subject")}>
-                      <Input
-                        value={templates[key].subject}
-                        onChange={(e) =>
-                          setTemplates({
-                            ...templates,
-                            [key]: { ...templates[key], subject: e.target.value },
-                          })
-                        }
-                      />
-                    </Field>
-                    <Field label={t("settings.templates.body")}>
-                      <Textarea correct={false}
-                        rows={7}
-                        value={templates[key].body}
-                        onChange={(e) =>
-                          setTemplates({
-                            ...templates,
-                            [key]: { ...templates[key], body: e.target.value },
-                          })
-                        }
-                      />
-                    </Field>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </Card>
             <SaveBar saved={saved} saving={saving} />

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { eq } from "drizzle-orm";
 import { FolderKanban, Pencil, Trash2, Users } from "lucide-react";
 import { deleteProjectCascade } from "@/lib/delete-client";
+import { sendProjectAccessEmails } from "@/lib/project-access-mail";
 import { ProjectTeamDialog } from "@/components/project/ProjectTeamDialog";
 import { db, dbReady, schema } from "../db";
 import { useAuth } from "@/lib/auth";
@@ -219,6 +220,10 @@ export function ProjectDetailPage() {
                         published: values.published,
                       })
                       .where(eq(schema.projects.id, id));
+                    // Publishing the project tells everyone on its team that they now have access.
+                    if (project.published !== 1 && values.published === 1) {
+                      await sendProjectAccessEmails({ ...project, published: 1 }, members.map((m) => m.user_id).filter((uid) => uid !== user?.id), people, t as never).then((msg) => msg && window.alert(msg));
+                    }
                     await applyProjectFolder({
                       projectId: id,
                       clientId: project.client_id,

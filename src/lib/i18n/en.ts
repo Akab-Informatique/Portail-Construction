@@ -1995,7 +1995,7 @@ export const en = {
   "settings.templates.passwordReset": "Forgotten password",
   "settings.templates.followUpHint": "Used from the invoice list (bell button) to nudge a client. Tokens: {client} {kind} {number} {title} {amount} {company} {project}",
   "settings.templates.projectAccess": "Added to a project",
-  "settings.templates.projectAccessHint": "Sent to a person when they are given access to a project. You can use {name}, {project}, {link} and {company}.",
+  "settings.templates.projectAccessHint": "Sent to everyone on the project's team when the project is published to the client, and to a person added to a published project. Written in each recipient's own language (FR / EN above). You can use {name}, {project}, {link} and {company}.",
   "settings.templates.passwordResetHint": "Sent when someone uses Forgot password. Tokens: {name} {link} {company}. Keep {link} in the message.",
   "install.bannerTitle": "Install the FRX app on your phone",
   "install.bannerText": "Add the portal to your home screen: it opens full screen like an app, with one tap.",

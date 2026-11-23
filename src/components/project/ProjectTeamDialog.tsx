@@ -4,8 +4,7 @@ import { Loader2, Save } from "lucide-react";
 import { db, schema } from "../../db";
 import { useI18n } from "@/lib/i18n";
 import { logActivity } from "@/lib/activity";
-import { notifySummary, sendNotification } from "@/lib/notify";
-import { applyEmailTemplate, getCompanyProfile, getEmailTemplates } from "@/lib/settings";
+import { sendProjectAccessEmails } from "@/lib/project-access-mail";
 import { useAuth } from "@/lib/auth";
 import type { Client, Project, User } from "@/lib/types";
 import { UserAvatar } from "@/components/UserAvatar";
@@ -78,27 +77,8 @@ export function ProjectTeamDialog({
         added.push(id);
       }
       await logActivity({ action: "changed project team", details: `${picked.length}`, projectId: project.id, userId: user?.id });
-      // Tell each newly added person by email. A client of an unpublished project has nothing to open yet, so they are told once it is published.
-      const toTell = added.filter((id) => id !== user?.id && (project.published === 1 || clientUserIds.includes(id) === false));
-      let problem = "";
-      if (toTell.length) {
-        // The wording is the "Ajouté à un projet" template of the settings, filled in for each person.
-        const [templates, company] = await Promise.all([getEmailTemplates(), getCompanyProfile().catch(() => null)]);
-        const link = `${window.location.origin}/projects/${project.id}`;
-        const results = await Promise.all(
-          toTell.map(async (id) => {
-            const mail = applyEmailTemplate(templates.project_access, {
-              name: people.find((p) => p.id === id)?.name ?? "",
-              project: `${project.project_number} ${project.name}`,
-              link,
-              company: company?.legal_name || "FRX",
-            });
-            return sendNotification({ userIds: [id], channels: ["email"], subject: mail.subject, text: mail.body }).catch(() => null);
-          }),
-        );
-        const bad = results.find((r) => !r || r.error || r.dev || r.failed.length || r.skipped.length);
-        if (bad) problem = notifySummary(bad, t as never);
-      }
+      // Tell each newly added person by email, but only once the project is published (nothing is sent while it is hidden from the client).
+      const problem = await sendProjectAccessEmails(project, added.filter((id) => id !== user?.id), people, t as never);
       onSaved();
       if (problem) setWarning(problem);
       else onClose();

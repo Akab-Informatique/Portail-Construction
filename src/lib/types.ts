@@ -240,8 +240,12 @@ export type EmailTemplateKey = "send_invoice" | "send_quote" | "follow_up" | "pa
 
 export type EmailTemplate = {
   key: EmailTemplateKey;
+  /** The French text (the default language of the portal). */
   subject: string;
   body: string;
+  /** English version, for the templates that are sent in the recipient's own language. */
+  subject_en?: string;
+  body_en?: string;
 };
 
 export type EmailTemplates = Record<EmailTemplateKey, EmailTemplate>;

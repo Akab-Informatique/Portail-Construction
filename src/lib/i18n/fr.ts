@@ -1996,7 +1996,7 @@ export const fr: Record<MessageKey, string> = {
   "settings.templates.passwordReset": "Mot de passe oublié",
   "settings.templates.followUpHint": "Utilisé depuis la liste des factures (bouton cloche) pour relancer un client. Variables : {client} {kind} {number} {title} {amount} {company} {project}",
   "settings.templates.projectAccess": "Ajouté à un projet",
-  "settings.templates.projectAccessHint": "Envoyé à une personne quand on lui donne accès à un projet. Vous pouvez utiliser {name}, {project}, {link} et {company}.",
+  "settings.templates.projectAccessHint": "Envoyé à toute l’équipe du projet quand le projet est publié au client, et à une personne ajoutée à un projet déjà publié. Rédigé dans la langue de la personne qui le reçoit (FR / EN ci-dessus). Vous pouvez utiliser {name}, {project}, {link} et {company}.",
   "settings.templates.passwordResetHint": "Envoyé lorsqu’une personne utilise Mot de passe oublié. Variables : {name} {link} {company}. Gardez {link} dans le message.",
   "install.bannerTitle": "Installez l’application FRX sur votre téléphone",
   "install.bannerText": "Ajoutez le portail à votre écran d’accueil : il s’ouvre en plein écran comme une application, d’un seul toucher.",
