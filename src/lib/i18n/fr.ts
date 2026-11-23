@@ -189,6 +189,7 @@ export const fr: Record<MessageKey, string> = {
   "cab.phaseOf": "Phase {n} sur {total}",
   "cab.noDates": "Aucune date",
   "cab.tasks": "{done}/{total} tâches",
+  "phase.planning": "Planification",
   "phase.preconstruction": "Préconstruction",
   "phase.foundation": "Fondation",
   "phase.structure": "Structure",

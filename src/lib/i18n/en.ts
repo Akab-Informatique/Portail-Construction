@@ -187,6 +187,7 @@ export const en = {
   "cab.phaseOf": "Phase {n} of {total}",
   "cab.noDates": "No dates yet",
   "cab.tasks": "{done}/{total} tasks",
+  "phase.planning": "Planning",
   "phase.preconstruction": "Preconstruction",
   "phase.foundation": "Foundation",
   "phase.structure": "Structure",

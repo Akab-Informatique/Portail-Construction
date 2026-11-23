@@ -272,7 +272,6 @@ export function ProjectOverview({ project, client, people, members, reload }: Se
             {done.length}
             <span className="text-lg text-muted-foreground"> / {tasks.length}</span>
           </p>
-          <p className="text-xs text-muted-foreground">{t("ov2.doneHint")}</p>
         </Card>
       </div>
 
@@ -291,7 +290,6 @@ export function ProjectOverview({ project, client, people, members, reload }: Se
                 <span>{x.title}</span>
               </li>
             ))}
-            {recentDone.length === 0 ? <li className="text-sm text-muted-foreground">{t("ov2.recentNone")}</li> : null}
           </ul>
         </Card>
 
@@ -307,7 +305,6 @@ export function ProjectOverview({ project, client, people, members, reload }: Se
                 <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{x.start_date ? formatDate(x.start_date, locale) : ""}</span>
               </li>
             ))}
-            {now.length + next.length === 0 ? <li className="text-sm text-muted-foreground">{t("ov2.nextNone")}</li> : null}
           </ul>
           <Link to={projectSectionPath(project.id, "tasks")} className="mt-auto flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
             {t("pnav.schedule")}
@@ -333,7 +330,6 @@ export function ProjectOverview({ project, client, people, members, reload }: Se
                 <p className="line-clamp-3">{n.body}</p>
               </li>
             ))}
-            {shared.length === 0 && photos.length === 0 ? <li className="text-sm text-muted-foreground">{t("ov2.siteNone")}</li> : null}
           </ul>
         </Card>
       </div>
