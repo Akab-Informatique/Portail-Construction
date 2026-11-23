@@ -64,6 +64,8 @@ export type Project = {
   require_geofence: number;
   /** Hex color owned by this project while it is running (see project-colors.ts). */
   color: string | null;
+  /** 1 = visible to the client; 0 = unpublished (staff only). */
+  published: number;
   created_at: Date;
   /** Added by withProjectMoney: real cost kept apart (budget = accepted quotes, spent = paid invoices). */
   cost?: number;

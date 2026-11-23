@@ -83,6 +83,8 @@ export const projects = pgTable("projects", {
   geo_radius_m: integer("geo_radius_m"),
   require_geofence: integer("require_geofence").notNull().default(0),
   color: text("color"),
+  /** 1 = visible to the client's users; 0 = only FRX staff see it (a new project starts unpublished). */
+  published: integer("published").notNull().default(1),
   created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 

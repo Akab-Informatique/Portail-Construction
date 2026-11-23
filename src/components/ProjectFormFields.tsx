@@ -24,6 +24,8 @@ export const emptyProjectForm = {
   start_date: "",
   end_date: "",
   budget: "",
+  /** A new project is not visible to the client until it is published. */
+  published: 0 as number,
 };
 
 export type ProjectFormValues = typeof emptyProjectForm;
@@ -42,6 +44,7 @@ export function formFromProject(project: Project): ProjectFormValues {
     start_date: project.start_date ?? "",
     end_date: project.end_date ?? "",
     budget: project.budget ? String(project.budget) : "",
+    published: project.published ?? 1,
   };
 }
 
@@ -61,6 +64,7 @@ export function projectInsertValues(form: ProjectFormValues, clientId: number, e
     start_date: form.start_date || null,
     end_date: form.end_date || null,
     budget: Number(form.budget) || 0,
+    published: form.published ? 1 : 0,
     spent: extra?.spent ?? 0,
     sort_order: extra?.sort_order ?? Date.now() % 100000,
   };
@@ -194,6 +198,18 @@ export function ProjectFormFields({
       </div>
       <Field label={t("clients.description")}>
         <Textarea rows={2} value={form.description} onChange={(e) => onChange({ ...form, description: e.target.value })} />
+      </Field>
+      <Field label={t("projects.visibility")}>
+        <Select value={String(form.published)} onValueChange={(v) => onChange({ ...form, published: Number(v) })}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="0">{t("projects.unpublished")}</SelectItem>
+            <SelectItem value="1">{t("projects.published")}</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">{t(form.published ? "projects.publishedHint" : "projects.unpublishedHint")}</p>
       </Field>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label={t("clients.status")}>

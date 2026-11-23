@@ -210,6 +210,7 @@ export function ProjectDetailPage() {
                         start_date: values.start_date,
                         end_date: values.end_date,
                         budget: values.budget,
+                        published: values.published,
                       })
                       .where(eq(schema.projects.id, id));
                     await applyProjectFolder({

@@ -293,6 +293,8 @@ async function ensureApiRoles() {
       `FOR UPDATE TO ${ROLE_CLIENT} USING (status = 'proposed' AND ${scopes.quote_changes})
        WITH CHECK (status IN ('approved', 'rejected') AND decided_by = ${ME} AND ${scopes.quote_changes})`,
     ),
+    // An unpublished project does not exist for clients (and so neither does anything inside it: frx_project_ok reads this table).
+    ...policy("projects", "frx_client_published_project", `AS RESTRICTIVE FOR SELECT TO ${ROLE_CLIENT} USING (published = 1)`),
     // Uploaded invoices/quotes: clients only ever see published rows, and may only accept/decline a quote that is waiting for them.
     ...policy("billing_files", "frx_client_published", `AS RESTRICTIVE FOR SELECT TO ${ROLE_CLIENT} USING (published = 1)`),
     `GRANT UPDATE (status, accepted_by, accepted_at, signature, staff_seen) ON billing_files TO ${ROLE_CLIENT}`,
