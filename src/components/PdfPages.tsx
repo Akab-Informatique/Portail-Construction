@@ -83,28 +83,39 @@ export function PdfPages({
     };
   }, [url]);
 
-  // draw the pages at the current width
+  // Draw the pages at the current width. Each page is painted on a private canvas and copied over in one go, and only the latest
+  // request may paint: two renders on the same canvas (the dialog changes size while it opens) used to mix up and flip the page.
+  const generation = useRef(0);
   useEffect(() => {
     const doc = docRef.current;
     if (!doc || !width || pages.length === 0) return;
-    let alive = true;
-    void (async () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      for (const info of pages) {
-        if (!alive) return;
-        const canvas = canvases.current[info.n];
-        if (!canvas) continue;
-        const page = await doc.getPage(info.n);
-        const base = page.getViewport({ scale: 1 });
-        const viewport = page.getViewport({ scale: (width / base.width) * dpr });
-        canvas.width = Math.floor(viewport.width);
-        canvas.height = Math.floor(viewport.height);
-        await page.render({ canvasContext: canvas.getContext("2d")!, viewport }).promise;
-      }
-    })().catch(() => undefined);
-    return () => {
-      alive = false;
-    };
+    const mine = ++generation.current;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        for (const info of pages) {
+          if (generation.current !== mine) return;
+          const target = canvases.current[info.n];
+          if (!target) continue;
+          const page = await doc.getPage(info.n);
+          const base = page.getViewport({ scale: 1 });
+          const viewport = page.getViewport({ scale: (width / base.width) * dpr });
+          const work = document.createElement("canvas");
+          work.width = Math.floor(viewport.width);
+          work.height = Math.floor(viewport.height);
+          const ctx = work.getContext("2d");
+          if (!ctx) continue;
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, 0, work.width, work.height);
+          await page.render({ canvasContext: ctx, viewport }).promise;
+          if (generation.current !== mine) return;
+          target.width = work.width;
+          target.height = work.height;
+          target.getContext("2d")?.drawImage(work, 0, 0);
+        }
+      })().catch(() => undefined);
+    }, 120);
+    return () => window.clearTimeout(timer);
   }, [pages, width]);
 
   const edit = mode === "edit";
