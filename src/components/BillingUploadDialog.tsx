@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { PenLine } from "lucide-react";
+import { SignFieldsDialog } from "@/components/SignFieldsDialog";
+import { parseSignFields } from "@/lib/sign-fields";
 import { FileUp, Loader2, Sparkles, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,6 +81,7 @@ export function BillingUploadDialog({
   const [aiMessage, setAiMessage] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [placing, setPlacing] = useState(false);
   const [dragging, setDragging] = useState(false);
 
   const [number, setNumber] = useState("");
@@ -439,12 +443,25 @@ export function BillingUploadDialog({
             <Field label={t("billing.description")}>
               <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
             </Field>
+            {kind === "quote" && record && (record.file_type ?? "").includes("pdf") ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+                <div className="min-w-0 text-sm">
+                  <p className="font-medium">{t("sf.button")}</p>
+                  <p className="text-xs text-muted-foreground">{t("sf.uploadHint", { n: parseSignFields(record.sign_fields).length })}</p>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={() => setPlacing(true)}>
+                  <PenLine className="size-4" />
+                  {t("sf.place")}
+                </Button>
+              </div>
+            ) : null}
             <p className="text-xs text-muted-foreground">{t("billing.review.publishHint")}</p>
             <NotifyToggle kind="billing" who="clients" />
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
           </div>
         )}
 
+        <SignFieldsDialog file={placing ? record : null} onClose={() => setPlacing(false)} onSaved={(fields) => record && setRecord({ ...record, sign_fields: fields.length ? JSON.stringify(fields) : null })} />
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => void cancel()} disabled={busy || phase === "analyzing"}>
             {t("clients.cancel")}

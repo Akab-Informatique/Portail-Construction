@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Link } from "react-router-dom";
 import { SignaturePad } from "@/components/SignaturePad";
 import { money } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
@@ -111,6 +112,12 @@ export function QuoteSignDialog({
               />
               <span>{t("billing.sign.confirm", { company: companyName })}</span>
             </label>
+            <p className="text-xs text-muted-foreground">
+              {t("billing.sign.record")}{" "}
+              <Link to="/privacy" target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-foreground">
+                {t("privacy.link")}
+              </Link>
+            </p>
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
           </div>
         ) : null}

@@ -399,6 +399,10 @@ export type BillingFile = {
   uploaded_by: number | null;
   accepted_by: string | null;
   accepted_at: string | null;
+  /** Address the acceptance came from (reference only; staff see it). */
+  accepted_ip: string | null;
+  /** JSON list of the boxes where the client signs and dates the PDF. */
+  sign_fields: string | null;
   signature: string | null;
   staff_seen: number;
   created_at: Date;

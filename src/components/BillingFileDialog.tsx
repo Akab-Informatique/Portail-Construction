@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { QuoteSignDialog } from "@/components/QuoteSignDialog";
 import { RequestDialog } from "@/components/QuoteChanges";
+import { PdfPages } from "@/components/PdfPages";
+import { SignFieldsDialog } from "@/components/SignFieldsDialog";
+import { parseSignFields } from "@/lib/sign-fields";
 import { logActivity } from "@/lib/activity";
 import { notifyStaffFromClient } from "@/lib/notify";
 import {
@@ -25,7 +28,7 @@ import {
   setFinalVersion,
   versionsOf,
 } from "@/lib/billing-files";
-import { formatDate, moneyExact } from "@/lib/format";
+import { formatDate, formatDateTime, moneyExact } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { BillingFile, BillingRequest } from "@/lib/types";
@@ -101,6 +104,7 @@ export function BillingFileDialog({
   const [requestOpen, setRequestOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
+  const [placing, setPlacing] = useState<BillingFile | null>(null);
 
   const root = file ? rootOf(file, allFiles) : null;
   const visible = (f: BillingFile) => mode === "staff" || f.published === 1;
@@ -144,6 +148,11 @@ export function BillingFileDialog({
   const isImage = (shown.file_type ?? "").startsWith("image/");
   const hasOpenRequest = rootRequests.some((r) => r.status === "open");
   const pendingShown = canDecide && isPendingDecision(shown, allFiles);
+  const waitingForClient = isPendingDecision(shown, allFiles);
+  const isPdf = (shown.file_type ?? "").includes("pdf");
+  const signFields = parseSignFields(shown.sign_fields);
+  const showFields = isQuote && isPdf && signFields.length > 0;
+  const signedValues = shown.status === "accepted" && shown.signature ? { signature: shown.signature, dateText: formatDateTime(shown.accepted_at, locale), name: shown.accepted_by } : null;
   const acceptedAddons = addons.filter((a) => a.published === 1 && a.status === "accepted");
   const total = quoteEffectiveTotal(root, allFiles);
 
@@ -172,6 +181,8 @@ export function BillingFileDialog({
       });
       setSigning(null);
       onChanged();
+    } catch {
+      setFlash(t("billing.accept.failed"));
     } finally {
       setBusy(false);
     }
@@ -317,6 +328,13 @@ export function BillingFileDialog({
                     </Button>
                   </>
                 ) : null}
+                {mode === "staff" && isQuote && isPdf && (canManage || isAdmin) && shown.status === "sent" ? (
+                  <Button type="button" variant="outline" size="sm" onClick={() => setPlacing(shown)}>
+                    <PenLine className="size-3.5" />
+                    {t("sf.button")}
+                    {signFields.length ? ` (${signFields.length})` : ""}
+                  </Button>
+                ) : null}
                 {url ? (
                   <Button type="button" variant="outline" size="sm" onClick={printShown}>
                     <Printer className="size-3.5" />
@@ -334,6 +352,19 @@ export function BillingFileDialog({
               </div>
             </div>
 
+            {mode === "client" && waitingForClient && !canDecide ? (
+              <p className="border-l-2 border-amber-500 bg-amber-500/10 px-3 py-2 text-sm">{t("billing.accept.noRight")}</p>
+            ) : null}
+            {shown.status === "accepted" && shown.accepted_by ? (
+              <p className="text-xs text-muted-foreground">
+                {t("billing.accept.audit", { name: shown.accepted_by, date: formatDateTime(shown.accepted_at, locale) })}
+                {mode === "staff" && shown.accepted_ip ? ` · IP ${shown.accepted_ip}` : ""}
+              </p>
+            ) : null}
+
+            {showFields && url && !loadError ? (
+              <PdfPages url={url} fields={signFields} mode="view" signed={signedValues} canSign={pendingShown} onSign={() => setSigning(shown)} />
+            ) : (
             <div className="overflow-hidden rounded-md border bg-muted/30">
               {loadError ? (
                 <p className="px-4 py-10 text-center text-sm text-muted-foreground">{t("billing.view.missing")}</p>
@@ -345,6 +376,7 @@ export function BillingFileDialog({
                 <iframe ref={frame} title={shown.file_name ?? "document"} src={(shown.file_type ?? "").includes("pdf") ? `${url}#view=FitH&navpanes=0` : url} className="h-[68vh] w-full bg-white" />
               )}
             </div>
+            )}
 
             {isQuote ? (
               <section className="space-y-4 border-t pt-5" aria-label={t("billing.version.title")}>
@@ -446,6 +478,8 @@ export function BillingFileDialog({
           onChanged();
         }}
       />
+
+      <SignFieldsDialog file={placing} onClose={() => setPlacing(null)} onSaved={() => onChanged()} />
 
       <QuoteSignDialog
         quote={signing ? { id: signing.id, number: signing.number || String(signing.id), title: signing.title, amount: signing.amount } : null}

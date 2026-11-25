@@ -307,7 +307,7 @@ async function ensureApiRoles() {
       "billing_files",
       "frx_client_decide",
       `FOR UPDATE TO ${ROLE_CLIENT} USING (kind = 'quote' AND status = 'sent' AND published = 1 AND ${scopes.billing_files})
-       WITH CHECK (status IN ('accepted', 'rejected') AND ${scopes.billing_files})`,
+       WITH CHECK (status IN ('sent', 'rejected') AND ${scopes.billing_files})`,
     ),
     `GRANT INSERT ON billing_requests TO ${ROLE_CLIENT}`,
     ...policy(

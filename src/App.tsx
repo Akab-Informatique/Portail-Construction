@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { WorkspaceProvider } from "@/lib/workspace";
 import { ClockProvider } from "@/lib/clock";
 import { LoginPage } from "@/pages/LoginPage";
+import { PrivacyPage } from "@/pages/PrivacyPage";
 import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
 import { lazyPage } from "@/lib/lazy-page";
 // Small tab frame around the punch/timesheet pages (those stay lazy-loaded).
@@ -58,6 +59,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
       <Route element={<ProtectedLayout />}>
         <Route
           element={

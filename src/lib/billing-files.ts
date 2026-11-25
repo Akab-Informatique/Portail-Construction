@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
+import type { SignField } from "@/lib/sign-fields";
 import { db, dbReady, schema } from "../db";
 import { AI_KEY, getSetting } from "./settings";
 import { moneyExact } from "./format";
@@ -352,16 +353,36 @@ export async function decideFile(
   decision: "accepted" | "rejected",
   input: { signerName?: string; signature?: string },
 ) {
+  // On the live server an acceptance goes through the API, which stamps the time and the address of the person itself.
+  if (decision === "accepted" && import.meta.env.PROD) {
+    const { res, data } = await postFiles({ action: "accept", id: file.id, signer_name: input.signerName ?? "", signature: input.signature ?? "" });
+    if (!res.ok) throw new Error(String(data.error || "err.server"));
+    notify();
+    return;
+  }
   await db
     .update(schema.billing_files)
     .set({
       status: decision,
       accepted_by: decision === "accepted" ? input.signerName ?? null : null,
       accepted_at: now(),
+      accepted_ip: decision === "accepted" ? "local" : null,
       signature: decision === "accepted" ? input.signature ?? null : null,
       staff_seen: 0,
     })
     .where(eq(schema.billing_files.id, file.id));
+  notify();
+}
+
+/** Staff set where the client signs and dates the PDF of a quote. */
+export async function setSignFields(file: BillingFile, fields: SignField[]) {
+  if (import.meta.env.PROD) {
+    const { res, data } = await postFiles({ action: "set_fields", id: file.id, fields });
+    if (!res.ok) throw new Error(String(data.error || "err.server"));
+  } else {
+    await dbReady;
+    await db.update(schema.billing_files).set({ sign_fields: fields.length ? JSON.stringify(fields) : null }).where(eq(schema.billing_files.id, file.id));
+  }
   notify();
 }
 

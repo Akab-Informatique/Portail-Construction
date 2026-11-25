@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { Navigate, useLocation } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import { ArrowRight, Eye, EyeOff, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -206,6 +206,11 @@ export function LoginPage() {
             </AuthButton>
           </form>
         )}
+        <p className="mt-5 text-center text-xs text-muted-foreground">
+          <Link to="/privacy" className="underline underline-offset-2 hover:text-foreground">
+            {t("privacy.link")}
+          </Link>
+        </p>
       </AuthCard>
     </AuthScreen>
   );

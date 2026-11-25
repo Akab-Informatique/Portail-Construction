@@ -454,6 +454,10 @@ export const billing_files = pgTable("billing_files", {
   uploaded_by: integer("uploaded_by"),
   accepted_by: text("accepted_by"),
   accepted_at: text("accepted_at"),
+  /** Address the acceptance came from, written by the server (kept for reference only). */
+  accepted_ip: text("accepted_ip"),
+  /** Where the client signs and dates the PDF: a JSON list of boxes (see sign-fields.ts). */
+  sign_fields: text("sign_fields"),
   signature: text("signature"),
   /** 0 = staff have not seen the client's decision yet (drives the notification bubble). */
   staff_seen: integer("staff_seen").notNull().default(1),

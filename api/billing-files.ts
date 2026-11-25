@@ -215,6 +215,27 @@ export default async function handler(req: Req, res: Res) {
   if (!hasDatabase()) return res.status(200).json({ local: true });
   const user = await requireApiUser(req);
   if (!user) return res.status(401).json({ error: "billing.upload.signedOut" });
+  // A client accepts a quote here, not through the generic database door, so the server writes the time and the address itself.
+  if (action === "accept") {
+    if (user.user_type !== "external" || Number(user.is_admin) === 1) return res.status(403).json({ error: "err.forbidden" });
+    const id = int(body.id);
+    const signerName = String(body.signer_name ?? "").trim().slice(0, 200);
+    const signature = String(body.signature ?? "");
+    if (!id || !signerName || !/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(signature) || signature.length > 600_000) return res.status(400).json({ error: "err.badRequest" });
+    const row = (await serverQuery("SELECT f.client_id, f.kind, f.status, f.published, f.project_id, p.published AS project_published FROM billing_files f LEFT JOIN projects p ON p.id = f.project_id WHERE f.id = $1", [id])).rows[0] as
+      | { client_id: number; kind: string; status: string; published: number; project_id: number | null; project_published: number | null }
+      | undefined;
+    const scope = await clientScopeOf(user);
+    const allowed = row && (scope === "*" || scope.split(",").includes(String(row.client_id)));
+    if (!row || !allowed || row.kind !== "quote" || Number(row.published) !== 1 || row.status !== "sent" || (row.project_id && Number(row.project_published) !== 1)) {
+      return res.status(403).json({ error: "err.forbidden" });
+    }
+    const ip = String(req.headers?.["x-client-ip"] ?? "").slice(0, 80);
+    const at = new Date().toISOString();
+    await serverQuery("UPDATE billing_files SET status = 'accepted', accepted_by = $2, accepted_at = $3, accepted_ip = $4, signature = $5, staff_seen = 0 WHERE id = $1 AND status = 'sent'", [id, signerName, at, ip || null, signature]);
+    return res.status(200).json({ ok: true, accepted_at: at });
+  }
+
   // Only FRX staff manage billing files; clients can never upload or delete.
   if (!canManageBilling(user)) {
     console.warn(`billing-files: refused user ${user.id} (type ${user.user_type}, view ${user.view_as})`);
@@ -309,6 +330,20 @@ export default async function handler(req: Req, res: Res) {
     if (!mime) return res.status(400).json({ error: "billing.upload.badFile" });
     const result = await runAnalysis(row.kind === "invoice" ? "invoice" : row.kind === "supplier" ? "supplier" : "quote", mime, blob.data);
     return res.status(200).json(result);
+  }
+
+  if (action === "set_fields") {
+    const id = int(body.id);
+    if (!id) return res.status(400).json({ error: "err.badRequest" });
+    const list = Array.isArray(body.fields) ? body.fields.slice(0, 20) : [];
+    const clean = list
+      .filter((f: any) => f && (f.type === "signature" || f.type === "date"))
+      .map((f: any, i: number) => {
+        const c = (n: unknown, lo: number, hi: number) => Math.min(hi, Math.max(lo, Number.isFinite(Number(n)) ? Number(n) : lo));
+        return { id: String(f.id ?? i).slice(0, 12), type: f.type, page: Math.max(1, Math.floor(Number(f.page) || 1)), x: c(f.x, 0, 1), y: c(f.y, 0, 1), w: c(f.w, 0.03, 1), h: c(f.h, 0.015, 1) };
+      });
+    await serverQuery("UPDATE billing_files SET sign_fields = $2 WHERE id = $1", [id, clean.length ? JSON.stringify(clean) : null]);
+    return res.status(200).json({ ok: true });
   }
 
   if (action === "delete") {
