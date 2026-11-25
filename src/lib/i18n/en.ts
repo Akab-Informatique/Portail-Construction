@@ -715,6 +715,8 @@ export const en = {
   "reports.snap.summary2": "{n} project(s) in this report.",
   "reports.scope.many": "{n} projects",
   "team.editHint": "{n} people have access to this project.",
+  "team.hideFromClient": "Hide from client",
+  "team.hiddenBadge": "Hidden from client",
   "team.manage": "Manage the team",
   "team.staff": "FRX team",
   "team.clientUsers": "Client users",

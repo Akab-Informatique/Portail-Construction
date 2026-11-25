@@ -79,6 +79,7 @@ function TeamCard({ team, color, isAdmin, onManage }: { team: TeamEntry[]; color
               <div className="min-w-0 flex-1 space-y-0.5">
                 <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
                   <span className="truncate">{m.name}</span>
+                  {m.hidden ? <span className="shrink-0 rounded-full bg-muted px-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{t("team.hiddenBadge")}</span> : null}
                   {m.lead ? (
                     <span className="shrink-0 rounded-full px-1.5 text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color, background: `color-mix(in srgb, ${color} 14%, transparent)` }}>
                       {t("ov2.teamLead")}

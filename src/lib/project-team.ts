@@ -1,6 +1,6 @@
 import type { User } from "@/lib/types";
 
-export type TeamMember = { user_id: number; role: string };
+export type TeamMember = { user_id: number; role: string; hidden?: number };
 
 /** One person on a project team, with only what a team card may show: name, role and work contact details. */
 export type TeamEntry = {
@@ -12,6 +12,8 @@ export type TeamEntry = {
   lead: boolean;
   /** FRX staff (employees and administrators) or a user of the client company. */
   group: "staff" | "client";
+  /** Not shown to the client (a test user): only FRX sees this card, marked as hidden. */
+  hidden: boolean;
 };
 
 /** A project lead is recognised from the role given on the team, for example "Project Manager" or "Chargé de projet". */
@@ -40,6 +42,7 @@ export function projectTeam(members: TeamMember[], people: User[]): TeamEntry[] 
       phone: person.phone?.trim() || null,
       lead: LEAD_ROLE.test(role),
       group: person.user_type === "internal" || person.is_admin === 1 ? "staff" : "client",
+      hidden: m.hidden === 1,
     });
   }
   return team.sort((a, b) => Number(b.lead) - Number(a.lead) || a.name.localeCompare(b.name));

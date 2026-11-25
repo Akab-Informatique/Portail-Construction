@@ -300,6 +300,8 @@ async function ensureApiRoles() {
     ...policy("projects", "frx_client_published_project", `AS RESTRICTIVE FOR SELECT TO ${ROLE_CLIENT} USING (published = 1)`),
     ...[...PROJECT_SCOPED, "project_attachments"].flatMap((table) => policy(table, "frx_client_open_project", `AS RESTRICTIVE FOR SELECT TO ${ROLE_CLIENT} USING (frx_project_open(project_id))`)),
     ...["activities", "billing_files", "billing_documents"].flatMap((table) => policy(table, "frx_client_open_project", `AS RESTRICTIVE FOR SELECT TO ${ROLE_CLIENT} USING (project_id IS NULL OR frx_project_open(project_id))`)),
+    // A hidden team member (a test user) is not listed to clients; they still see their own membership.
+    ...policy("project_members", "frx_client_visible_member", `AS RESTRICTIVE FOR SELECT TO ${ROLE_CLIENT} USING (hidden = 0 OR user_id = ${ME})`),
     // Uploaded invoices/quotes: clients only ever see published rows, and may only accept/decline a quote that is waiting for them.
     ...policy("billing_files", "frx_client_published", `AS RESTRICTIVE FOR SELECT TO ${ROLE_CLIENT} USING (published = 1)`),
     `GRANT UPDATE (status, accepted_by, accepted_at, signature, staff_seen) ON billing_files TO ${ROLE_CLIENT}`,

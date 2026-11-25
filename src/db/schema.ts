@@ -103,6 +103,8 @@ export const project_members = pgTable("project_members", {
   project_id: integer("project_id").notNull(),
   user_id: integer("user_id").notNull(),
   role: text("role").notNull(),
+  /** 1 = has access to the project but is not shown in "Votre équipe" to the client (a test user, for example). */
+  hidden: integer("hidden").notNull().default(0),
   created_at: timestamp("created_at").default(sql`now()`).notNull(),
 });
 

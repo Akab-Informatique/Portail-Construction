@@ -5,7 +5,7 @@ export type SectionProps = {
   project: Project;
   client: Client | null;
   people: User[];
-  members: { user_id: number; role: string }[];
+  members: { user_id: number; role: string; hidden?: number }[];
   /** Reload the project (and everything the shell holds) after a change. */
   reload: () => Promise<void>;
 };

@@ -10,6 +10,7 @@ import type { Client, Project, User } from "@/lib/types";
 import { UserAvatar } from "@/components/UserAvatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 /**
@@ -29,7 +30,7 @@ export function ProjectTeamDialog({
   project: Project;
   client: Client | null;
   people: User[];
-  members: { user_id: number; role: string }[];
+  members: { user_id: number; role: string; hidden?: number }[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -38,12 +39,15 @@ export function ProjectTeamDialog({
   const [warning, setWarning] = useState("");
   const [clientUserIds, setClientUserIds] = useState<number[]>([]);
   const [picked, setPicked] = useState<number[]>([]);
+  /** People who have access but are not listed to the client in "Votre équipe". */
+  const [hiddenIds, setHiddenIds] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setWarning("");
     setPicked(members.map((m) => m.user_id));
+    setHiddenIds(members.filter((m) => m.hidden === 1).map((m) => m.user_id));
     void db
       .select({ user_id: schema.client_users.user_id })
       .from(schema.client_users)
@@ -70,10 +74,16 @@ export function ProjectTeamDialog({
       const want = new Set(picked);
       for (const id of had) if (!want.has(id)) await db.delete(schema.project_members).where(and(eq(schema.project_members.project_id, project.id), eq(schema.project_members.user_id, id)));
       const added: number[] = [];
+      // Hidden or shown again for people who were already on the team.
+      for (const m of members) {
+        if (!want.has(m.user_id)) continue;
+        const nowHidden = hiddenIds.includes(m.user_id) ? 1 : 0;
+        if ((m.hidden ?? 0) !== nowHidden) await db.update(schema.project_members).set({ hidden: nowHidden }).where(and(eq(schema.project_members.project_id, project.id), eq(schema.project_members.user_id, m.user_id)));
+      }
       for (const id of want) {
         if (had.has(id)) continue;
         const person = people.find((p) => p.id === id);
-        await db.insert(schema.project_members).values({ project_id: project.id, user_id: id, role: person?.title || (person?.user_type === "internal" ? "Staff" : "Client") });
+        await db.insert(schema.project_members).values({ project_id: project.id, user_id: id, role: person?.title || (person?.user_type === "internal" ? "Staff" : "Client"), hidden: hiddenIds.includes(id) ? 1 : 0 });
         added.push(id);
       }
       await logActivity({ action: "changed project team", details: `${picked.length}`, projectId: project.id, userId: user?.id });
@@ -103,6 +113,12 @@ export function ProjectTeamDialog({
                   <span className="block truncate text-sm font-medium">{p.name}</span>
                   <span className="block truncate text-xs text-muted-foreground">{p.title || p.email}</span>
                 </span>
+                {picked.includes(p.id) ? (
+                  <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" onClick={(e) => e.stopPropagation()}>
+                    <Switch checked={hiddenIds.includes(p.id)} onCheckedChange={(v) => setHiddenIds((prev) => (v ? [...new Set([...prev, p.id])] : prev.filter((x) => x !== p.id)))} aria-label={t("team.hideFromClient")} />
+                    {t("team.hideFromClient")}
+                  </span>
+                ) : null}
               </label>
             </li>
           ))}

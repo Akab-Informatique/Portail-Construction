@@ -717,6 +717,8 @@ export const fr: Record<MessageKey, string> = {
   "reports.snap.summary2": "{n} projet(s) dans ce rapport.",
   "reports.scope.many": "{n} projets",
   "team.editHint": "{n} personne(s) ont accès à ce projet.",
+  "team.hideFromClient": "Masquer au client",
+  "team.hiddenBadge": "Masqué au client",
   "team.manage": "Gérer l’équipe",
   "team.staff": "Équipe FRX",
   "team.clientUsers": "Utilisateurs du client",

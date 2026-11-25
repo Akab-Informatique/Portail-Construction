@@ -56,7 +56,7 @@ export function ProjectDetailPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [client, setClient] = useState<Client | null>(null);
   const [people, setPeople] = useState<User[]>([]);
-  const [members, setMembers] = useState<{ user_id: number; role: string }[]>([]);
+  const [members, setMembers] = useState<{ user_id: number; role: string; hidden?: number }[]>([]);
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState<ProjectFormValues | null>(null);
   const [editSaving, setEditSaving] = useState(false);
@@ -84,7 +84,9 @@ export function ProjectDetailPage() {
       setProject((await withProjectMoney([rows[0] as Project]))[0]);
       setClient((clients[0] as Client) ?? null);
       setPeople(users as User[]);
-      setMembers(mems.map((m) => ({ user_id: m.user_id, role: m.role })));
+      // The client never gets the members marked as hidden (the database also refuses them to a real client).
+      const asClientView = user?.user_type === "external" || user?.view_as === "client";
+      setMembers(mems.filter((m) => !(asClientView && m.hidden === 1 && m.user_id !== user?.id)).map((m) => ({ user_id: m.user_id, role: m.role, hidden: m.hidden })));
     } catch (err) {
       console.error("ProjectDetailPage load failed", err);
     } finally {
