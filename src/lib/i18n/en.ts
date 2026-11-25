@@ -1250,6 +1250,8 @@ export const en = {
   "billing.accept.audit": "Accepted by {name} on {date}.",
   "billing.sign.record": "Your signature, the date and time and your IP address are recorded as proof of acceptance.",
   "privacy.link": "Privacy policy (Law 25)",
+  "billing.signed.download": "Signed copy (PDF)",
+  "billing.signed.failed": "The signed copy could not be made.",
   "clients.createProject": "Create project",
   "clients.inviteTitle": "Invite client user",
   "clients.fullName": "Full name",

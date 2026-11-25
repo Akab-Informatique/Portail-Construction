@@ -1252,6 +1252,8 @@ export const fr: Record<MessageKey, string> = {
   "billing.accept.audit": "Accepté par {name} le {date}.",
   "billing.sign.record": "Votre signature, la date et l’heure ainsi que votre adresse IP sont conservées comme preuve de l’acceptation.",
   "privacy.link": "Politique de confidentialité (Loi 25)",
+  "billing.signed.download": "Copie signée (PDF)",
+  "billing.signed.failed": "La copie signée n’a pas pu être créée.",
   "clients.createProject": "Créer le projet",
   "clients.inviteTitle": "Inviter un utilisateur client",
   "clients.fullName": "Nom complet",

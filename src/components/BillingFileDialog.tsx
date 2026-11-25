@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ExternalLink, FileUp, MessageSquarePlus, PenLine, Printer, Stamp, Trash2, X } from "lucide-react";
+import { Download, ExternalLink, FileUp, MessageSquarePlus, PenLine, Printer, Stamp, Trash2, X } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -8,6 +8,7 @@ import { RequestDialog } from "@/components/QuoteChanges";
 import { PdfPages } from "@/components/PdfPages";
 import { SignFieldsDialog } from "@/components/SignFieldsDialog";
 import { parseSignFields } from "@/lib/sign-fields";
+import { buildSignedPdf } from "@/lib/signed-pdf";
 import { logActivity } from "@/lib/activity";
 import { notifyStaffFromClient } from "@/lib/notify";
 import {
@@ -156,8 +157,33 @@ export function BillingFileDialog({
   const acceptedAddons = addons.filter((a) => a.published === 1 && a.status === "accepted");
   const total = quoteEffectiveTotal(root, allFiles);
 
+  /** The accepted quote with the signature and the date in place: opened to print, or saved as a file. */
+  async function signedCopy(action: "print" | "save") {
+    if (!url || !signedValues || !signedValues.signature) return;
+    setBusy(true);
+    try {
+      const blob = await buildSignedPdf(url, signFields, { signature: signedValues.signature, dateText: signedValues.dateText, name: signedValues.name });
+      const href = URL.createObjectURL(blob);
+      if (action === "save") {
+        const a = document.createElement("a");
+        a.href = href;
+        a.download = `${(shown?.number || String(shown?.id)).replace(/[^\w.-]+/g, "_")}-signe.pdf`;
+        a.click();
+        window.setTimeout(() => URL.revokeObjectURL(href), 10_000);
+      } else {
+        const win = window.open(href, "_blank");
+        if (win) win.addEventListener("load", () => win.print());
+      }
+    } catch {
+      setFlash(t("billing.signed.failed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   /** Prints the document being shown: the PDF in the viewer, or a picture in its own window. */
   function printShown() {
+    if (showFields && signedValues) return void signedCopy("print");
     const view = frame.current?.contentWindow;
     if (view) {
       view.focus();
@@ -333,6 +359,12 @@ export function BillingFileDialog({
                     <PenLine className="size-3.5" />
                     {t("sf.button")}
                     {signFields.length ? ` (${signFields.length})` : ""}
+                  </Button>
+                ) : null}
+                {showFields && signedValues && url ? (
+                  <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void signedCopy("save")}>
+                    <Download className="size-3.5" />
+                    {t("billing.signed.download")}
                   </Button>
                 ) : null}
                 {url ? (
